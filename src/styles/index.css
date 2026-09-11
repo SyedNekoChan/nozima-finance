@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: #000000;
+  color: #ffffff;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: #333333; }
+::-webkit-scrollbar-thumb:hover { background: #ffffff; }
+
+*:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
