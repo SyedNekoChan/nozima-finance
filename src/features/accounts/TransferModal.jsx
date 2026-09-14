@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import { formatAmount, parseAmount } from '../../lib/currency.js';
