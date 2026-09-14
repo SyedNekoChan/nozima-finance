@@ -21,8 +21,9 @@ export default function App() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
   const loadInitialData = useFinanceStore((s) => s.loadInitialData);
 
-  // mounts Yjs/IndexedDB/WebRTC for the app's lifetime; return value has no consumer yet
-  useSync();
+  // single sync instance for the app's lifetime; its state/controls are
+  // passed down to Header (and from there into SyncModal) as props
+  const sync = useSync();
 
   useEffect(() => {
     loadInitialData();
@@ -32,7 +33,7 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
-      <Header />
+      <Header sync={sync} />
       <main className="relative flex-1 min-h-0 overflow-hidden">
         <Anomaly />
         {isLoaded && <ActiveTabComponent />}
