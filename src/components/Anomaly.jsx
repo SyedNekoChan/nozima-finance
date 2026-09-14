@@ -1,7 +1,7 @@
-import { useRef, useMemo, useEffect, useState } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useFinanceStore } from '../hooks/useFinanceStore.js';
+import useFinanceStore from '../hooks/useFinanceStore.js';
 import { isSpecialDate } from '../lib/date.js';
 
 const SPHERE_ARGS = [2, 64, 64];
@@ -43,13 +43,13 @@ function SpherePoints() {
   const glitchUntilRef = useRef(0); // performance.now() ms timestamp
   const rotationRef = useRef(0);
 
-  // heart morph state: 0 idle-and-running, else null (not running)
+  // heart morph state: null = not running, else seconds elapsed since trigger
   const heartRef = useRef(isSpecialDate(new Date()) ? 0 : null);
-  // tracks the calendar day (toDateString) the heart last played on, so it
-  // plays once per special day even if the tab stays open across midnight
-  // or is reloaded later the same day without retriggering endlessly
+  // calendar day (toDateString) the heart last played on — plays once per
+  // special day even if the tab stays open across midnight or is reloaded
+  // later the same day
   const heartPlayedDateRef = useRef(isSpecialDate(new Date()) ? new Date().toDateString() : null);
-  // throttle the calendar check to ~once/sec instead of every frame
+  // throttle the calendar check instead of running it every frame
   const lastDateCheckRef = useRef(0);
 
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
@@ -87,16 +87,16 @@ function SpherePoints() {
     }
     if (pointsRef.current) pointsRef.current.rotation.y = rotationRef.current;
 
-    // advance & prune events
+    // advance & prune financial-event reactions
     const events = eventsRef.current;
     for (let i = events.length - 1; i >= 0; i--) {
       events[i].life -= delta / events[i].duration;
       if (events[i].life <= 0) events.splice(i, 1);
     }
 
-    // re-check the calendar periodically (not every frame) so a tab left
-    // open across midnight still catches the special date, and so the
-    // egg plays at most once per calendar day
+    // re-arm the heart sequence at most once per special calendar day;
+    // checked periodically (not every frame) so a tab left open across
+    // midnight still catches the date change
     const nowMs = performance.now();
     if (nowMs - lastDateCheckRef.current > 1000) {
       lastDateCheckRef.current = nowMs;
@@ -112,15 +112,15 @@ function SpherePoints() {
       }
     }
 
-    // heart morph timeline: 0-2 in, 2-5 hold, 5-7 out, then null
+    // heart morph timeline: 0-3 morph in, 3-8 hold, 8-11 morph out, then done
     let heartT = heartRef.current;
     let morphProgress = 0;
     if (heartT !== null) {
       heartT += delta;
       heartRef.current = heartT;
-      if (heartT < 2) morphProgress = heartT / 2;
-      else if (heartT < 5) morphProgress = 1;
-      else if (heartT < 7) morphProgress = 1 - (heartT - 5) / 2;
+      if (heartT < 3) morphProgress = heartT / 3;
+      else if (heartT < 8) morphProgress = 1;
+      else if (heartT < 11) morphProgress = 1 - (heartT - 8) / 3;
       else { morphProgress = 0; heartRef.current = null; }
     }
 
@@ -133,7 +133,7 @@ function SpherePoints() {
       const idleDisp = Math.sin(time * 0.5 + tmpBase.x * 2 + tmpBase.y * 2) * 0.03;
       tmpVec.copy(tmpBase).addScaledVector(tmpNormal, idleDisp);
 
-      // event reactions
+      // financial-event reactions layer on top, unaffected by the heart morph
       for (let e = 0; e < events.length; e++) {
         const ev = events[e];
         if (ev.type === 'CELEBRATE') {
@@ -146,14 +146,16 @@ function SpherePoints() {
         tmpVec.addScaledVector(tmpNormal, ev.intensity * falloff * ev.life);
       }
 
-      // overspend glitch: jitter + shrink
+      // overspend glitch: jitter + shrink (never applies during heart morph target,
+      // but can still co-occur — glitch is on the sphere's own base displacement)
       if (isGlitching) {
         const jitter = 0.15 * Math.random() - 0.075;
         tmpVec.copy(tmpBase).addScaledVector(tmpNormal, jitter);
         tmpVec.multiplyScalar(0.85);
       }
 
-      // heart morph overrides idle but not events already applied above
+      // heart morph: geometric lerp toward the heart target, layered last so
+      // financial events remain visible as texture on top of the heart shape
       if (morphProgress > 0) {
         tmpTarget.copy(heartTarget(tmpBase));
         tmpVec.lerp(tmpTarget, morphProgress);
