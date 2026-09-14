@@ -10,7 +10,6 @@ import { formatAmount } from '../../lib/currency.js';
 
 export default function Accounts() {
   const accounts = useFinanceStore((s) => s.accounts);
-  const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const deleteAccount = useFinanceStore((s) => s.deleteAccount);
   const getTotalBalanceInUZS = useFinanceStore((s) => s.getTotalBalanceInUZS);
 
@@ -24,7 +23,7 @@ export default function Accounts() {
   const handleEdit = (account) => setEditAccount(account);
   const handleEditClose = () => setEditAccount(null);
 
-  const handleAdjust = (account) => setTransferAccount(account);
+  const handleTransfer = (account) => setTransferAccount(account);
   const handleTransferClose = () => setTransferAccount(null);
 
   const handleDelete = (account) => setDeleteTarget(account);
@@ -62,9 +61,8 @@ export default function Accounts() {
               <AccountCard
                 key={account.id}
                 account={account}
-                exchangeRates={exchangeRates}
                 onEdit={handleEdit}
-                onAdjust={handleAdjust}
+                onTransfer={handleTransfer}
                 onDelete={handleDelete}
               />
             ))}
