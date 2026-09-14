@@ -126,9 +126,14 @@ const useFinanceStore = create((set, get) => ({
 
   getSpentThisMonthInUZS: () => {
     const { transactions, exchangeRates } = get();
-    const monthKey = getCurrentMonthKey();
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-indexed, matches date.js formatting
     return transactions
-      .filter((t) => t.type === 'EXPENSE' && t.date.startsWith(monthKey))
+      .filter((t) => {
+        const [, mm, yyyy] = t.date.split('-').map(Number);
+        return yyyy === year && mm === month && t.type === 'EXPENSE';
+      })
       .reduce((sum, t) => sum + convertToBase(t.amount, t.currency, exchangeRates), 0);
   },
 
