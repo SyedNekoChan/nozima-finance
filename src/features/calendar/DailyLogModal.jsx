@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import LedgerRow from '../ledger/LedgerRow.jsx';
@@ -14,6 +14,10 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
   const setActiveTab = useFinanceStore((s) => s.setActiveTab);
   const setPendingLedgerDate = useFinanceStore((s) => s.setPendingLedgerDate);
+  const setPendingEditTx = useFinanceStore((s) => s.setPendingEditTx);
+  const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
+
+  const [deletingTx, setDeletingTx] = useState(null);
 
   const dailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
@@ -41,6 +45,21 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
     setPendingLedgerDate(selectedDate.dateString);
     onClose();
     setActiveTab('LEDGER');
+  };
+
+  // hands the transaction to Ledger's existing edit flow via the store,
+  // then switches to the Ledger tab where PunchCard opens in edit mode
+  const handleEditFromHere = (tx) => {
+    setPendingEditTx(tx);
+    onClose();
+    setActiveTab('LEDGER');
+  };
+
+  const handleConfirmDelete = () => {
+    if (deletingTx) {
+      deleteTransaction(deletingTx.id);
+      setDeletingTx(null);
+    }
   };
 
   return (
@@ -71,7 +90,13 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
       ) : (
         <div className="flex flex-col">
           {dayTransactions.map((tx) => (
-            <LedgerRow key={tx.id} tx={tx} showDate={false} onEdit={() => {}} onDelete={() => {}} />
+            <LedgerRow
+              key={tx.id}
+              tx={tx}
+              showDate={false}
+              onEdit={() => handleEditFromHere(tx)}
+              onDelete={() => setDeletingTx(tx)}
+            />
           ))}
         </div>
       )}
@@ -79,6 +104,19 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
       <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
         <Button onClick={handleAddEntryForDay}>+ ADD ENTRY FOR THIS DAY</Button>
       </div>
+
+      <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">
+        <p className="font-mono text-sm text-white mb-6">DELETE THIS ENTRY? THIS CANNOT BE UNDONE.</p>
+        <div className="border border-gray-800 p-3 mb-6 font-mono text-xs text-gray-500">
+          <div>[ {deletingTx?.category || 'TRANSFER'} ]</div>
+          <div>{deletingTx?.note || '(no note)'}</div>
+          <div>{deletingTx ? formatAmount(deletingTx.amount, deletingTx.currency) : ''}</div>
+        </div>
+        <div className="flex justify-end gap-3">
+          <Button onClick={() => setDeletingTx(null)}>CANCEL</Button>
+          <Button onClick={handleConfirmDelete} active={true}>CONFIRM</Button>
+        </div>
+      </Modal>
     </Modal>
   );
 }
