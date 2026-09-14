@@ -14,6 +14,12 @@ import { DEFAULT_EXCHANGE_RATES } from '../lib/constants.js';
 import { convertToBase } from '../lib/currency.js';
 import { getCurrentMonthKey, getDaysInCurrentMonth } from '../lib/date.js';
 
+// DD-MM-YYYY -> comparable timestamp (matches the parsing pattern already used in Ledger.jsx)
+function parseDateToTimestamp(dateStr) {
+  const [d, m, y] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
 const useFinanceStore = create((set, get) => ({
   transactions: [],
   accounts: [],
@@ -45,7 +51,7 @@ const useFinanceStore = create((set, get) => ({
     const record = { ...tx, id: tx.id || generateId() };
     await saveTransaction(record);
     const transactions = [record, ...get().transactions].sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
+      (a, b) => parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date)
     );
     set({ transactions });
 
@@ -66,7 +72,7 @@ const useFinanceStore = create((set, get) => ({
     await saveTransaction(tx);
     const transactions = get()
       .transactions.map((t) => (t.id === tx.id ? tx : t))
-      .sort((a, b) => new Date(b.date) - new Date(a.date));
+      .sort((a, b) => parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date));
     set({ transactions });
 
     let anomalyEvent = null;
