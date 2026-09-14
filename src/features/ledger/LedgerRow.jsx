@@ -1,4 +1,4 @@
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount } from '../../lib/currency.js';
 import Button from '../../components/Button.jsx';
 
