@@ -107,8 +107,8 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
     };
 
     addTransaction(tx);
-    updateAccount(sourceAccount.id, { balance: sourceAccount.balance - amt });
-    updateAccount(destinationAccount.id, { balance: destinationAccount.balance + finalReceived });
+    updateAccount({ ...sourceAccount, balance: sourceAccount.balance - amt });
+    updateAccount({ ...destinationAccount, balance: destinationAccount.balance + finalReceived });
 
     handleClose();
   };
