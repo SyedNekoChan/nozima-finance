@@ -14,6 +14,8 @@ export default function Ledger() {
   const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
   const pendingLedgerDate = useFinanceStore((s) => s.pendingLedgerDate);
   const clearPendingLedgerDate = useFinanceStore((s) => s.clearPendingLedgerDate);
+  const pendingEditTx = useFinanceStore((s) => s.pendingEditTx);
+  const clearPendingEditTx = useFinanceStore((s) => s.clearPendingEditTx);
 
   const [sortBy, setSortBy] = useState('DATE');
   const [sortDirection, setSortDirection] = useState('DESC');
@@ -32,6 +34,17 @@ export default function Ledger() {
       clearPendingLedgerDate();
     }
   }, [pendingLedgerDate, clearPendingLedgerDate]);
+
+  // if DailyLogModal requested editing a specific transaction, open PunchCard
+  // in true edit mode for it, then clear the request so it doesn't fire again
+  useEffect(() => {
+    if (pendingEditTx) {
+      setInitialDate(null);
+      setEditingTx(pendingEditTx);
+      setShowPunchCard(true);
+      clearPendingEditTx();
+    }
+  }, [pendingEditTx, clearPendingEditTx]);
 
   const totals = useMemo(() => {
     let totalIn = 0;
