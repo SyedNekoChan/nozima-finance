@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import LedgerRow from '../ledger/LedgerRow.jsx';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 
 const FALLBACK_ALLOWANCE = 100000;
