@@ -8,6 +8,12 @@ db.version(1).stores({
   settings: 'key',
 });
 
+// DD-MM-YYYY -> comparable timestamp (matches the parsing pattern already used in Ledger.jsx)
+function parseDateToTimestamp(dateStr) {
+  const [d, m, y] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
 export function generateId() {
   return crypto.randomUUID();
 }
@@ -21,8 +27,10 @@ export async function deleteTransaction(id) {
 }
 
 export async function getAllTransactions() {
-  // orderBy on an indexed field, then reverse for descending
-  return db.transactions.orderBy('date').reverse().toArray();
+  // DD-MM-YYYY strings don't sort chronologically as IndexedDB keys,
+  // so retrieve unsorted and sort in JS using the correct date parsing
+  const all = await db.transactions.toArray();
+  return all.sort((a, b) => parseDateToTimestamp(b.date) - parseDateToTimestamp(a.date));
 }
 
 export async function saveAccount(account) {
