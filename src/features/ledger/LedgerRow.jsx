@@ -57,10 +57,10 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
         </span>
         <div className="hidden md:group-hover:flex gap-2 mt-2">
           <Button className="text-xs px-2 py-1" onClick={() => onEdit(tx.id)}>
-            [ EDIT ]
+            EDIT
           </Button>
           <Button className="text-xs px-2 py-1" onClick={() => onDelete(tx.id)}>
-            [ DELETE ]
+            DELETE
           </Button>
         </div>
       </div>
