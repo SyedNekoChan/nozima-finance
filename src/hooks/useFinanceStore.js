@@ -11,7 +11,7 @@ import {
   setSetting,
 } from '../lib/db.js';
 import { DEFAULT_EXCHANGE_RATES } from '../lib/constants.js';
-import { convertToUZS } from '../lib/currency.js';
+import { convertToBase } from '../lib/currency.js';
 import { getCurrentMonthKey, getDaysInCurrentMonth } from '../lib/date.js';
 
 const useFinanceStore = create((set, get) => ({
@@ -119,7 +119,7 @@ const useFinanceStore = create((set, get) => ({
   getTotalBalanceInUZS: () => {
     const { accounts, exchangeRates } = get();
     return accounts.reduce(
-      (sum, acc) => sum + convertToUZS(acc.balance, acc.currency, exchangeRates),
+      (sum, acc) => sum + convertToBase(acc.balance, acc.currency, exchangeRates),
       0
     );
   },
@@ -129,7 +129,7 @@ const useFinanceStore = create((set, get) => ({
     const monthKey = getCurrentMonthKey();
     return transactions
       .filter((t) => t.type === 'EXPENSE' && t.date.startsWith(monthKey))
-      .reduce((sum, t) => sum + convertToUZS(t.amount, t.currency, exchangeRates), 0);
+      .reduce((sum, t) => sum + convertToBase(t.amount, t.currency, exchangeRates), 0);
   },
 
   getMonthlyBudgetUZS: () => {
