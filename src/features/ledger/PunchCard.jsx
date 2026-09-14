@@ -7,7 +7,7 @@ import Button from '../../components/Button.jsx';
 
 const CATEGORIES = ['FOOD', 'CLOTHING', 'SOCIAL', 'BILLS', 'OTHER'];
 
-export default function PunchCard({ isOpen, onClose, editingTx }) {
+export default function PunchCard({ isOpen, onClose, editingTx, initialDate }) {
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const addTransaction = useFinanceStore((s) => s.addTransaction);
@@ -38,7 +38,9 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
       setImageData(editingTx.imageData || null);
       setExchangeRateInput(editingTx.exchangeRate ? String(editingTx.exchangeRate) : '');
     } else {
-      setDate(getTodayDateString());
+      // initialDate (e.g. from Calendar's "add entry for this day") prefills
+      // the date only; the user can still edit it like any other new entry
+      setDate(initialDate || getTodayDateString());
       setType('EXPENSE');
       setAccountId(accounts[0]?.id || '');
       setToAccountId(null);
@@ -48,7 +50,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
       setImageData(null);
       setExchangeRateInput('');
     }
-  }, [editingTx, isOpen]);
+  }, [editingTx, isOpen, initialDate]);
 
   const sourceAccount = accounts.find((a) => a.id === accountId);
   const destAccount = type === 'TRANSFER' ? accounts.find((a) => a.id === toAccountId) : null;
