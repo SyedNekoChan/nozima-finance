@@ -31,6 +31,9 @@ const useFinanceStore = create((set, get) => ({
   // set by DailyLogModal's "+ ADD ENTRY FOR THIS DAY"; Ledger reads it once on
   // mount to prefill PunchCard, then clears it so it doesn't stick around
   pendingLedgerDate: null,
+  // set by DailyLogModal's row-level EDIT; Ledger reads it once to open
+  // PunchCard in true edit mode for that transaction, then clears it
+  pendingEditTx: null,
 
   loadInitialData: async () => {
     const [transactions, accounts, budgets, exchangeRates] = await Promise.all([
@@ -52,6 +55,9 @@ const useFinanceStore = create((set, get) => ({
 
   setPendingLedgerDate: (dateString) => set({ pendingLedgerDate: dateString }),
   clearPendingLedgerDate: () => set({ pendingLedgerDate: null }),
+
+  setPendingEditTx: (tx) => set({ pendingEditTx: tx }),
+  clearPendingEditTx: () => set({ pendingEditTx: null }),
 
   addTransaction: async (tx) => {
     const record = { ...tx, id: tx.id || generateId() };
