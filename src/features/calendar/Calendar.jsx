@@ -11,6 +11,12 @@ const FALLBACK_ALLOWANCE = 100000;
 // pads a DD/MM to 2 digits for dateString building
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// DD-MM-YYYY -> Date (matches the parsing pattern already used in Ledger.jsx)
+const parseTxDate = (dateStr) => {
+  const [d, m, y] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
 export default function Calendar() {
   const transactions = useFinanceStore((s) => s.transactions);
   const accounts = useFinanceStore((s) => s.accounts);
@@ -36,7 +42,7 @@ export default function Calendar() {
 
   const monthTx = useMemo(() => {
     return transactions.filter((tx) => {
-      const d = new Date(tx.date);
+      const d = parseTxDate(tx.date);
       return d.getFullYear() === year && d.getMonth() === month;
     });
   }, [transactions, year, month]);
@@ -56,7 +62,7 @@ export default function Calendar() {
     let sum = 0;
     for (const tx of monthTx) {
       if (tx.type !== 'EXPENSE') continue;
-      const d = new Date(tx.date);
+      const d = parseTxDate(tx.date);
       if (d.getDate() === day) sum += toUZS(tx);
     }
     return sum;
