@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import AccountCard from './AccountCard.jsx';
 import NewAccountModal from './NewAccountModal.jsx';
 import EditAccountModal from './EditAccountModal.jsx';
