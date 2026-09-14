@@ -52,7 +52,7 @@ const useFinanceStore = create((set, get) => ({
     let anomalyEvent = null;
     if (record.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: record.id, accountId: record.accountId };
     else if (record.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: record.id, accountId: record.accountId };
-    else if (record.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: record.id, accountId: record.accountId };
+    else if (record.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: record.id, accountId: record.accountId, toAccountId: record.toAccountId };
 
     // overspend check wins over the base event
     const budget = get().getMonthlyBudgetUZS();
@@ -72,7 +72,7 @@ const useFinanceStore = create((set, get) => ({
     let anomalyEvent = null;
     if (tx.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: tx.id, accountId: tx.accountId };
     else if (tx.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: tx.id, accountId: tx.accountId };
-    else if (tx.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: tx.id, accountId: tx.accountId };
+    else if (tx.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: tx.id, accountId: tx.accountId, toAccountId: tx.toAccountId };
 
     const budget = get().getMonthlyBudgetUZS();
     if (budget !== null && get().getSpentThisMonthInUZS() > budget) {
