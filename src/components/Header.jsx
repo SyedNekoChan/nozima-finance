@@ -3,10 +3,12 @@ import { formatTime } from '../lib/date.js';
 import { getDistanceBetweenUs, formatDistance } from '../lib/distance.js';
 import { SYSTEM_MESSAGE } from '../lib/constants.js';
 import Modal from './Modal.jsx';
+import SyncModal from './SyncModal.jsx';
 
-export default function Header() {
+export default function Header({ sync }) {
   const [showSystemMessage, setShowSystemMessage] = useState(false);
   const [showDistance, setShowDistance] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -35,8 +37,11 @@ export default function Header() {
           </span>
         </span>
 
-        <span className="hidden md:block text-gray-500 cursor-default">
-          [ SYNC: OFF _ ]
+        <span
+          className="hidden md:block text-gray-500 cursor-pointer"
+          onClick={() => setShowSyncModal(true)}
+        >
+          [ SYNC: {sync.status} _ ]
         </span>
 
         <span className="text-white">
@@ -54,6 +59,12 @@ export default function Header() {
           {SYSTEM_MESSAGE}
         </pre>
       </Modal>
+
+      <SyncModal
+        isOpen={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        sync={sync}
+      />
     </>
   );
 }
