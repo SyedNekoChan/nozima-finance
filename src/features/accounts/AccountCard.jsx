@@ -4,7 +4,7 @@ import { FUTURE_FUND_NAME } from '../../lib/constants.js';
 import Button from '../../components/Button.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 
-export default function AccountCard({ account, onEdit, onTransfer }) {
+export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
   const isFutureFund = account.name.toUpperCase() === FUTURE_FUND_NAME;
   const isNegative = account.balance < 0;
 
@@ -62,6 +62,9 @@ export default function AccountCard({ account, onEdit, onTransfer }) {
         </Button>
         <Button onClick={() => onTransfer(account)} className="text-xs px-3 py-1">
           TRANSFER
+        </Button>
+        <Button onClick={() => onDelete(account)} className="text-xs px-3 py-1">
+          DELETE
         </Button>
       </div>
     </div>
