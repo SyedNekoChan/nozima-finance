@@ -8,6 +8,12 @@ import DotMatrixGraph from '../../components/DotMatrixGraph.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 
+// DD-MM-YYYY -> Date (matches the parsing pattern already used in Ledger.jsx)
+const parseTxDate = (dateStr) => {
+  const [d, m, y] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
 export default function Dashboard() {
   const spentThisMonth = useFinanceStore((s) => s.getSpentThisMonthInUZS());
   const monthlyBudget = useFinanceStore((s) => s.getMonthlyBudgetUZS());
@@ -32,7 +38,7 @@ export default function Dashboard() {
       return transactions
         .filter((tx) => {
           if (tx.type !== 'EXPENSE') return false;
-          const txDate = new Date(tx.date);
+          const txDate = parseTxDate(tx.date);
           return txDate.getFullYear() === year && txDate.getMonth() + 1 === month;
         })
         .reduce((sum, tx) => sum + convertToBase(tx.amount, tx.currency, exchangeRates), 0);
