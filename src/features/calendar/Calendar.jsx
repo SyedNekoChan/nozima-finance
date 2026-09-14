@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import Button from '../../components/Button.jsx';
 import DailyLogModal from './DailyLogModal.jsx';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 import { getDaysInMonth, getMonthName } from '../../lib/date.js';
 
