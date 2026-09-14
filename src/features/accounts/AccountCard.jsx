@@ -13,12 +13,14 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
   const pulseTimeoutRef = useRef(null);
 
   useEffect(() => {
-    if (
-      isFutureFund &&
-      anomalyEvent &&
-      anomalyEvent.type === 'INCOME' &&
-      anomalyEvent.accountId === account.id
-    ) {
+    if (!isFutureFund || !anomalyEvent) return;
+
+    const isDirectIncome =
+      anomalyEvent.type === 'INCOME' && anomalyEvent.accountId === account.id;
+    const isTransferIn =
+      anomalyEvent.type === 'TRANSFER' && anomalyEvent.toAccountId === account.id;
+
+    if (isDirectIncome || isTransferIn) {
       setIsPulsing(true);
       clearTimeout(pulseTimeoutRef.current);
       pulseTimeoutRef.current = setTimeout(() => setIsPulsing(false), 1500);
