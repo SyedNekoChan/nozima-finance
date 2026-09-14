@@ -28,6 +28,9 @@ const useFinanceStore = create((set, get) => ({
   activeTab: 'DASHBOARD',
   anomalyEvent: null,
   isLoaded: false,
+  // set by DailyLogModal's "+ ADD ENTRY FOR THIS DAY"; Ledger reads it once on
+  // mount to prefill PunchCard, then clears it so it doesn't stick around
+  pendingLedgerDate: null,
 
   loadInitialData: async () => {
     const [transactions, accounts, budgets, exchangeRates] = await Promise.all([
@@ -46,6 +49,9 @@ const useFinanceStore = create((set, get) => ({
   },
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  setPendingLedgerDate: (dateString) => set({ pendingLedgerDate: dateString }),
+  clearPendingLedgerDate: () => set({ pendingLedgerDate: null }),
 
   addTransaction: async (tx) => {
     const record = { ...tx, id: tx.id || generateId() };
