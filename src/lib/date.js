@@ -58,3 +58,15 @@ export function getLastNDays(n) {
     return d;
   });
 }
+
+// "YYYY-MM" for the current month — used as the budgets object key
+export function getCurrentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+
+// number of days in the current month, for daily-allowance math
+export function getDaysInCurrentMonth() {
+  const d = new Date();
+  return getDaysInMonth(d.getFullYear(), d.getMonth() + 1);
+}
