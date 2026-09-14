@@ -50,14 +50,14 @@ const useFinanceStore = create((set, get) => ({
     set({ transactions });
 
     let anomalyEvent = null;
-    if (record.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: record.id };
-    else if (record.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: record.id };
-    else if (record.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: record.id };
+    if (record.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: record.id, accountId: record.accountId };
+    else if (record.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: record.id, accountId: record.accountId };
+    else if (record.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: record.id, accountId: record.accountId };
 
     // overspend check wins over the base event
     const budget = get().getMonthlyBudgetUZS();
     if (budget !== null && get().getSpentThisMonthInUZS() > budget) {
-      anomalyEvent = { type: 'OVERSPEND', id: record.id };
+      anomalyEvent = { type: 'OVERSPEND', id: record.id, accountId: record.accountId };
     }
     set({ anomalyEvent });
   },
@@ -70,13 +70,13 @@ const useFinanceStore = create((set, get) => ({
     set({ transactions });
 
     let anomalyEvent = null;
-    if (tx.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: tx.id };
-    else if (tx.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: tx.id };
-    else if (tx.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: tx.id };
+    if (tx.type === 'INCOME') anomalyEvent = { type: 'INCOME', id: tx.id, accountId: tx.accountId };
+    else if (tx.type === 'EXPENSE') anomalyEvent = { type: 'EXPENSE', id: tx.id, accountId: tx.accountId };
+    else if (tx.type === 'TRANSFER') anomalyEvent = { type: 'TRANSFER', id: tx.id, accountId: tx.accountId };
 
     const budget = get().getMonthlyBudgetUZS();
     if (budget !== null && get().getSpentThisMonthInUZS() > budget) {
-      anomalyEvent = { type: 'OVERSPEND', id: tx.id };
+      anomalyEvent = { type: 'OVERSPEND', id: tx.id, accountId: tx.accountId };
     }
     set({ anomalyEvent });
   },
