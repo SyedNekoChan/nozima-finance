@@ -38,7 +38,7 @@ export default function Header({ sync }) {
         </span>
 
         <span
-          className="hidden md:block text-gray-500 cursor-pointer"
+          className="text-gray-500 cursor-pointer"
           onClick={() => setShowSyncModal(true)}
         >
           [ SYNC: {sync.status} _ ]
