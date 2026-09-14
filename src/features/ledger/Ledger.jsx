@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 import LedgerRow from './LedgerRow.jsx';
@@ -12,12 +12,26 @@ export default function Ledger() {
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
+  const pendingLedgerDate = useFinanceStore((s) => s.pendingLedgerDate);
+  const clearPendingLedgerDate = useFinanceStore((s) => s.clearPendingLedgerDate);
 
   const [sortBy, setSortBy] = useState('DATE');
   const [sortDirection, setSortDirection] = useState('DESC');
   const [showPunchCard, setShowPunchCard] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [deletingTx, setDeletingTx] = useState(null);
+  const [initialDate, setInitialDate] = useState(null);
+
+  // if Calendar requested a specific day's entry, open PunchCard prefilled
+  // with that date, then clear the request so it doesn't fire again
+  useEffect(() => {
+    if (pendingLedgerDate) {
+      setEditingTx(null);
+      setInitialDate(pendingLedgerDate);
+      setShowPunchCard(true);
+      clearPendingLedgerDate();
+    }
+  }, [pendingLedgerDate, clearPendingLedgerDate]);
 
   const totals = useMemo(() => {
     let totalIn = 0;
@@ -76,17 +90,20 @@ export default function Ledger() {
 
   const handleOpenNewEntry = () => {
     setEditingTx(null);
+    setInitialDate(null);
     setShowPunchCard(true);
   };
 
   const handleOpenEdit = (tx) => {
     setEditingTx(tx);
+    setInitialDate(null);
     setShowPunchCard(true);
   };
 
   const handleClosePunchCard = () => {
     setShowPunchCard(false);
     setEditingTx(null);
+    setInitialDate(null);
   };
 
   const handleConfirmDelete = () => {
@@ -175,7 +192,7 @@ export default function Ledger() {
         </div>
       </div>
 
-      <PunchCard isOpen={showPunchCard} onClose={handleClosePunchCard} editingTx={editingTx} />
+      <PunchCard isOpen={showPunchCard} onClose={handleClosePunchCard} editingTx={editingTx} initialDate={initialDate} />
 
       <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">
         <p className="font-mono text-sm text-white mb-6">DELETE THIS ENTRY? THIS CANNOT BE UNDONE.</p>
