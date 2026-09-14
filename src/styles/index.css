@@ -26,3 +26,14 @@ html, body, #root {
   outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
+
+/* OUR_FUTURE funding reaction: subtle scale/opacity pulse, linear timing only */
+@keyframes heart-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
+.brutalist-heart-pulse {
+  animation: heart-pulse 0.5s linear;
+  animation-iteration-count: 3;
+}
