@@ -138,7 +138,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
         <div className="flex gap-2">
           {['EXPENSE', 'INCOME', 'TRANSFER'].map((option) => (
             <Button key={option} active={type === option} onClick={() => handleTypeChange(option)}>
-              [ {option} ]
+              {option}
             </Button>
           ))}
         </div>
@@ -152,7 +152,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
           <div className="flex gap-2 overflow-x-auto pb-1">
             {accounts.map((account) => (
               <Button key={account.id} active={accountId === account.id} onClick={() => handleAccountChange(account.id)}>
-                [ {account.name} ]
+                {account.name}
               </Button>
             ))}
           </div>
@@ -167,7 +167,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
               .filter((a) => a.id !== accountId)
               .map((account) => (
                 <Button key={account.id} active={toAccountId === account.id} onClick={() => setToAccountId(account.id)}>
-                  [ {account.name} ]
+                  {account.name}
                 </Button>
               ))}
           </div>
@@ -195,7 +195,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
           <div className="flex gap-2 overflow-x-auto pb-1">
             {CATEGORIES.map((option) => (
               <Button key={option} active={category === option} onClick={() => setCategory(option)}>
-                [ {option} ]
+                {option}
               </Button>
             ))}
           </div>
@@ -219,12 +219,12 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
           <div>
             <img src={imageData} alt="receipt" className="w-24 h-24 object-cover border-2 border-white filter grayscale contrast-125" />
             <div className="mt-2">
-              <Button onClick={() => setImageData(null)}>[ REMOVE IMAGE ]</Button>
+              <Button onClick={() => setImageData(null)}>REMOVE IMAGE</Button>
             </div>
           </div>
         ) : (
           <>
-            <Button onClick={() => fileInputRef.current?.click()}>[ + UPLOAD IMAGE ]</Button>
+            <Button onClick={() => fileInputRef.current?.click()}>+ UPLOAD IMAGE</Button>
             <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" ref={fileInputRef} />
           </>
         )}
@@ -250,7 +250,7 @@ export default function PunchCard({ isOpen, onClose, editingTx }) {
       )}
 
       <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
-        <Button onClick={handleSave}>[ {editingTx ? 'SAVE CHANGES' : 'SAVE ENTRY'} ]</Button>
+        <Button onClick={handleSave}>{editingTx ? 'SAVE CHANGES' : 'SAVE ENTRY'}</Button>
       </div>
     </Modal>
   );
