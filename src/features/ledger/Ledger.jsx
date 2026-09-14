@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 import LedgerRow from './LedgerRow.jsx';
 import SortBar from './SortBar.jsx';
