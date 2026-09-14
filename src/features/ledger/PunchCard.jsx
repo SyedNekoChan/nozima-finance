@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useFinanceStore } from '../../hooks/useFinanceStore.js';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, parseAmount } from '../../lib/currency.js';
 import { getTodayDateString } from '../../lib/date.js';
 import Modal from '../../components/Modal.jsx';
