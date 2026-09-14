@@ -43,8 +43,14 @@ function SpherePoints() {
   const glitchUntilRef = useRef(0); // performance.now() ms timestamp
   const rotationRef = useRef(0);
 
-  // heart morph state: 0 idle, else timeline in seconds since trigger
+  // heart morph state: 0 idle-and-running, else null (not running)
   const heartRef = useRef(isSpecialDate(new Date()) ? 0 : null);
+  // tracks the calendar day (toDateString) the heart last played on, so it
+  // plays once per special day even if the tab stays open across midnight
+  // or is reloaded later the same day without retriggering endlessly
+  const heartPlayedDateRef = useRef(isSpecialDate(new Date()) ? new Date().toDateString() : null);
+  // throttle the calendar check to ~once/sec instead of every frame
+  const lastDateCheckRef = useRef(0);
 
   const tmpVec = useMemo(() => new THREE.Vector3(), []);
   const tmpBase = useMemo(() => new THREE.Vector3(), []);
@@ -86,6 +92,24 @@ function SpherePoints() {
     for (let i = events.length - 1; i >= 0; i--) {
       events[i].life -= delta / events[i].duration;
       if (events[i].life <= 0) events.splice(i, 1);
+    }
+
+    // re-check the calendar periodically (not every frame) so a tab left
+    // open across midnight still catches the special date, and so the
+    // egg plays at most once per calendar day
+    const nowMs = performance.now();
+    if (nowMs - lastDateCheckRef.current > 1000) {
+      lastDateCheckRef.current = nowMs;
+      const today = new Date();
+      const todayStr = today.toDateString();
+      if (
+        isSpecialDate(today) &&
+        heartPlayedDateRef.current !== todayStr &&
+        heartRef.current === null
+      ) {
+        heartRef.current = 0;
+        heartPlayedDateRef.current = todayStr;
+      }
     }
 
     // heart morph timeline: 0-2 in, 2-5 hold, 5-7 out, then null
