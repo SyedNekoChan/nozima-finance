@@ -1,10 +1,33 @@
+import { useEffect, useState, useRef } from 'react';
 import { formatAmount } from '../../lib/currency.js';
 import { FUTURE_FUND_NAME } from '../../lib/constants.js';
 import Button from '../../components/Button.jsx';
+import useFinanceStore from '../../hooks/useFinanceStore.js';
 
 export default function AccountCard({ account, onEdit, onTransfer }) {
   const isFutureFund = account.name.toUpperCase() === FUTURE_FUND_NAME;
   const isNegative = account.balance < 0;
+
+  const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
+  const [isPulsing, setIsPulsing] = useState(false);
+  const pulseTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (
+      isFutureFund &&
+      anomalyEvent &&
+      anomalyEvent.type === 'INCOME' &&
+      anomalyEvent.accountId === account.id
+    ) {
+      setIsPulsing(true);
+      clearTimeout(pulseTimeoutRef.current);
+      pulseTimeoutRef.current = setTimeout(() => setIsPulsing(false), 1500);
+    }
+  }, [anomalyEvent, isFutureFund, account.id]);
+
+  useEffect(() => {
+    return () => clearTimeout(pulseTimeoutRef.current);
+  }, []);
 
   return (
     <div className="border-2 border-white bg-black p-4 flex flex-col justify-between min-h-[160px] relative">
@@ -14,7 +37,11 @@ export default function AccountCard({ account, onEdit, onTransfer }) {
             [ {account.name} ]
           </h3>
           {isFutureFund && (
-            <span className="font-mono text-white text-lg">♥</span>
+            <span
+              className={`font-mono text-white text-lg ${isPulsing ? 'brutalist-heart-pulse' : ''}`}
+            >
+              ♥
+            </span>
           )}
         </div>
         <span className="font-mono text-xs tracking-widest text-gray-500 mt-1 block">
