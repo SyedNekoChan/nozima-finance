@@ -21,7 +21,7 @@ export default function Header({ sync }) {
   return (
     <>
       <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 md:px-8 py-3 flex justify-between items-center text-xs md:text-sm font-mono uppercase tracking-widest relative z-30">
-        <span className="flex items-center">
+        <span className="flex items-center whitespace-nowrap">
           <span
             className="text-white cursor-pointer"
             onClick={() => setShowSystemMessage(true)}
@@ -38,13 +38,13 @@ export default function Header({ sync }) {
         </span>
 
         <span
-          className="text-gray-500 cursor-pointer"
+          className="text-gray-500 cursor-pointer whitespace-nowrap"
           onClick={() => setShowSyncModal(true)}
         >
           [ SYNC: {sync.status} _ ]
         </span>
 
-        <span className="text-white">
+        <span className="text-white whitespace-nowrap">
           [ {formatTime(now)} _ ]
         </span>
       </header>
