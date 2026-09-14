@@ -13,6 +13,7 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
   const setActiveTab = useFinanceStore((s) => s.setActiveTab);
+  const setPendingLedgerDate = useFinanceStore((s) => s.setPendingLedgerDate);
 
   const dailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
@@ -37,6 +38,7 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   if (!isOpen || !selectedDate) return null;
 
   const handleAddEntryForDay = () => {
+    setPendingLedgerDate(selectedDate.dateString);
     onClose();
     setActiveTab('LEDGER');
   };
