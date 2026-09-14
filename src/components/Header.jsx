@@ -6,6 +6,7 @@ import Modal from './Modal.jsx';
 
 export default function Header() {
   const [showSystemMessage, setShowSystemMessage] = useState(false);
+  const [showDistance, setShowDistance] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -18,14 +19,18 @@ export default function Header() {
   return (
     <>
       <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 md:px-8 py-3 flex justify-between items-center text-xs md:text-sm font-mono uppercase tracking-widest relative z-30">
-        <span className="group flex items-center">
+        <span className="flex items-center">
           <span
             className="text-white cursor-pointer"
             onClick={() => setShowSystemMessage(true)}
+            onMouseEnter={() => setShowDistance(true)}
+            onMouseLeave={() => setShowDistance(false)}
           >
             [ SYSTEM: ONLINE ]
           </span>
-          <span className="opacity-0 group-hover:opacity-100 transition-none ml-4 text-gray-500">
+          <span
+            className={`ml-4 text-gray-500 transition-none ${showDistance ? 'opacity-100' : 'opacity-0'}`}
+          >
             [ DISTANCE: {distance} ]
           </span>
         </span>
