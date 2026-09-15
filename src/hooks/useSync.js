@@ -37,7 +37,8 @@ export default function useSync() {
   const [error, setError] =
     useState(null);
 
-  const ydocRef = useRef(null);
+  const ydocRef =
+    useRef(null);
 
   const persistenceRef =
     useRef(null);
@@ -53,7 +54,7 @@ export default function useSync() {
 
   /*
    * Prevent synchronization callbacks from recursively processing
-   * mutations that were themselves caused by synchronization.
+   * their own local state mutations.
    */
   const applyingRemoteRef =
     useRef(false);
@@ -84,10 +85,7 @@ export default function useSync() {
   );
 
   /*
-   * Atomically delete a record from Yjs and create its tombstone.
-   *
-   * Tombstone + deletion happen in the same Yjs transaction so another
-   * observer cannot see a half-completed deletion.
+   * Atomically create a deletion tombstone and remove the live record.
    */
   const deleteFromYjs = useCallback(
     (mapName, id) => {
@@ -95,13 +93,16 @@ export default function useSync() {
         return;
       }
 
-      const yMap = getMap(mapName);
+      const yMap =
+        getMap(mapName);
 
-      const deletedMap = getMap(
-        `${mapName}Deleted`
-      );
+      const deletedMap =
+        getMap(
+          `${mapName}Deleted`
+        );
 
-      const ydoc = ydocRef.current;
+      const ydoc =
+        ydocRef.current;
 
       if (
         !yMap ||
@@ -126,11 +127,14 @@ export default function useSync() {
   /*
    * Push a live record into Yjs.
    *
-   * A tombstoned record can never be recreated by normal synchronization.
+   * A tombstoned record can never be re-created.
    */
   const pushRecordToYjs =
     useCallback(
-      (mapName, record) => {
+      (
+        mapName,
+        record
+      ) => {
         if (!record?.id) {
           return;
         }
@@ -170,22 +174,6 @@ export default function useSync() {
    * -----------------------------------------------------------------------
    * COLLECTION RECONCILIATION
    * -----------------------------------------------------------------------
-   *
-   * Remote records update local records.
-   *
-   * Local records missing remotely are pushed remotely.
-   *
-   * Tombstones always win.
-   *
-   * IMPORTANT:
-   *
-   * Remote transactions call:
-   *
-   *   addTransaction(remote, false)
-   *   updateTransaction(remote, false)
-   *
-   * This prevents a remote transaction from changing an account balance
-   * a second time.
    */
 
   const reconcileCollection =
@@ -199,7 +187,7 @@ export default function useSync() {
         }
 
         /*
-         * Do not allow overlapping async reconciliation passes.
+         * Serialize reconciliation passes.
          */
         if (
           reconciliationRunningRef.current
@@ -227,7 +215,8 @@ export default function useSync() {
 
           /*
            * ===============================================================
-           * STEP 1 — REMOVE TOMBSTONED RECORDS FROM LIVE YJS MAP
+           * STEP 1
+           * Tombstones always win.
            * ===============================================================
            */
 
@@ -243,14 +232,17 @@ export default function useSync() {
               if (
                 remoteMap.has(id)
               ) {
-                remoteMap.delete(id);
+                remoteMap.delete(
+                  id
+                );
               }
             }
           }
 
           /*
            * ===============================================================
-           * STEP 2 — READ SURVIVING REMOTE RECORDS
+           * STEP 2
+           * Read surviving remote records.
            * ===============================================================
            */
 
@@ -261,7 +253,8 @@ export default function useSync() {
 
           /*
            * ===============================================================
-           * STEP 3 — APPLY REMOTE RECORDS LOCALLY
+           * STEP 3
+           * Apply remote accounts locally.
            * ===============================================================
            */
 
@@ -276,9 +269,6 @@ export default function useSync() {
                 continue;
               }
 
-              /*
-               * A deletion tombstone is authoritative.
-               */
               if (
                 deletedMap?.has(
                   remote.id
@@ -319,6 +309,21 @@ export default function useSync() {
             }
           }
 
+          /*
+           * ===============================================================
+           * STEP 4
+           * Apply remote transactions locally.
+           *
+           * IMPORTANT:
+           *
+           * The second argument is FALSE.
+           *
+           * This tells useFinanceStore that this transaction came from
+           * synchronization and therefore MUST NOT modify the account
+           * balance again.
+           * ===============================================================
+           */
+
           if (
             mapName ===
             'transactions'
@@ -330,9 +335,6 @@ export default function useSync() {
                 continue;
               }
 
-              /*
-               * A deletion tombstone is authoritative.
-               */
               if (
                 deletedMap?.has(
                   remote.id
@@ -352,12 +354,9 @@ export default function useSync() {
 
               if (!local) {
                 /*
-                 * FALSE is critical.
+                 * REMOTE ADD:
                  *
-                 * The remote transaction is being imported. Its account
-                 * balance is synchronized separately through the account
-                 * object, so do not apply the transaction's balance effect
-                 * again.
+                 * false = do not apply balance effect.
                  */
                 await store.addTransaction(
                   remote,
@@ -376,7 +375,9 @@ export default function useSync() {
                 )
               ) {
                 /*
-                 * FALSE is critical for the same reason during edits.
+                 * REMOTE UPDATE:
+                 *
+                 * false = do not apply balance effect.
                  */
                 await store.updateTransaction(
                   remote,
@@ -388,12 +389,9 @@ export default function useSync() {
 
           /*
            * ===============================================================
-           * STEP 4 — PUSH LOCAL-ONLY RECORDS REMOTELY
+           * STEP 5
+           * Push local-only accounts.
            * ===============================================================
-           *
-           * We NEVER delete local records merely because they are absent
-           * from Yjs. Absence can simply mean the remote side has not
-           * received the record yet.
            */
 
           if (
@@ -437,6 +435,13 @@ export default function useSync() {
               }
             }
           }
+
+          /*
+           * ===============================================================
+           * STEP 6
+           * Push local-only transactions.
+           * ===============================================================
+           */
 
           if (
             mapName ===
@@ -489,8 +494,7 @@ export default function useSync() {
         }
 
         /*
-         * If Yjs changed during the reconciliation pass, run one more
-         * serialized pass.
+         * Run one queued pass after the current pass finishes.
          */
         if (
           reconciliationQueuedRef.current
@@ -531,7 +535,7 @@ export default function useSync() {
             useFinanceStore.getState();
 
           /*
-           * Remote values win for keys that already exist remotely.
+           * Remote values win for keys already present remotely.
            */
           remoteMap.forEach(
             (
@@ -646,9 +650,6 @@ export default function useSync() {
    */
 
   useEffect(() => {
-    /*
-     * Wait until the local Dexie-backed application state has loaded.
-     */
     if (!isLoaded) {
       return undefined;
     }
@@ -796,7 +797,9 @@ export default function useSync() {
       };
 
     /*
-     * Transaction deletion observer.
+     * Remote transaction deletion.
+     *
+     * FALSE prevents the deletion from modifying the account balance.
      */
     const onTransactionsDeletedChanged =
       async () => {
@@ -812,8 +815,7 @@ export default function useSync() {
           );
 
         /*
-         * Make absolutely sure tombstoned transactions cannot remain
-         * in the live Yjs map.
+         * Make sure deleted transactions are absent from the live Yjs map.
          */
         ydoc.transact(() => {
           deletedIds.forEach(
@@ -826,10 +828,9 @@ export default function useSync() {
         });
 
         /*
-         * Remove deleted records from the local transaction collection
-         * WITHOUT changing account balances here.
+         * Remove the transactions locally.
          *
-         * The account object is the synchronized balance authority.
+         * false = do not reverse the account balance.
          */
         for (
           const id of deletedIds
@@ -862,7 +863,7 @@ export default function useSync() {
       };
 
     /*
-     * Account deletion observer.
+     * Remote account deletion.
      */
     const onAccountsDeletedChanged =
       async () => {
@@ -878,10 +879,7 @@ export default function useSync() {
           );
 
         /*
-         * Delete locally.
-         *
-         * We use the existing action with a tombstone already present
-         * remotely, so the synchronization layer cannot resurrect it.
+         * Remove deleted accounts locally.
          */
         for (
           const id of deletedIds
@@ -899,17 +897,21 @@ export default function useSync() {
           ) {
             await useFinanceStore
               .getState()
-              .deleteAccount(id);
+              .deleteAccount(
+                id
+              );
           }
         }
 
         /*
-         * Remove deleted accounts from the live Yjs collection.
+         * Make sure deleted accounts do not remain in the live map.
          */
         ydoc.transact(() => {
           deletedIds.forEach(
             (id) => {
-              yAccounts.delete(id);
+              yAccounts.delete(
+                id
+              );
             }
           );
         });
@@ -991,9 +993,6 @@ export default function useSync() {
      * ===============================================================
      *
      * Deletions are processed FIRST.
-     *
-     * This preserves the previous fix where deleting one account from
-     * multiple cards no longer causes it to reappear at the end.
      */
 
     let previousDeletedAccounts =
@@ -1014,9 +1013,6 @@ export default function useSync() {
             return;
           }
 
-          /*
-           * Ignore state changes caused by incoming remote synchronization.
-           */
           if (
             applyingRemoteRef.current
           ) {
@@ -1024,9 +1020,9 @@ export default function useSync() {
           }
 
           /*
-           * ===========================================================
-           * 1. PROCESS ACCOUNT DELETIONS FIRST
-           * ===========================================================
+           * -----------------------------------------------------------
+           * ACCOUNT DELETIONS FIRST
+           * -----------------------------------------------------------
            */
 
           const previousAccountDeleteSet =
@@ -1071,9 +1067,9 @@ export default function useSync() {
           }
 
           /*
-           * ===========================================================
-           * 2. PROCESS TRANSACTION DELETIONS FIRST
-           * ===========================================================
+           * -----------------------------------------------------------
+           * TRANSACTION DELETIONS FIRST
+           * -----------------------------------------------------------
            */
 
           const previousTransactionDeleteSet =
@@ -1128,9 +1124,9 @@ export default function useSync() {
             ];
 
           /*
-           * ===========================================================
-           * 3. PUSH LIVE ACCOUNTS
-           * ===========================================================
+           * -----------------------------------------------------------
+           * LIVE ACCOUNTS
+           * -----------------------------------------------------------
            */
 
           const deletedAccountSet =
@@ -1156,9 +1152,9 @@ export default function useSync() {
           );
 
           /*
-           * ===========================================================
-           * 4. PUSH LIVE TRANSACTIONS
-           * ===========================================================
+           * -----------------------------------------------------------
+           * LIVE TRANSACTIONS
+           * -----------------------------------------------------------
            */
 
           const deletedTransactionSet =
@@ -1184,9 +1180,9 @@ export default function useSync() {
           );
 
           /*
-           * ===========================================================
-           * 5. PUSH BUDGETS
-           * ===========================================================
+           * -----------------------------------------------------------
+           * BUDGETS
+           * -----------------------------------------------------------
            */
 
           Object.entries(
@@ -1204,9 +1200,9 @@ export default function useSync() {
           );
 
           /*
-           * ===========================================================
-           * 6. PUSH EXCHANGE RATES
-           * ===========================================================
+           * -----------------------------------------------------------
+           * EXCHANGE RATES
+           * -----------------------------------------------------------
            */
 
           Object.entries(
@@ -1241,7 +1237,7 @@ export default function useSync() {
       async () => {
         try {
           /*
-           * Wait for Yjs IndexedDB state.
+           * Wait for local Yjs IndexedDB persistence.
            */
           await persistence.whenSynced;
 
@@ -1250,8 +1246,7 @@ export default function useSync() {
           }
 
           /*
-           * Accounts first because account balances are displayed
-           * throughout the application.
+           * Accounts first.
            */
           await reconcileCollection(
             'accounts',
@@ -1263,10 +1258,9 @@ export default function useSync() {
           }
 
           /*
-           * Then transactions.
+           * Transactions second.
            *
-           * Because remote transaction imports use updateBalance=false,
-           * they cannot alter account balances twice.
+           * Remote transactions use updateBalance=false.
            */
           await reconcileCollection(
             'transactions',
@@ -1292,14 +1286,13 @@ export default function useSync() {
           }
 
           /*
-           * From this point onwards Yjs observers are allowed to process
-           * incoming remote changes.
+           * From this point forward remote Yjs events are live.
            */
           reconciledRef.current =
             true;
 
           /*
-           * Remove any stale live records that have tombstones.
+           * Clean stale tombstoned records.
            */
           ydoc.transact(() => {
             for (
@@ -1322,9 +1315,9 @@ export default function useSync() {
           });
 
           /*
-           * =============================================================
+           * ===========================================================
            * WEBRTC
-           * =============================================================
+           * ===========================================================
            */
 
           provider =
