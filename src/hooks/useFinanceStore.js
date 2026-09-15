@@ -572,13 +572,23 @@ const useFinanceStore = create((set, get) => ({
     if (
       updateBalance
     ) {
-      const delta =
-        getTransactionBalanceDelta(
-          transaction
-        );
-
-      if (delta !== 0) {
-        const account =
+      if (
+        transaction.type ===
+        'TRANSFER'
+      ) {
+        /*
+         * TRANSFER has a zero delta in getTransactionBalanceDelta()
+         * because it moves two accounts, not one. Its creation/edit
+         * balance movement is handled explicitly by PunchCard and
+         * TransferModal, so its deletion reversal must be handled
+         * explicitly here too.
+         *
+         * source += original source amount
+         * destination -= original received amount
+         *   (received = amount * exchangeRate for cross-currency,
+         *    otherwise received = amount)
+         */
+        const sourceAccount =
           useFinanceStore
             .getState()
             .accounts
@@ -588,13 +598,77 @@ const useFinanceStore = create((set, get) => ({
                 transaction.accountId
             );
 
-        if (account) {
+        const destinationAccount =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                transaction.toAccountId
+            );
+
+        const sourceAmount =
+          Number(
+            transaction.amount
+          ) || 0;
+
+        const receivedAmount =
+          transaction.exchangeRate
+            ? sourceAmount *
+              Number(
+                transaction.exchangeRate
+              )
+            : sourceAmount;
+
+        if (
+          sourceAccount &&
+          sourceAmount !== 0
+        ) {
           await get().updateAccount({
-            ...account,
+            ...sourceAccount,
             balance:
-              account.balance -
-              delta,
+              sourceAccount.balance +
+              sourceAmount,
           });
+        }
+
+        if (
+          destinationAccount &&
+          receivedAmount !== 0
+        ) {
+          await get().updateAccount({
+            ...destinationAccount,
+            balance:
+              destinationAccount.balance -
+              receivedAmount,
+          });
+        }
+      } else {
+        const delta =
+          getTransactionBalanceDelta(
+            transaction
+          );
+
+        if (delta !== 0) {
+          const account =
+            useFinanceStore
+              .getState()
+              .accounts
+              .find(
+                (a) =>
+                  a.id ===
+                  transaction.accountId
+              );
+
+          if (account) {
+            await get().updateAccount({
+              ...account,
+              balance:
+                account.balance -
+                delta,
+            });
+          }
         }
       }
     }
