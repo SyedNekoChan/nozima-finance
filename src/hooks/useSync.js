@@ -1076,7 +1076,8 @@ export default function useSync() {
                   await useFinanceStore
                     .getState()
                     .deleteAccount(
-                      id
+                      id,
+                      false
                     );
                 }
               }
