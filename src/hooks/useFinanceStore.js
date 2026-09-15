@@ -23,7 +23,7 @@ function parseDateToTimestamp(dateStr) {
   return new Date(y, m - 1, d).getTime();
 }
 
-// Remove duplicate records by ID while preserving first occurrence.
+// Remove duplicate records by ID.
 function uniqueById(records) {
   const seen = new Set();
 
@@ -38,14 +38,14 @@ function uniqueById(records) {
 }
 
 /*
- * Returns the balance effect of an INCOME or EXPENSE transaction.
+ * Return the balance effect of a transaction.
  *
- * INCOME  = positive
- * EXPENSE = negative
- * TRANSFER = 0
+ * INCOME  -> positive
+ * EXPENSE -> negative
+ * TRANSFER -> 0
  *
- * Transfers are intentionally handled by TransferModal because they
- * affect two separate accounts.
+ * Transfers are handled separately by TransferModal because they affect
+ * two accounts.
  */
 function getTransactionBalanceDelta(tx) {
   if (!tx) {
@@ -76,13 +76,19 @@ const useFinanceStore = create((set, get) => ({
   isLoaded: false,
 
   /*
-   * Explicit deletion state used by useSync.
+   * Synchronization tombstones.
    */
   deletedAccountIds: [],
   deletedTransactionIds: [],
 
   pendingLedgerDate: null,
   pendingEditTx: null,
+
+  /*
+   * ================================================================
+   * INITIAL LOAD
+   * ================================================================
+   */
 
   loadInitialData: async () => {
     const [
@@ -135,46 +141,60 @@ const useFinanceStore = create((set, get) => ({
 
   /*
    * ================================================================
-   * TRANSACTION CREATION
+   * ADD TRANSACTION
    * ================================================================
    *
-   * updateBalance defaults to true for LOCAL transactions.
+   * updateBalance=true:
+   *   Local transaction. Update account balance.
    *
-   * useSync passes false when applying a remote transaction so the
-   * remote transaction does not modify the account balance a second time.
+   * updateBalance=false:
+   *   Remote synchronized transaction. Do NOT touch account balance,
+   *   because the account itself is synchronized separately.
    */
+
   addTransaction: async (
     tx,
     updateBalance = true
   ) => {
     const record = {
       ...tx,
-      id: tx.id || generateId(),
+      id:
+        tx.id ||
+        generateId(),
     };
 
     await saveTransaction(record);
 
     /*
-     * Add/upsert the transaction locally.
+     * Upsert transaction into local state.
      */
     set((state) => {
       const existingIndex =
         state.transactions.findIndex(
-          (t) => t.id === record.id
+          (t) =>
+            t.id ===
+            record.id
         );
 
-      if (existingIndex !== -1) {
+      if (
+        existingIndex !== -1
+      ) {
         const transactions = [
           ...state.transactions,
         ];
 
-        transactions[existingIndex] =
-          record;
+        transactions[
+          existingIndex
+        ] = record;
 
         transactions.sort(
           (a, b) =>
-            parseDateToTimestamp(b.date) -
-            parseDateToTimestamp(a.date)
+            parseDateToTimestamp(
+              b.date
+            ) -
+            parseDateToTimestamp(
+              a.date
+            )
         );
 
         return {
@@ -189,8 +209,12 @@ const useFinanceStore = create((set, get) => ({
 
       transactions.sort(
         (a, b) =>
-          parseDateToTimestamp(b.date) -
-          parseDateToTimestamp(a.date)
+          parseDateToTimestamp(
+            b.date
+          ) -
+          parseDateToTimestamp(
+            a.date
+          )
       );
 
       return {
@@ -199,10 +223,7 @@ const useFinanceStore = create((set, get) => ({
     });
 
     /*
-     * Only locally-created transactions change the account balance.
-     *
-     * Transfers remain excluded here because TransferModal explicitly
-     * updates both accounts.
+     * Only local INCOME/EXPENSE transactions modify balances.
      */
     if (
       updateBalance &&
@@ -239,11 +260,14 @@ const useFinanceStore = create((set, get) => ({
     }
 
     /*
-     * Generate anomaly information.
+     * Anomaly event.
      */
     let anomalyEvent = null;
 
-    if (record.type === 'INCOME') {
+    if (
+      record.type ===
+      'INCOME'
+    ) {
       anomalyEvent = {
         type: 'INCOME',
         id: record.id,
@@ -251,7 +275,8 @@ const useFinanceStore = create((set, get) => ({
           record.accountId,
       };
     } else if (
-      record.type === 'EXPENSE'
+      record.type ===
+      'EXPENSE'
     ) {
       anomalyEvent = {
         type: 'EXPENSE',
@@ -260,7 +285,8 @@ const useFinanceStore = create((set, get) => ({
           record.accountId,
       };
     } else if (
-      record.type === 'TRANSFER'
+      record.type ===
+      'TRANSFER'
     ) {
       anomalyEvent = {
         type: 'TRANSFER',
@@ -295,24 +321,10 @@ const useFinanceStore = create((set, get) => ({
 
   /*
    * ================================================================
-   * TRANSACTION UPDATE
+   * UPDATE TRANSACTION
    * ================================================================
-   *
-   * For local edits:
-   *
-   * 1. Reverse the old transaction's effect.
-   * 2. Apply the new transaction's effect.
-   *
-   * This correctly handles:
-   *
-   *   amount change
-   *   type change
-   *   account change
-   *
-   * For remote updates, updateBalance=false prevents any account
-   * balance mutation because the account object itself is synchronized
-   * separately.
    */
+
   updateTransaction: async (
     tx,
     updateBalance = true
@@ -320,8 +332,11 @@ const useFinanceStore = create((set, get) => ({
     const oldTransaction =
       useFinanceStore
         .getState()
-        .transactions.find(
-          (t) => t.id === tx.id
+        .transactions
+        .find(
+          (t) =>
+            t.id ===
+            tx.id
         );
 
     await saveTransaction(tx);
@@ -349,7 +364,9 @@ const useFinanceStore = create((set, get) => ({
     }));
 
     /*
-     * Adjust balances only for LOCAL transaction edits.
+     * Local edits modify balances.
+     *
+     * Remote edits do not.
      */
     if (
       updateBalance &&
@@ -386,7 +403,12 @@ const useFinanceStore = create((set, get) => ({
           );
 
       /*
-       * Same account.
+       * Same account:
+       *
+       * new balance =
+       * old balance
+       * - old transaction effect
+       * + new transaction effect
        */
       if (
         oldAccount &&
@@ -398,7 +420,9 @@ const useFinanceStore = create((set, get) => ({
           newDelta -
           oldDelta;
 
-        if (netDelta !== 0) {
+        if (
+          netDelta !== 0
+        ) {
           await get().updateAccount({
             ...newAccount,
             balance:
@@ -408,7 +432,7 @@ const useFinanceStore = create((set, get) => ({
         }
       } else {
         /*
-         * Reverse old account effect.
+         * Reverse the old account.
          */
         if (
           oldAccount &&
@@ -423,7 +447,7 @@ const useFinanceStore = create((set, get) => ({
         }
 
         /*
-         * Apply new account effect.
+         * Apply the new account.
          */
         if (
           newAccount &&
@@ -444,7 +468,10 @@ const useFinanceStore = create((set, get) => ({
      */
     let anomalyEvent = null;
 
-    if (tx.type === 'INCOME') {
+    if (
+      tx.type ===
+      'INCOME'
+    ) {
       anomalyEvent = {
         type: 'INCOME',
         id: tx.id,
@@ -452,7 +479,8 @@ const useFinanceStore = create((set, get) => ({
           tx.accountId,
       };
     } else if (
-      tx.type === 'EXPENSE'
+      tx.type ===
+      'EXPENSE'
     ) {
       anomalyEvent = {
         type: 'EXPENSE',
@@ -461,7 +489,8 @@ const useFinanceStore = create((set, get) => ({
           tx.accountId,
       };
     } else if (
-      tx.type === 'TRANSFER'
+      tx.type ===
+      'TRANSFER'
     ) {
       anomalyEvent = {
         type: 'TRANSFER',
@@ -496,14 +525,10 @@ const useFinanceStore = create((set, get) => ({
 
   /*
    * ================================================================
-   * TRANSACTION DELETION
+   * DELETE TRANSACTION
    * ================================================================
-   *
-   * Local deletion reverses the transaction's balance effect.
-   *
-   * Remote deletion passes updateBalance=false because the synchronized
-   * account object carries the authoritative balance.
    */
+
   deleteTransaction: async (
     id,
     updateBalance = true
@@ -511,8 +536,10 @@ const useFinanceStore = create((set, get) => ({
     const transaction =
       useFinanceStore
         .getState()
-        .transactions.find(
-          (t) => t.id === id
+        .transactions
+        .find(
+          (t) =>
+            t.id === id
         );
 
     if (!transaction) {
@@ -521,13 +548,11 @@ const useFinanceStore = create((set, get) => ({
 
     await deleteTransaction(id);
 
-    /*
-     * Remove transaction locally and record tombstone.
-     */
     set((state) => ({
       transactions:
         state.transactions.filter(
-          (t) => t.id !== id
+          (t) =>
+            t.id !== id
         ),
 
       deletedTransactionIds:
@@ -542,9 +567,11 @@ const useFinanceStore = create((set, get) => ({
     }));
 
     /*
-     * Reverse local balance effect.
+     * Reverse the balance effect only for local deletion.
      */
-    if (updateBalance) {
+    if (
+      updateBalance
+    ) {
       const delta =
         getTransactionBalanceDelta(
           transaction
@@ -579,7 +606,9 @@ const useFinanceStore = create((set, get) => ({
    * ================================================================
    */
 
-  addAccount: async (account) => {
+  addAccount: async (
+    account
+  ) => {
     const record = {
       ...account,
       id:
@@ -592,16 +621,21 @@ const useFinanceStore = create((set, get) => ({
     set((state) => {
       const existingIndex =
         state.accounts.findIndex(
-          (a) => a.id === record.id
+          (a) =>
+            a.id ===
+            record.id
         );
 
-      if (existingIndex !== -1) {
+      if (
+        existingIndex !== -1
+      ) {
         const accounts = [
           ...state.accounts,
         ];
 
-        accounts[existingIndex] =
-          record;
+        accounts[
+          existingIndex
+        ] = record;
 
         return {
           accounts,
@@ -623,122 +657,131 @@ const useFinanceStore = create((set, get) => ({
    * ================================================================
    */
 
-  updateAccount: async (
-    account
-  ) => {
-    await saveAccount(account);
+  updateAccount:
+    async (account) => {
+      await saveAccount(
+        account
+      );
 
-    set((state) => ({
-      accounts:
-        state.accounts.map(
-          (a) =>
-            a.id === account.id
-              ? account
-              : a
-        ),
-    }));
-  },
-
-  /*
-   * ================================================================
-   * ACCOUNT DELETION
-   * ================================================================
-   */
-
-  deleteAccount: async (
-    id
-  ) => {
-    await deleteAccount(id);
-
-    set((state) => ({
-      accounts:
-        state.accounts.filter(
-          (a) => a.id !== id
-        ),
-
-      deletedAccountIds:
-        state.deletedAccountIds.includes(
-          id
-        )
-          ? state.deletedAccountIds
-          : [
-              ...state.deletedAccountIds,
-              id,
-            ],
-    }));
-  },
-
-  clearDeletedAccountId: (
-    id
-  ) =>
-    set((state) => ({
-      deletedAccountIds:
-        state.deletedAccountIds.filter(
-          (existingId) =>
-            existingId !== id
-        ),
-    })),
-
-  clearDeletedTransactionId: (
-    id
-  ) =>
-    set((state) => ({
-      deletedTransactionIds:
-        state.deletedTransactionIds.filter(
-          (existingId) =>
-            existingId !== id
-        ),
-    })),
+      set((state) => ({
+        accounts:
+          state.accounts.map(
+            (a) =>
+              a.id ===
+              account.id
+                ? account
+                : a
+          ),
+      }));
+    },
 
   /*
    * ================================================================
-   * BUDGETS / EXCHANGE RATES
+   * ACCOUNT DELETE
    * ================================================================
    */
 
-  setMonthlyBudget: async (
-    month,
-    amountInUZS
-  ) => {
-    const budgets = {
-      ...get().budgets,
-      [month]:
-        amountInUZS,
-    };
+  deleteAccount:
+    async (id) => {
+      await deleteAccount(id);
 
-    await setSetting(
-      'budgets',
-      budgets
-    );
+      set((state) => ({
+        accounts:
+          state.accounts.filter(
+            (a) =>
+              a.id !== id
+          ),
 
-    set({
-      budgets,
-    });
-  },
+        deletedAccountIds:
+          state.deletedAccountIds.includes(
+            id
+          )
+            ? state.deletedAccountIds
+            : [
+                ...state.deletedAccountIds,
+                id,
+              ],
+      }));
+    },
 
-  setExchangeRate: async (
-    code,
-    rate
-  ) => {
-    const exchangeRates = {
-      ...get().exchangeRates,
-      [code]: rate,
-    };
+  clearDeletedAccountId:
+    (id) =>
+      set((state) => ({
+        deletedAccountIds:
+          state.deletedAccountIds.filter(
+            (existingId) =>
+              existingId !== id
+          ),
+      })),
 
-    await setSetting(
-      'exchangeRates',
-      exchangeRates
-    );
+  clearDeletedTransactionId:
+    (id) =>
+      set((state) => ({
+        deletedTransactionIds:
+          state.deletedTransactionIds.filter(
+            (existingId) =>
+              existingId !== id
+          ),
+      })),
 
-    set({
-      exchangeRates,
-    });
-  },
+  /*
+   * ================================================================
+   * BUDGETS / RATES
+   * ================================================================
+   */
 
-  clearAnomalyEvent: () =>
-    set({
-      anomalyEvent: null,
-    }),
+  setMonthlyBudget:
+    async (
+      month,
+      amountInUZS
+    ) => {
+      const budgets = {
+        ...get().budgets,
+        [month]:
+          amountInUZS,
+      };
+
+      await setSetting(
+        'budgets',
+        budgets
+      );
+
+      set({
+        budgets,
+      });
+    },
+
+  setExchangeRate:
+    async (
+      code,
+      rate
+    ) => {
+      const exchangeRates = {
+        ...get().exchangeRates,
+        [code]: rate,
+      };
+
+      await setSetting(
+        'exchangeRates',
+        exchangeRates
+      );
+
+      set({
+        exchangeRates,
+      });
+    },
+
+  /*
+   * ================================================================
+   * ANOMALY
+   * ================================================================
+   */
+
+  clearAnomalyEvent:
+    () =>
+      set({
+        anomalyEvent: null,
+      }),
 
   /*
    * ================================================================
@@ -746,101 +789,109 @@ const useFinanceStore = create((set, get) => ({
    * ================================================================
    */
 
-  getTotalBalanceInUZS: () => {
-    const {
-      accounts,
-      exchangeRates,
-    } = get();
+  getTotalBalanceInUZS:
+    () => {
+      const {
+        accounts,
+        exchangeRates,
+      } = get();
 
-    return accounts.reduce(
-      (
-        sum,
-        acc
-      ) =>
-        sum +
-        convertToBase(
-          acc.balance,
-          acc.currency,
-          exchangeRates
-        ),
-      0
-    );
-  },
-
-  getSpentThisMonthInUZS: () => {
-    const {
-      transactions,
-      exchangeRates,
-    } = get();
-
-    const now =
-      new Date();
-
-    const year =
-      now.getFullYear();
-
-    const month =
-      now.getMonth() + 1;
-
-    return transactions
-      .filter((t) => {
-        const [
-          ,
-          mm,
-          yyyy,
-        ] = t.date
-          .split('-')
-          .map(Number);
-
-        return (
-          yyyy === year &&
-          mm === month &&
-          t.type === 'EXPENSE'
-        );
-      })
-      .reduce(
+      return accounts.reduce(
         (
           sum,
-          t
+          acc
         ) =>
           sum +
           convertToBase(
-            t.amount,
-            t.currency,
+            acc.balance,
+            acc.currency,
             exchangeRates
           ),
         0
       );
-  },
+    },
 
-  getMonthlyBudgetUZS: () => {
-    const {
-      budgets,
-    } = get();
+  getSpentThisMonthInUZS:
+    () => {
+      const {
+        transactions,
+        exchangeRates,
+      } = get();
 
-    const monthKey =
-      getCurrentMonthKey();
+      const now =
+        new Date();
 
-    return monthKey in budgets
-      ? budgets[monthKey]
-      : null;
-  },
+      const year =
+        now.getFullYear();
 
-  getDailyAllowanceUZS: () => {
-    const budget =
-      get().getMonthlyBudgetUZS();
+      const month =
+        now.getMonth() + 1;
 
-    if (
-      budget === null
-    ) {
-      return null;
-    }
+      return transactions
+        .filter((t) => {
+          const [
+            ,
+            mm,
+            yyyy,
+          ] = t.date
+            .split('-')
+            .map(Number);
 
-    return (
-      budget /
-      getDaysInCurrentMonth()
-    );
-  },
+          return (
+            yyyy === year &&
+            mm === month &&
+            t.type ===
+              'EXPENSE'
+          );
+        })
+        .reduce(
+          (
+            sum,
+            t
+          ) =>
+            sum +
+            convertToBase(
+              t.amount,
+              t.currency,
+              exchangeRates
+            ),
+          0
+        );
+    },
+
+  getMonthlyBudgetUZS:
+    () => {
+      const {
+        budgets,
+      } = get();
+
+      const monthKey =
+        getCurrentMonthKey();
+
+      return monthKey in
+        budgets
+        ? budgets[
+            monthKey
+          ]
+        : null;
+    },
+
+  getDailyAllowanceUZS:
+    () => {
+      const budget =
+        get().getMonthlyBudgetUZS();
+
+      if (
+        budget === null
+      ) {
+        return null;
+      }
+
+      return (
+        budget /
+        getDaysInCurrentMonth()
+      );
+    },
 }));
 
 export default useFinanceStore;
