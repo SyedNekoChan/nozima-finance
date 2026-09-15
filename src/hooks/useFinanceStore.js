@@ -756,7 +756,66 @@ const useFinanceStore = create((set, get) => ({
    */
 
   deleteAccount:
-    async (id) => {
+    async (
+      id,
+      updateBalance = true
+    ) => {
+      /*
+       * Cascade-delete every transaction that references this
+       * account, either as the primary account or (for TRANSFER)
+       * as the destination account. Without this, transactions
+       * referencing a deleted accountId/toAccountId remain in the
+       * store and corrupt calculations that iterate transactions
+       * without filtering by live account (e.g.
+       * getSpentThisMonthInUZS, Calendar's monthly heatmap), and
+       * render as broken/undefined-account rows in Ledger/DailyLog.
+       *
+       * updateBalance mirrors the same parameter on deleteTransaction
+       * and addTransaction/updateTransaction: local account deletion
+       * (Accounts.jsx) passes true so the OTHER side of any TRANSFER
+       * (a still-existing account) gets correctly balance-reversed.
+       * A REMOTE account deletion arriving via sync
+       * (onAccountsDeletedChanged in useSync.js) passes false,
+       * because that other account's balance is synced/reconciled
+       * independently via its own Yjs map — applying a local reversal
+       * on top of that would double-count exactly like remote
+       * transaction deletions already avoid via their own
+       * updateBalance=false.
+       *
+       * Each cascade delete goes through the existing
+       * deleteTransaction(), reusing its already-correct,
+       * already-guarded reversal logic: it safely no-ops for the
+       * account being removed (its own balance update is moot, the
+       * account is about to disappear) regardless of updateBalance.
+       *
+       * This must happen BEFORE the account is removed from state,
+       * so any transaction whose *other* side is a different,
+       * still-live account can still be found and reversed.
+       */
+      const dependentTransactionIds =
+        useFinanceStore
+          .getState()
+          .transactions
+          .filter(
+            (t) =>
+              t.accountId ===
+                id ||
+              t.toAccountId ===
+                id
+          )
+          .map(
+            (t) => t.id
+          );
+
+      for (
+        const transactionId of dependentTransactionIds
+      ) {
+        await get().deleteTransaction(
+          transactionId,
+          updateBalance
+        );
+      }
+
       await deleteAccount(id);
 
       set((state) => ({
