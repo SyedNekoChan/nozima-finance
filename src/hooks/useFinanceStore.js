@@ -42,16 +42,27 @@ const useFinanceStore = create((set, get) => ({
   accounts: [],
   budgets: {},
   exchangeRates: {},
+
   activeTab: 'DASHBOARD',
+
   anomalyEvent: null,
+
   isLoaded: false,
 
-  // set by DailyLogModal's "+ ADD ENTRY FOR THIS DAY";
-  // Ledger reads it once on mount to prefill PunchCard.
+  /*
+   * Explicit deletion state.
+   *
+   * These are not the database itself. They are synchronization signals
+   * used by useSync so that a local deletion cannot be mistaken for
+   * "this record just hasn't arrived yet".
+   */
+  deletedAccountIds: [],
+  deletedTransactionIds: [],
+
+  // Set by DailyLogModal's "+ ADD ENTRY FOR THIS DAY".
   pendingLedgerDate: null,
 
-  // set by DailyLogModal's row-level EDIT;
-  // Ledger reads it once to open PunchCard in true edit mode.
+  // Set by DailyLogModal's row-level EDIT.
   pendingEditTx: null,
 
   loadInitialData: async () => {
@@ -68,10 +79,11 @@ const useFinanceStore = create((set, get) => ({
     ]);
 
     set({
-      // Deduplicate defensively in case an older broken session
-      // previously introduced duplicate entries into Zustand.
+      /*
+       * Deduplicate defensively in case an older broken synchronization
+       * cycle previously produced duplicate records in memory/database.
+       */
       transactions: uniqueById(transactions),
-
       accounts: uniqueById(accounts),
 
       budgets: budgets || {},
@@ -83,20 +95,35 @@ const useFinanceStore = create((set, get) => ({
     });
   },
 
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) =>
+    set({ activeTab: tab }),
 
   setPendingLedgerDate: (dateString) =>
-    set({ pendingLedgerDate: dateString }),
+    set({
+      pendingLedgerDate: dateString,
+    }),
 
   clearPendingLedgerDate: () =>
-    set({ pendingLedgerDate: null }),
+    set({
+      pendingLedgerDate: null,
+    }),
 
   setPendingEditTx: (tx) =>
-    set({ pendingEditTx: tx }),
+    set({
+      pendingEditTx: tx,
+    }),
 
   clearPendingEditTx: () =>
-    set({ pendingEditTx: null }),
+    set({
+      pendingEditTx: null,
+    }),
 
+  /*
+   * Add or replace a transaction by ID.
+   *
+   * This is deliberately idempotent: synchronizing the same transaction
+   * multiple times cannot create duplicate entries.
+   */
   addTransaction: async (tx) => {
     const record = {
       ...tx,
@@ -112,8 +139,12 @@ const useFinanceStore = create((set, get) => ({
         );
 
       if (existingIndex !== -1) {
-        const transactions = [...state.transactions];
-        transactions[existingIndex] = record;
+        const transactions = [
+          ...state.transactions,
+        ];
+
+        transactions[existingIndex] =
+          record;
 
         transactions.sort(
           (a, b) =>
@@ -135,9 +166,14 @@ const useFinanceStore = create((set, get) => ({
           parseDateToTimestamp(a.date)
       );
 
-      return { transactions };
+      return {
+        transactions,
+      };
     });
 
+    /*
+     * Generate anomaly information from locally-created transactions.
+     */
     let anomalyEvent = null;
 
     if (record.type === 'INCOME') {
@@ -157,16 +193,19 @@ const useFinanceStore = create((set, get) => ({
         type: 'TRANSFER',
         id: record.id,
         accountId: record.accountId,
-        toAccountId: record.toAccountId,
+        toAccountId:
+          record.toAccountId,
       };
     }
 
-    // Overspend check wins over the base event.
-    const budget = get().getMonthlyBudgetUZS();
+    // Overspend overrides the normal event.
+    const budget =
+      get().getMonthlyBudgetUZS();
 
     if (
       budget !== null &&
-      get().getSpentThisMonthInUZS() > budget
+      get().getSpentThisMonthInUZS() >
+        budget
     ) {
       anomalyEvent = {
         type: 'OVERSPEND',
@@ -175,7 +214,9 @@ const useFinanceStore = create((set, get) => ({
       };
     }
 
-    set({ anomalyEvent });
+    set({
+      anomalyEvent,
+    });
   },
 
   updateTransaction: async (tx) => {
@@ -184,12 +225,18 @@ const useFinanceStore = create((set, get) => ({
     set((state) => ({
       transactions: state.transactions
         .map((t) =>
-          t.id === tx.id ? tx : t
+          t.id === tx.id
+            ? tx
+            : t
         )
         .sort(
           (a, b) =>
-            parseDateToTimestamp(b.date) -
-            parseDateToTimestamp(a.date)
+            parseDateToTimestamp(
+              b.date
+            ) -
+            parseDateToTimestamp(
+              a.date
+            )
         ),
     }));
 
@@ -199,37 +246,50 @@ const useFinanceStore = create((set, get) => ({
       anomalyEvent = {
         type: 'INCOME',
         id: tx.id,
-        accountId: tx.accountId,
+        accountId:
+          tx.accountId,
       };
-    } else if (tx.type === 'EXPENSE') {
+    } else if (
+      tx.type === 'EXPENSE'
+    ) {
       anomalyEvent = {
         type: 'EXPENSE',
         id: tx.id,
-        accountId: tx.accountId,
+        accountId:
+          tx.accountId,
       };
-    } else if (tx.type === 'TRANSFER') {
+    } else if (
+      tx.type === 'TRANSFER'
+    ) {
       anomalyEvent = {
         type: 'TRANSFER',
         id: tx.id,
-        accountId: tx.accountId,
-        toAccountId: tx.toAccountId,
+        accountId:
+          tx.accountId,
+        toAccountId:
+          tx.toAccountId,
       };
     }
 
-    const budget = get().getMonthlyBudgetUZS();
+    const budget =
+      get().getMonthlyBudgetUZS();
 
     if (
       budget !== null &&
-      get().getSpentThisMonthInUZS() > budget
+      get().getSpentThisMonthInUZS() >
+        budget
     ) {
       anomalyEvent = {
         type: 'OVERSPEND',
         id: tx.id,
-        accountId: tx.accountId,
+        accountId:
+          tx.accountId,
       };
     }
 
-    set({ anomalyEvent });
+    set({
+      anomalyEvent,
+    });
   },
 
   deleteTransaction: async (id) => {
@@ -240,12 +300,25 @@ const useFinanceStore = create((set, get) => ({
         state.transactions.filter(
           (t) => t.id !== id
         ),
+
+      deletedTransactionIds:
+        state.deletedTransactionIds.includes(
+          id
+        )
+          ? state.deletedTransactionIds
+          : [
+              ...state.deletedTransactionIds,
+              id,
+            ],
     }));
   },
 
-  // IMPORTANT:
-  // This is now an UPSERT rather than an unconditional append.
-  // The same account ID can never produce duplicate cards.
+  /*
+   * Add or replace an account by ID.
+   *
+   * This prevents duplicate account cards even if synchronization
+   * attempts to insert the same record more than once.
+   */
   addAccount: async (account) => {
     const record = {
       ...account,
@@ -261,10 +334,16 @@ const useFinanceStore = create((set, get) => ({
         );
 
       if (existingIndex !== -1) {
-        const accounts = [...state.accounts];
-        accounts[existingIndex] = record;
+        const accounts = [
+          ...state.accounts,
+        ];
 
-        return { accounts };
+        accounts[existingIndex] =
+          record;
+
+        return {
+          accounts,
+        };
       }
 
       return {
@@ -280,14 +359,21 @@ const useFinanceStore = create((set, get) => ({
     await saveAccount(account);
 
     set((state) => ({
-      accounts: state.accounts.map((a) =>
-        a.id === account.id
-          ? account
-          : a
+      accounts: state.accounts.map(
+        (a) =>
+          a.id === account.id
+            ? account
+            : a
       ),
     }));
   },
 
+  /*
+   * Explicit account deletion.
+   *
+   * The ID is recorded separately so useSync can propagate the deletion
+   * even when synchronization is happening at the same time.
+   */
   deleteAccount: async (id) => {
     await deleteAccount(id);
 
@@ -296,8 +382,36 @@ const useFinanceStore = create((set, get) => ({
         state.accounts.filter(
           (a) => a.id !== id
         ),
+
+      deletedAccountIds:
+        state.deletedAccountIds.includes(
+          id
+        )
+          ? state.deletedAccountIds
+          : [
+              ...state.deletedAccountIds,
+              id,
+            ],
     }));
   },
+
+  clearDeletedAccountId: (id) =>
+    set((state) => ({
+      deletedAccountIds:
+        state.deletedAccountIds.filter(
+          (existingId) =>
+            existingId !== id
+        ),
+    })),
+
+  clearDeletedTransactionId: (id) =>
+    set((state) => ({
+      deletedTransactionIds:
+        state.deletedTransactionIds.filter(
+          (existingId) =>
+            existingId !== id
+        ),
+    })),
 
   setMonthlyBudget: async (
     month,
@@ -305,7 +419,8 @@ const useFinanceStore = create((set, get) => ({
   ) => {
     const budgets = {
       ...get().budgets,
-      [month]: amountInUZS,
+      [month]:
+        amountInUZS,
     };
 
     await setSetting(
@@ -313,7 +428,9 @@ const useFinanceStore = create((set, get) => ({
       budgets
     );
 
-    set({ budgets });
+    set({
+      budgets,
+    });
   },
 
   setExchangeRate: async (
@@ -330,11 +447,15 @@ const useFinanceStore = create((set, get) => ({
       exchangeRates
     );
 
-    set({ exchangeRates });
+    set({
+      exchangeRates,
+    });
   },
 
   clearAnomalyEvent: () =>
-    set({ anomalyEvent: null }),
+    set({
+      anomalyEvent: null,
+    }),
 
   getTotalBalanceInUZS: () => {
     const {
@@ -363,9 +484,12 @@ const useFinanceStore = create((set, get) => ({
       exchangeRates,
     } = get();
 
-    const now = new Date();
+    const now =
+      new Date();
+
     const year =
       now.getFullYear();
+
     const month =
       now.getMonth() + 1;
 
@@ -386,7 +510,10 @@ const useFinanceStore = create((set, get) => ({
         );
       })
       .reduce(
-        (sum, t) =>
+        (
+          sum,
+          t
+        ) =>
           sum +
           convertToBase(
             t.amount,
@@ -398,13 +525,17 @@ const useFinanceStore = create((set, get) => ({
   },
 
   getMonthlyBudgetUZS: () => {
-    const { budgets } = get();
+    const {
+      budgets,
+    } = get();
 
     const monthKey =
       getCurrentMonthKey();
 
     return monthKey in budgets
-      ? budgets[monthKey]
+      ? budgets[
+          monthKey
+        ]
       : null;
   },
 
@@ -412,7 +543,9 @@ const useFinanceStore = create((set, get) => ({
     const budget =
       get().getMonthlyBudgetUZS();
 
-    if (budget === null) {
+    if (
+      budget === null
+    ) {
       return null;
     }
 
