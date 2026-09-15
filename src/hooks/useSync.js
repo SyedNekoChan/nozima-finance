@@ -115,18 +115,44 @@ export default function useSync() {
     );
 
   /*
+   * Record an intentional deletion in a Yjs tombstone map.
+   *
+   * This prevents an account/transaction that exists in another
+   * synchronized copy from being resurrected after deletion.
+   */
+  const markDeletedInYMap =
+    useCallback(
+      (mapName, id) => {
+        if (
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
+
+        const deletedMap =
+          yMapsRef.current[
+            `${mapName}Deleted`
+          ];
+
+        if (!deletedMap || !id) {
+          return;
+        }
+
+        deletedMap.set(
+          id,
+          Date.now()
+        );
+      },
+      []
+    );
+
+  /*
    * Merge a Y.Map into Zustand/Dexie.
    *
    * IMPORTANT:
-   * We DO NOT delete local records merely because they are absent
-   * from the remote map. During startup that used to cause legitimate
-   * local accounts to disappear.
-   *
-   * Instead:
-   * 1. Remote records are upserted locally.
-   * 2. Local records missing remotely are pushed to Yjs.
-   *
-   * This makes initial synchronization additive and safe.
+   * - Remote records are upserted locally.
+   * - Local records missing remotely are pushed to Yjs.
+   * - Deleted IDs are protected by tombstones.
    */
   const reconcileCollection =
     useCallback(
@@ -140,6 +166,32 @@ export default function useSync() {
         try {
           const store =
             useFinanceStore.getState();
+
+          const deletedMap =
+            yMapsRef.current[
+              `${mapName}Deleted`
+            ];
+
+          /*
+           * First remove any remote records that have an
+           * established deletion tombstone.
+           */
+          if (deletedMap) {
+            const deletedIds =
+              new Set(
+                deletedMap.keys()
+              );
+
+            for (
+              const id of deletedIds
+            ) {
+              if (
+                remoteMap.has(id)
+              ) {
+                remoteMap.delete(id);
+              }
+            }
+          }
 
           const remoteRecords =
             Array.from(
@@ -189,11 +241,12 @@ export default function useSync() {
             }
 
             /*
-             * Anything local that Yjs does not know about gets pushed
-             * into Yjs instead of being deleted.
+             * Local transactions missing remotely are not deleted.
+             * They are pushed into Yjs.
              */
             const localTransactions =
-              useFinanceStore.getState()
+              useFinanceStore
+                .getState()
                 .transactions;
 
             for (
@@ -201,6 +254,9 @@ export default function useSync() {
             ) {
               if (
                 !remoteIds.has(
+                  local.id
+                ) &&
+                !deletedMap?.has(
                   local.id
                 )
               ) {
@@ -218,6 +274,17 @@ export default function useSync() {
             for (
               const remote of remoteRecords
             ) {
+              /*
+               * Never resurrect a tombstoned account.
+               */
+              if (
+                deletedMap?.has(
+                  remote.id
+                )
+              ) {
+                continue;
+              }
+
               const local =
                 useFinanceStore
                   .getState()
@@ -246,13 +313,14 @@ export default function useSync() {
             }
 
             /*
-             * Never delete a local account just because the remote
-             * Yjs map has not received it yet.
+             * Local accounts missing remotely are pushed into Yjs.
              *
-             * Push missing local accounts into Yjs instead.
+             * HOWEVER, accounts with a deletion tombstone are never
+             * pushed back into Yjs.
              */
             const localAccounts =
-              useFinanceStore.getState()
+              useFinanceStore
+                .getState()
                 .accounts;
 
             for (
@@ -260,6 +328,9 @@ export default function useSync() {
             ) {
               if (
                 !remoteIds.has(
+                  local.id
+                ) &&
+                !deletedMap?.has(
                   local.id
                 )
               ) {
@@ -320,14 +391,12 @@ export default function useSync() {
             }
           );
 
-          /*
-           * Push local keys that aren't remotely present.
-           */
           if (
             mapName === 'budgets'
           ) {
             const localBudgets =
-              useFinanceStore.getState()
+              useFinanceStore
+                .getState()
                 .budgets;
 
             Object.entries(
@@ -353,7 +422,8 @@ export default function useSync() {
             'exchangeRates'
           ) {
             const localRates =
-              useFinanceStore.getState()
+              useFinanceStore
+                .getState()
                 .exchangeRates;
 
             Object.entries(
@@ -383,9 +453,8 @@ export default function useSync() {
 
   useEffect(() => {
     /*
-     * IMPORTANT:
-     * Do not start Yjs synchronization until Dexie has completely
-     * loaded the local application state.
+     * Do not start Yjs synchronization until Dexie has
+     * completely loaded the local application state.
      */
     if (!isLoaded) {
       return undefined;
@@ -406,6 +475,9 @@ export default function useSync() {
     ydocRef.current =
       ydoc;
 
+    /*
+     * Main synchronized collections.
+     */
     const yTransactions =
       ydoc.getMap(
         'transactions'
@@ -414,6 +486,22 @@ export default function useSync() {
     const yAccounts =
       ydoc.getMap(
         'accounts'
+      );
+
+    /*
+     * Tombstones.
+     *
+     * Once an ID appears here, synchronization knows that
+     * the record was intentionally deleted.
+     */
+    const yTransactionsDeleted =
+      ydoc.getMap(
+        'transactionsDeleted'
+      );
+
+    const yAccountsDeleted =
+      ydoc.getMap(
+        'accountsDeleted'
       );
 
     const yBudgets =
@@ -429,18 +517,26 @@ export default function useSync() {
     yMapsRef.current = {
       transactions:
         yTransactions,
+
       accounts:
         yAccounts,
+
+      transactionsDeleted:
+        yTransactionsDeleted,
+
+      accountsDeleted:
+        yAccountsDeleted,
+
       budgets:
         yBudgets,
+
       exchangeRates:
         yExchangeRates,
     };
 
     /*
-     * IMPORTANT:
-     * Yjs has its own IndexedDB database.
-     * Dexie uses "nozima-finance".
+     * Yjs persistence uses a separate IndexedDB database
+     * from the application's Dexie database.
      */
     const persistence =
       new IndexeddbPersistence(
@@ -454,55 +550,119 @@ export default function useSync() {
     let provider = null;
 
     /*
-     * Register observers BEFORE reconciliation so changes generated
-     * during synchronization are safely ignored while the remote merge
-     * is in progress.
+     * Collection observers.
      */
-    const makeObserver = (
-      mapName,
-      reconcileFn,
-      yMap
-    ) => async () => {
-      if (
-        !reconciledRef.current ||
-        applyingRemoteRef.current
-      ) {
-        return;
-      }
-
-      await reconcileFn(
+    const makeCollectionObserver =
+      (
         mapName,
+        reconcileFn,
         yMap
-      );
-    };
+      ) =>
+      async () => {
+        if (
+          !reconciledRef.current ||
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
+
+        await reconcileFn(
+          mapName,
+          yMap
+        );
+      };
 
     const obsTransactions =
-      makeObserver(
+      makeCollectionObserver(
         'transactions',
         reconcileCollection,
         yTransactions
       );
 
     const obsAccounts =
-      makeObserver(
+      makeCollectionObserver(
         'accounts',
         reconcileCollection,
         yAccounts
       );
 
-    const obsBudgets =
-      makeObserver(
-        'budgets',
-        reconcileKeyedMap,
-        yBudgets
-      );
+    /*
+     * Tombstone observers.
+     *
+     * When a remote device creates a deletion tombstone,
+     * immediately remove that record from the local store.
+     */
+    const handleTransactionDeletion =
+      () => {
+        if (
+          !reconciledRef.current ||
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
 
-    const obsExchangeRates =
-      makeObserver(
-        'exchangeRates',
-        reconcileKeyedMap,
-        yExchangeRates
-      );
+        applyingRemoteRef.current =
+          true;
+
+        try {
+          const store =
+            useFinanceStore.getState();
+
+          yTransactionsDeleted.forEach(
+            (_timestamp, id) => {
+              if (
+                store.transactions.some(
+                  (t) =>
+                    t.id === id
+                )
+              ) {
+                store.deleteTransaction(
+                  id
+                );
+              }
+            }
+          );
+        } finally {
+          applyingRemoteRef.current =
+            false;
+        }
+      };
+
+    const handleAccountDeletion =
+      () => {
+        if (
+          !reconciledRef.current ||
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
+
+        applyingRemoteRef.current =
+          true;
+
+        try {
+          const store =
+            useFinanceStore.getState();
+
+          yAccountsDeleted.forEach(
+            (_timestamp, id) => {
+              if (
+                store.accounts.some(
+                  (a) =>
+                    a.id === id
+                )
+              ) {
+                store.deleteAccount(
+                  id
+                );
+              }
+            }
+          );
+        } finally {
+          applyingRemoteRef.current =
+            false;
+        }
+      };
 
     yTransactions.observe(
       obsTransactions
@@ -512,16 +672,48 @@ export default function useSync() {
       obsAccounts
     );
 
+    yTransactionsDeleted.observe(
+      handleTransactionDeletion
+    );
+
+    yAccountsDeleted.observe(
+      handleAccountDeletion
+    );
+
     yBudgets.observe(
-      obsBudgets
+      async () => {
+        if (
+          !reconciledRef.current ||
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
+
+        await reconcileKeyedMap(
+          'budgets',
+          yBudgets
+        );
+      }
     );
 
     yExchangeRates.observe(
-      obsExchangeRates
+      async () => {
+        if (
+          !reconciledRef.current ||
+          applyingRemoteRef.current
+        ) {
+          return;
+        }
+
+        await reconcileKeyedMap(
+          'exchangeRates',
+          yExchangeRates
+        );
+      }
     );
 
     /*
-     * Push local Zustand changes into Yjs after initial reconciliation.
+     * Push local Zustand changes into Yjs.
      */
     const unsubscribe =
       useFinanceStore.subscribe(
@@ -536,6 +728,9 @@ export default function useSync() {
             return;
           }
 
+          /*
+           * TRANSACTIONS
+           */
           if (
             state.transactions !==
             prevState.transactions
@@ -547,31 +742,62 @@ export default function useSync() {
                 )
               );
 
+            /*
+             * Add/update current records.
+             */
             state.transactions.forEach(
-              (t) => {
+              (transaction) => {
+                /*
+                 * A newly existing record should not be
+                 * blocked unless its ID has explicitly been
+                 * tombstoned.
+                 */
+                const deletedMap =
+                  yMapsRef.current
+                    .transactionsDeleted;
+
+                if (
+                  deletedMap?.has(
+                    transaction.id
+                  )
+                ) {
+                  return;
+                }
+
                 pushRecordToYMap(
                   'transactions',
-                  t
+                  transaction
                 );
               }
             );
 
+            /*
+             * Record local deletions as tombstones.
+             */
             prevState.transactions.forEach(
-              (t) => {
+              (transaction) => {
                 if (
                   !nextIds.has(
-                    t.id
+                    transaction.id
                   )
                 ) {
+                  markDeletedInYMap(
+                    'transactions',
+                    transaction.id
+                  );
+
                   removeRecordFromYMap(
                     'transactions',
-                    t.id
+                    transaction.id
                   );
                 }
               }
             );
           }
 
+          /*
+           * ACCOUNTS
+           */
           if (
             state.accounts !==
             prevState.accounts
@@ -583,8 +809,27 @@ export default function useSync() {
                 )
               );
 
+            const deletedMap =
+              yMapsRef.current
+                .accountsDeleted;
+
+            /*
+             * Add/update current accounts.
+             */
             state.accounts.forEach(
               (account) => {
+                /*
+                 * Never re-create an account that has
+                 * an intentional deletion tombstone.
+                 */
+                if (
+                  deletedMap?.has(
+                    account.id
+                  )
+                ) {
+                  return;
+                }
+
                 pushRecordToYMap(
                   'accounts',
                   account
@@ -592,6 +837,9 @@ export default function useSync() {
               }
             );
 
+            /*
+             * Record local deletions as tombstones.
+             */
             prevState.accounts.forEach(
               (account) => {
                 if (
@@ -599,6 +847,11 @@ export default function useSync() {
                     account.id
                   )
                 ) {
+                  markDeletedInYMap(
+                    'accounts',
+                    account.id
+                  );
+
                   removeRecordFromYMap(
                     'accounts',
                     account.id
@@ -608,6 +861,9 @@ export default function useSync() {
             );
           }
 
+          /*
+           * BUDGETS
+           */
           if (
             state.budgets !==
             prevState.budgets
@@ -635,6 +891,9 @@ export default function useSync() {
             }
           }
 
+          /*
+           * EXCHANGE RATES
+           */
           if (
             state.exchangeRates !==
             prevState.exchangeRates
@@ -665,7 +924,8 @@ export default function useSync() {
       );
 
     /*
-     * Wait until Yjs IndexedDB has loaded.
+     * Wait for Yjs IndexedDB persistence to load,
+     * then reconcile.
      */
     persistence.once(
       'synced',
@@ -675,10 +935,7 @@ export default function useSync() {
         }
 
         /*
-         * Reconcile local Dexie state with persisted Yjs state.
-         *
-         * This is intentionally awaited so the guard remains active
-         * throughout the entire merge.
+         * Reconcile in a controlled order.
          */
         await reconcileCollection(
           'transactions',
@@ -717,13 +974,13 @@ export default function useSync() {
         }
 
         /*
-         * Only now should Zustand changes begin flowing normally into Yjs.
+         * Synchronization is now ready.
          */
         reconciledRef.current =
           true;
 
         /*
-         * Bring up WebRTC signalling.
+         * Start WebRTC.
          */
         try {
           provider =
@@ -818,12 +1075,12 @@ export default function useSync() {
         obsAccounts
       );
 
-      yBudgets.unobserve(
-        obsBudgets
+      yTransactionsDeleted.unobserve(
+        handleTransactionDeletion
       );
 
-      yExchangeRates.unobserve(
-        obsExchangeRates
+      yAccountsDeleted.unobserve(
+        handleAccountDeletion
       );
 
       try {
@@ -865,6 +1122,7 @@ export default function useSync() {
     isLoaded,
     pushRecordToYMap,
     removeRecordFromYMap,
+    markDeletedInYMap,
     reconcileCollection,
     reconcileKeyedMap,
   ]);
