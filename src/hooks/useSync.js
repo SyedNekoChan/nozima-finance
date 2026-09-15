@@ -1,360 +1,806 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from 'react';
 import * as Y from 'yjs';
-import { IndexeddbPersistence } from 'y-indexeddb';
-import { WebrtcProvider } from 'y-webrtc';
+import {
+  IndexeddbPersistence,
+} from 'y-indexeddb';
+import {
+  WebrtcProvider,
+} from 'y-webrtc';
 import useFinanceStore from './useFinanceStore.js';
 
-const ROOM_NAME = 'nozima-finance-room';
-const ROOM_PASSWORD = 'nozima-finance-room';
+const ROOM_NAME =
+  'nozima-finance-room';
 
-// IMPORTANT:
-// Keep Yjs IndexedDB persistence separate from the application's Dexie database.
-// src/lib/db.js uses "nozima-finance".
-const YJS_DB_NAME = 'nozima-finance-yjs';
+const ROOM_PASSWORD =
+  'nozima-finance-room';
+
+const YJS_DB_NAME =
+  'nozima-finance-yjs';
 
 export default function useSync() {
-  const [status, setStatus] = useState('OFF'); // OFF | WAITING | ACTIVE | ERROR
-  const [connected, setConnected] = useState(false);
-  const [peerCount, setPeerCount] = useState(0);
-  const [lastSyncedAt, setLastSyncedAt] = useState(null);
-  const [error, setError] = useState(null);
+  const isLoaded =
+    useFinanceStore(
+      (s) => s.isLoaded
+    );
 
-  const ydocRef = useRef(null);
-  const persistenceRef = useRef(null);
-  const providerRef = useRef(null);
-  const yMapsRef = useRef({});
-  const reconciledRef = useRef(false); // guards zustand->yjs push until initial merge is done
-  const applyingRemoteRef = useRef(false); // guards against yjs->zustand->yjs echo
+  const [status, setStatus] =
+    useState('OFF');
 
-  const pushRecordToYMap = useCallback((mapName, record) => {
-    if (applyingRemoteRef.current) return;
+  const [connected, setConnected] =
+    useState(false);
 
-    const yMap = yMapsRef.current[mapName];
+  const [peerCount, setPeerCount] =
+    useState(0);
 
-    if (!yMap || !record || !record.id) return;
+  const [lastSyncedAt, setLastSyncedAt] =
+    useState(null);
 
-    yMap.set(record.id, record);
-  }, []);
+  const [error, setError] =
+    useState(null);
 
-  const removeRecordFromYMap = useCallback((mapName, id) => {
-    if (applyingRemoteRef.current) return;
+  const ydocRef =
+    useRef(null);
 
-    const yMap = yMapsRef.current[mapName];
+  const persistenceRef =
+    useRef(null);
 
-    if (!yMap) return;
+  const providerRef =
+    useRef(null);
 
-    yMap.delete(id);
-  }, []);
+  const yMapsRef =
+    useRef({});
 
-  // Reconcile a Y.Map of transactions/accounts into the store via its real actions,
-  // since there is no bulk setter on useFinanceStore.
-  const reconcileCollection = useCallback((mapName, remoteMap) => {
-    applyingRemoteRef.current = true;
+  const reconciledRef =
+    useRef(false);
 
-    try {
-      const store = useFinanceStore.getState();
-      const remoteRecords = Array.from(remoteMap.values());
-      const remoteIds = new Set(remoteRecords.map((r) => r.id));
+  const applyingRemoteRef =
+    useRef(false);
 
-      if (mapName === 'transactions') {
-        const localById = new Map(
-          store.transactions.map((t) => [t.id, t])
-        );
-
-        remoteRecords.forEach((remote) => {
-          const local = localById.get(remote.id);
-
-          if (!local) {
-            store.addTransaction(remote);
-          } else if (JSON.stringify(local) !== JSON.stringify(remote)) {
-            store.updateTransaction(remote);
-          }
-        });
-
-        store.transactions.forEach((local) => {
-          if (!remoteIds.has(local.id)) {
-            store.deleteTransaction(local.id);
-          }
-        });
-      }
-
-      if (mapName === 'accounts') {
-        const localById = new Map(
-          store.accounts.map((a) => [a.id, a])
-        );
-
-        remoteRecords.forEach((remote) => {
-          const local = localById.get(remote.id);
-
-          if (!local) {
-            store.addAccount(remote);
-          } else if (JSON.stringify(local) !== JSON.stringify(remote)) {
-            store.updateAccount(remote);
-          }
-        });
-
-        store.accounts.forEach((local) => {
-          if (!remoteIds.has(local.id)) {
-            store.deleteAccount(local.id);
-          }
-        });
-      }
-    } finally {
-      applyingRemoteRef.current = false;
-    }
-  }, []);
-
-  // Budgets/exchangeRates are plain keyed objects, not id-keyed arrays;
-  // merge key-by-key.
-  const reconcileKeyedMap = useCallback((mapName, remoteMap) => {
-    applyingRemoteRef.current = true;
-
-    try {
-      const store = useFinanceStore.getState();
-
-      remoteMap.forEach((value, key) => {
+  const pushRecordToYMap =
+    useCallback(
+      (mapName, record) => {
         if (
-          mapName === 'budgets' &&
-          store.budgets[key] !== value
-        ) {
-          store.setMonthlyBudget(key, value);
-        }
-
-        if (
-          mapName === 'exchangeRates' &&
-          store.exchangeRates[key] !== value
-        ) {
-          store.setExchangeRate(key, value);
-        }
-      });
-    } finally {
-      applyingRemoteRef.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setStatus('WAITING');
-    setError(null);
-
-    const ydoc = new Y.Doc();
-    ydocRef.current = ydoc;
-
-    const yTransactions = ydoc.getMap('transactions');
-    const yAccounts = ydoc.getMap('accounts');
-    const yBudgets = ydoc.getMap('budgets');
-    const yExchangeRates = ydoc.getMap('exchangeRates');
-
-    yMapsRef.current = {
-      transactions: yTransactions,
-      accounts: yAccounts,
-      budgets: yBudgets,
-      exchangeRates: yExchangeRates,
-    };
-
-    // IMPORTANT:
-    // Yjs persistence MUST use a different IndexedDB database name
-    // from the application's Dexie database.
-    const persistence = new IndexeddbPersistence(YJS_DB_NAME, ydoc);
-    persistenceRef.current = persistence;
-
-    let provider;
-
-    persistence.once('synced', () => {
-      if (cancelled) return;
-
-      // Local IndexedDB Yjs copy is loaded;
-      // now bring up WebRTC for peer sync.
-      try {
-        provider = new WebrtcProvider(ROOM_NAME, ydoc, {
-          signaling: ['wss://signaling.yjs.dev'],
-          password: ROOM_PASSWORD,
-        });
-
-        providerRef.current = provider;
-
-        provider.on('status', ({ connected: isConnected }) => {
-          if (cancelled) return;
-
-          setConnected(isConnected);
-          setStatus(isConnected ? 'ACTIVE' : 'WAITING');
-        });
-
-        provider.on('peers', ({ webrtcPeers }) => {
-          if (cancelled) return;
-
-          setPeerCount(
-            webrtcPeers ? webrtcPeers.length : 0
-          );
-        });
-
-        provider.on('synced', () => {
-          if (cancelled) return;
-
-          setLastSyncedAt(new Date());
-        });
-      } catch (err) {
-        console.error('Failed to initialize WebRTC provider:', err);
-
-        setError(err);
-        setStatus('ERROR');
-      }
-
-      // One-time reconcile:
-      // merge whatever Yjs already has into Zustand/Dexie via real store actions.
-      reconcileCollection(
-        'transactions',
-        yTransactions
-      );
-
-      reconcileCollection(
-        'accounts',
-        yAccounts
-      );
-
-      reconcileKeyedMap(
-        'budgets',
-        yBudgets
-      );
-
-      reconcileKeyedMap(
-        'exchangeRates',
-        yExchangeRates
-      );
-
-      reconciledRef.current = true;
-    });
-
-    // Observe remote Yjs changes and fold them into Zustand.
-    const makeObserver = (
-      mapName,
-      reconcileFn,
-      yMap
-    ) => () => {
-      if (!reconciledRef.current) return;
-
-      // This change was caused by our own reconcile write.
-      if (applyingRemoteRef.current) return;
-
-      reconcileFn(mapName, yMap);
-    };
-
-    const obsTransactions = makeObserver(
-      'transactions',
-      reconcileCollection,
-      yTransactions
-    );
-
-    const obsAccounts = makeObserver(
-      'accounts',
-      reconcileCollection,
-      yAccounts
-    );
-
-    const obsBudgets = makeObserver(
-      'budgets',
-      reconcileKeyedMap,
-      yBudgets
-    );
-
-    const obsExchangeRates = makeObserver(
-      'exchangeRates',
-      reconcileKeyedMap,
-      yExchangeRates
-    );
-
-    yTransactions.observe(obsTransactions);
-    yAccounts.observe(obsAccounts);
-    yBudgets.observe(obsBudgets);
-    yExchangeRates.observe(obsExchangeRates);
-
-    // Push local Zustand changes into Yjs,
-    // once initial reconcile is complete.
-    const unsubscribe = useFinanceStore.subscribe(
-      (state, prevState) => {
-        if (
-          !reconciledRef.current ||
           applyingRemoteRef.current
         ) {
           return;
         }
 
-        if (state.transactions !== prevState.transactions) {
-          const nextIds = new Set(
-            state.transactions.map((t) => t.id)
-          );
+        const yMap =
+          yMapsRef.current[
+            mapName
+          ];
 
-          state.transactions.forEach((t) => {
-            pushRecordToYMap(
-              'transactions',
-              t
-            );
-          });
-
-          prevState.transactions.forEach((t) => {
-            if (!nextIds.has(t.id)) {
-              removeRecordFromYMap(
-                'transactions',
-                t.id
-              );
-            }
-          });
+        if (
+          !yMap ||
+          !record ||
+          !record.id
+        ) {
+          return;
         }
 
-        if (state.accounts !== prevState.accounts) {
-          const nextIds = new Set(
-            state.accounts.map((a) => a.id)
-          );
+        yMap.set(
+          record.id,
+          record
+        );
+      },
+      []
+    );
 
-          state.accounts.forEach((a) => {
-            pushRecordToYMap(
-              'accounts',
-              a
-            );
-          });
-
-          prevState.accounts.forEach((a) => {
-            if (!nextIds.has(a.id)) {
-              removeRecordFromYMap(
-                'accounts',
-                a.id
-              );
-            }
-          });
+  const removeRecordFromYMap =
+    useCallback(
+      (mapName, id) => {
+        if (
+          applyingRemoteRef.current
+        ) {
+          return;
         }
 
-        if (state.budgets !== prevState.budgets) {
-          const yMap =
-            yMapsRef.current.budgets;
+        const yMap =
+          yMapsRef.current[
+            mapName
+          ];
 
-          if (yMap) {
-            Object.entries(state.budgets).forEach(
-              ([month, amount]) => {
-                if (yMap.get(month) !== amount) {
-                  yMap.set(month, amount);
+        if (!yMap) {
+          return;
+        }
+
+        yMap.delete(id);
+      },
+      []
+    );
+
+  /*
+   * Merge a Y.Map into Zustand/Dexie.
+   *
+   * IMPORTANT:
+   * We DO NOT delete local records merely because they are absent
+   * from the remote map. During startup that used to cause legitimate
+   * local accounts to disappear.
+   *
+   * Instead:
+   * 1. Remote records are upserted locally.
+   * 2. Local records missing remotely are pushed to Yjs.
+   *
+   * This makes initial synchronization additive and safe.
+   */
+  const reconcileCollection =
+    useCallback(
+      async (
+        mapName,
+        remoteMap
+      ) => {
+        applyingRemoteRef.current =
+          true;
+
+        try {
+          const store =
+            useFinanceStore.getState();
+
+          const remoteRecords =
+            Array.from(
+              remoteMap.values()
+            );
+
+          const remoteIds =
+            new Set(
+              remoteRecords.map(
+                (record) =>
+                  record.id
+              )
+            );
+
+          if (
+            mapName ===
+            'transactions'
+          ) {
+            for (
+              const remote of remoteRecords
+            ) {
+              const local =
+                useFinanceStore
+                  .getState()
+                  .transactions.find(
+                    (t) =>
+                      t.id ===
+                      remote.id
+                  );
+
+              if (!local) {
+                await store.addTransaction(
+                  remote
+                );
+              } else if (
+                JSON.stringify(
+                  local
+                ) !==
+                JSON.stringify(
+                  remote
+                )
+              ) {
+                await store.updateTransaction(
+                  remote
+                );
+              }
+            }
+
+            /*
+             * Anything local that Yjs does not know about gets pushed
+             * into Yjs instead of being deleted.
+             */
+            const localTransactions =
+              useFinanceStore.getState()
+                .transactions;
+
+            for (
+              const local of localTransactions
+            ) {
+              if (
+                !remoteIds.has(
+                  local.id
+                )
+              ) {
+                remoteMap.set(
+                  local.id,
+                  local
+                );
+              }
+            }
+          }
+
+          if (
+            mapName === 'accounts'
+          ) {
+            for (
+              const remote of remoteRecords
+            ) {
+              const local =
+                useFinanceStore
+                  .getState()
+                  .accounts.find(
+                    (a) =>
+                      a.id ===
+                      remote.id
+                  );
+
+              if (!local) {
+                await store.addAccount(
+                  remote
+                );
+              } else if (
+                JSON.stringify(
+                  local
+                ) !==
+                JSON.stringify(
+                  remote
+                )
+              ) {
+                await store.updateAccount(
+                  remote
+                );
+              }
+            }
+
+            /*
+             * Never delete a local account just because the remote
+             * Yjs map has not received it yet.
+             *
+             * Push missing local accounts into Yjs instead.
+             */
+            const localAccounts =
+              useFinanceStore.getState()
+                .accounts;
+
+            for (
+              const local of localAccounts
+            ) {
+              if (
+                !remoteIds.has(
+                  local.id
+                )
+              ) {
+                remoteMap.set(
+                  local.id,
+                  local
+                );
+              }
+            }
+          }
+        } finally {
+          applyingRemoteRef.current =
+            false;
+        }
+      },
+      []
+    );
+
+  const reconcileKeyedMap =
+    useCallback(
+      async (
+        mapName,
+        remoteMap
+      ) => {
+        applyingRemoteRef.current =
+          true;
+
+        try {
+          const store =
+            useFinanceStore.getState();
+
+          remoteMap.forEach(
+            (value, key) => {
+              if (
+                mapName ===
+                  'budgets' &&
+                store.budgets[key] !==
+                  value
+              ) {
+                store.setMonthlyBudget(
+                  key,
+                  value
+                );
+              }
+
+              if (
+                mapName ===
+                  'exchangeRates' &&
+                store.exchangeRates[
+                  key
+                ] !== value
+              ) {
+                store.setExchangeRate(
+                  key,
+                  value
+                );
+              }
+            }
+          );
+
+          /*
+           * Push local keys that aren't remotely present.
+           */
+          if (
+            mapName === 'budgets'
+          ) {
+            const localBudgets =
+              useFinanceStore.getState()
+                .budgets;
+
+            Object.entries(
+              localBudgets
+            ).forEach(
+              ([key, value]) => {
+                if (
+                  !remoteMap.has(
+                    key
+                  )
+                ) {
+                  remoteMap.set(
+                    key,
+                    value
+                  );
                 }
               }
             );
           }
+
+          if (
+            mapName ===
+            'exchangeRates'
+          ) {
+            const localRates =
+              useFinanceStore.getState()
+                .exchangeRates;
+
+            Object.entries(
+              localRates
+            ).forEach(
+              ([key, value]) => {
+                if (
+                  !remoteMap.has(
+                    key
+                  )
+                ) {
+                  remoteMap.set(
+                    key,
+                    value
+                  );
+                }
+              }
+            );
+          }
+        } finally {
+          applyingRemoteRef.current =
+            false;
+        }
+      },
+      []
+    );
+
+  useEffect(() => {
+    /*
+     * IMPORTANT:
+     * Do not start Yjs synchronization until Dexie has completely
+     * loaded the local application state.
+     */
+    if (!isLoaded) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    setStatus('WAITING');
+    setError(null);
+    setLastSyncedAt(null);
+
+    reconciledRef.current =
+      false;
+
+    const ydoc =
+      new Y.Doc();
+
+    ydocRef.current =
+      ydoc;
+
+    const yTransactions =
+      ydoc.getMap(
+        'transactions'
+      );
+
+    const yAccounts =
+      ydoc.getMap(
+        'accounts'
+      );
+
+    const yBudgets =
+      ydoc.getMap(
+        'budgets'
+      );
+
+    const yExchangeRates =
+      ydoc.getMap(
+        'exchangeRates'
+      );
+
+    yMapsRef.current = {
+      transactions:
+        yTransactions,
+      accounts:
+        yAccounts,
+      budgets:
+        yBudgets,
+      exchangeRates:
+        yExchangeRates,
+    };
+
+    /*
+     * IMPORTANT:
+     * Yjs has its own IndexedDB database.
+     * Dexie uses "nozima-finance".
+     */
+    const persistence =
+      new IndexeddbPersistence(
+        YJS_DB_NAME,
+        ydoc
+      );
+
+    persistenceRef.current =
+      persistence;
+
+    let provider = null;
+
+    /*
+     * Register observers BEFORE reconciliation so changes generated
+     * during synchronization are safely ignored while the remote merge
+     * is in progress.
+     */
+    const makeObserver = (
+      mapName,
+      reconcileFn,
+      yMap
+    ) => async () => {
+      if (
+        !reconciledRef.current ||
+        applyingRemoteRef.current
+      ) {
+        return;
+      }
+
+      await reconcileFn(
+        mapName,
+        yMap
+      );
+    };
+
+    const obsTransactions =
+      makeObserver(
+        'transactions',
+        reconcileCollection,
+        yTransactions
+      );
+
+    const obsAccounts =
+      makeObserver(
+        'accounts',
+        reconcileCollection,
+        yAccounts
+      );
+
+    const obsBudgets =
+      makeObserver(
+        'budgets',
+        reconcileKeyedMap,
+        yBudgets
+      );
+
+    const obsExchangeRates =
+      makeObserver(
+        'exchangeRates',
+        reconcileKeyedMap,
+        yExchangeRates
+      );
+
+    yTransactions.observe(
+      obsTransactions
+    );
+
+    yAccounts.observe(
+      obsAccounts
+    );
+
+    yBudgets.observe(
+      obsBudgets
+    );
+
+    yExchangeRates.observe(
+      obsExchangeRates
+    );
+
+    /*
+     * Push local Zustand changes into Yjs after initial reconciliation.
+     */
+    const unsubscribe =
+      useFinanceStore.subscribe(
+        (
+          state,
+          prevState
+        ) => {
+          if (
+            !reconciledRef.current ||
+            applyingRemoteRef.current
+          ) {
+            return;
+          }
+
+          if (
+            state.transactions !==
+            prevState.transactions
+          ) {
+            const nextIds =
+              new Set(
+                state.transactions.map(
+                  (t) => t.id
+                )
+              );
+
+            state.transactions.forEach(
+              (t) => {
+                pushRecordToYMap(
+                  'transactions',
+                  t
+                );
+              }
+            );
+
+            prevState.transactions.forEach(
+              (t) => {
+                if (
+                  !nextIds.has(
+                    t.id
+                  )
+                ) {
+                  removeRecordFromYMap(
+                    'transactions',
+                    t.id
+                  );
+                }
+              }
+            );
+          }
+
+          if (
+            state.accounts !==
+            prevState.accounts
+          ) {
+            const nextIds =
+              new Set(
+                state.accounts.map(
+                  (a) => a.id
+                )
+              );
+
+            state.accounts.forEach(
+              (account) => {
+                pushRecordToYMap(
+                  'accounts',
+                  account
+                );
+              }
+            );
+
+            prevState.accounts.forEach(
+              (account) => {
+                if (
+                  !nextIds.has(
+                    account.id
+                  )
+                ) {
+                  removeRecordFromYMap(
+                    'accounts',
+                    account.id
+                  );
+                }
+              }
+            );
+          }
+
+          if (
+            state.budgets !==
+            prevState.budgets
+          ) {
+            const yMap =
+              yMapsRef.current
+                .budgets;
+
+            if (yMap) {
+              Object.entries(
+                state.budgets
+              ).forEach(
+                ([month, amount]) => {
+                  if (
+                    yMap.get(month) !==
+                    amount
+                  ) {
+                    yMap.set(
+                      month,
+                      amount
+                    );
+                  }
+                }
+              );
+            }
+          }
+
+          if (
+            state.exchangeRates !==
+            prevState.exchangeRates
+          ) {
+            const yMap =
+              yMapsRef.current
+                .exchangeRates;
+
+            if (yMap) {
+              Object.entries(
+                state.exchangeRates
+              ).forEach(
+                ([code, rate]) => {
+                  if (
+                    yMap.get(code) !==
+                    rate
+                  ) {
+                    yMap.set(
+                      code,
+                      rate
+                    );
+                  }
+                }
+              );
+            }
+          }
+        }
+      );
+
+    /*
+     * Wait until Yjs IndexedDB has loaded.
+     */
+    persistence.once(
+      'synced',
+      async () => {
+        if (cancelled) {
+          return;
         }
 
-        if (
-          state.exchangeRates !==
-          prevState.exchangeRates
-        ) {
-          const yMap =
-            yMapsRef.current.exchangeRates;
+        /*
+         * Reconcile local Dexie state with persisted Yjs state.
+         *
+         * This is intentionally awaited so the guard remains active
+         * throughout the entire merge.
+         */
+        await reconcileCollection(
+          'transactions',
+          yTransactions
+        );
 
-          if (yMap) {
-            Object.entries(
-              state.exchangeRates
-            ).forEach(([code, rate]) => {
-              if (yMap.get(code) !== rate) {
-                yMap.set(code, rate);
+        if (cancelled) {
+          return;
+        }
+
+        await reconcileCollection(
+          'accounts',
+          yAccounts
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        await reconcileKeyedMap(
+          'budgets',
+          yBudgets
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        await reconcileKeyedMap(
+          'exchangeRates',
+          yExchangeRates
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        /*
+         * Only now should Zustand changes begin flowing normally into Yjs.
+         */
+        reconciledRef.current =
+          true;
+
+        /*
+         * Bring up WebRTC signalling.
+         */
+        try {
+          provider =
+            new WebrtcProvider(
+              ROOM_NAME,
+              ydoc,
+              {
+                signaling: [
+                  'wss://signaling.yjs.dev',
+                ],
+                password:
+                  ROOM_PASSWORD,
               }
-            });
-          }
+            );
+
+          providerRef.current =
+            provider;
+
+          provider.on(
+            'status',
+            ({
+              connected:
+                isConnected,
+            }) => {
+              if (cancelled) {
+                return;
+              }
+
+              setConnected(
+                isConnected
+              );
+
+              setStatus(
+                isConnected
+                  ? 'ACTIVE'
+                  : 'WAITING'
+              );
+            }
+          );
+
+          provider.on(
+            'peers',
+            ({
+              webrtcPeers,
+            }) => {
+              if (cancelled) {
+                return;
+              }
+
+              setPeerCount(
+                webrtcPeers
+                  ? webrtcPeers.length
+                  : 0
+              );
+            }
+          );
+
+          provider.on(
+            'synced',
+            () => {
+              if (cancelled) {
+                return;
+              }
+
+              setLastSyncedAt(
+                new Date()
+              );
+            }
+          );
+        } catch (err) {
+          console.error(
+            'Failed to initialize WebRTC provider:',
+            err
+          );
+
+          setError(err);
+          setStatus('ERROR');
         }
       }
     );
@@ -392,95 +838,130 @@ export default function useSync() {
         // Best-effort cleanup.
       }
 
-      ydocRef.current?.destroy();
+      try {
+        ydocRef.current?.destroy();
+      } catch (err) {
+        // Best-effort cleanup.
+      }
 
-      providerRef.current = null;
-      persistenceRef.current = null;
-      ydocRef.current = null;
+      providerRef.current =
+        null;
+
+      persistenceRef.current =
+        null;
+
+      ydocRef.current =
+        null;
+
       yMapsRef.current = {};
-      reconciledRef.current = false;
-      applyingRemoteRef.current = false;
+
+      reconciledRef.current =
+        false;
+
+      applyingRemoteRef.current =
+        false;
     };
   }, [
+    isLoaded,
     pushRecordToYMap,
     removeRecordFromYMap,
     reconcileCollection,
     reconcileKeyedMap,
   ]);
 
-  // y-webrtc has no literal "force sync" API;
-  // the safest real equivalent is destroying and recreating the provider,
-  // which re-runs signaling + room handshake.
-  const forceSync = useCallback(() => {
-    if (!ydocRef.current) return;
+  const forceSync =
+    useCallback(() => {
+      if (!ydocRef.current) {
+        return;
+      }
 
-    try {
-      providerRef.current?.destroy();
+      try {
+        providerRef.current?.destroy();
 
-      const provider = new WebrtcProvider(
-        ROOM_NAME,
-        ydocRef.current,
-        {
-          signaling: ['wss://signaling.yjs.dev'],
-          password: ROOM_PASSWORD,
-        }
-      );
-
-      providerRef.current = provider;
-
-      setStatus('WAITING');
-      setError(null);
-
-      provider.on(
-        'status',
-        ({ connected: isConnected }) => {
-          setConnected(isConnected);
-          setStatus(
-            isConnected
-              ? 'ACTIVE'
-              : 'WAITING'
+        const provider =
+          new WebrtcProvider(
+            ROOM_NAME,
+            ydocRef.current,
+            {
+              signaling: [
+                'wss://signaling.yjs.dev',
+              ],
+              password:
+                ROOM_PASSWORD,
+            }
           );
-        }
-      );
 
-      provider.on(
-        'peers',
-        ({ webrtcPeers }) => {
-          setPeerCount(
-            webrtcPeers
-              ? webrtcPeers.length
-              : 0
-          );
-        }
-      );
+        providerRef.current =
+          provider;
 
-      provider.on('synced', () => {
-        setLastSyncedAt(new Date());
-      });
-    } catch (err) {
-      console.error(
-        'Failed to force sync:',
-        err
-      );
+        setStatus('WAITING');
+        setError(null);
 
-      setError(err);
-      setStatus('ERROR');
-    }
-  }, []);
+        provider.on(
+          'status',
+          ({
+            connected:
+              isConnected,
+          }) => {
+            setConnected(
+              isConnected
+            );
 
-  const disconnect = useCallback(() => {
-    try {
-      providerRef.current?.destroy();
-    } catch (err) {
-      // Best-effort cleanup.
-    }
+            setStatus(
+              isConnected
+                ? 'ACTIVE'
+                : 'WAITING'
+            );
+          }
+        );
 
-    providerRef.current = null;
+        provider.on(
+          'peers',
+          ({
+            webrtcPeers,
+          }) => {
+            setPeerCount(
+              webrtcPeers
+                ? webrtcPeers.length
+                : 0
+            );
+          }
+        );
 
-    setConnected(false);
-    setPeerCount(0);
-    setStatus('OFF');
-  }, []);
+        provider.on(
+          'synced',
+          () => {
+            setLastSyncedAt(
+              new Date()
+            );
+          }
+        );
+      } catch (err) {
+        console.error(
+          'Failed to force sync:',
+          err
+        );
+
+        setError(err);
+        setStatus('ERROR');
+      }
+    }, []);
+
+  const disconnect =
+    useCallback(() => {
+      try {
+        providerRef.current?.destroy();
+      } catch (err) {
+        // Best-effort cleanup.
+      }
+
+      providerRef.current =
+        null;
+
+      setConnected(false);
+      setPeerCount(0);
+      setStatus('OFF');
+    }, []);
 
   return {
     status,
