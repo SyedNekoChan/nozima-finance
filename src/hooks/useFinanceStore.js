@@ -37,6 +37,32 @@ function uniqueById(records) {
   });
 }
 
+/*
+ * Returns the balance effect of an INCOME or EXPENSE transaction.
+ *
+ * INCOME  = positive
+ * EXPENSE = negative
+ * TRANSFER = 0
+ *
+ * Transfers are intentionally handled by TransferModal because they
+ * affect two separate accounts.
+ */
+function getTransactionBalanceDelta(tx) {
+  if (!tx) {
+    return 0;
+  }
+
+  if (tx.type === 'INCOME') {
+    return Number(tx.amount) || 0;
+  }
+
+  if (tx.type === 'EXPENSE') {
+    return -(Number(tx.amount) || 0);
+  }
+
+  return 0;
+}
+
 const useFinanceStore = create((set, get) => ({
   transactions: [],
   accounts: [],
@@ -50,19 +76,12 @@ const useFinanceStore = create((set, get) => ({
   isLoaded: false,
 
   /*
-   * Explicit deletion state.
-   *
-   * These are not the database itself. They are synchronization signals
-   * used by useSync so that a local deletion cannot be mistaken for
-   * "this record just hasn't arrived yet".
+   * Explicit deletion state used by useSync.
    */
   deletedAccountIds: [],
   deletedTransactionIds: [],
 
-  // Set by DailyLogModal's "+ ADD ENTRY FOR THIS DAY".
   pendingLedgerDate: null,
-
-  // Set by DailyLogModal's row-level EDIT.
   pendingEditTx: null,
 
   loadInitialData: async () => {
@@ -79,24 +98,20 @@ const useFinanceStore = create((set, get) => ({
     ]);
 
     set({
-      /*
-       * Deduplicate defensively in case an older broken synchronization
-       * cycle previously produced duplicate records in memory/database.
-       */
       transactions: uniqueById(transactions),
       accounts: uniqueById(accounts),
-
       budgets: budgets || {},
-
       exchangeRates:
-        exchangeRates || DEFAULT_EXCHANGE_RATES,
-
+        exchangeRates ||
+        DEFAULT_EXCHANGE_RATES,
       isLoaded: true,
     });
   },
 
   setActiveTab: (tab) =>
-    set({ activeTab: tab }),
+    set({
+      activeTab: tab,
+    }),
 
   setPendingLedgerDate: (dateString) =>
     set({
@@ -119,12 +134,19 @@ const useFinanceStore = create((set, get) => ({
     }),
 
   /*
-   * Add or replace a transaction by ID.
+   * ================================================================
+   * TRANSACTION CREATION
+   * ================================================================
    *
-   * This is deliberately idempotent: synchronizing the same transaction
-   * multiple times cannot create duplicate entries.
+   * updateBalance defaults to true for LOCAL transactions.
+   *
+   * useSync passes false when applying a remote transaction so the
+   * remote transaction does not modify the account balance a second time.
    */
-  addTransaction: async (tx) => {
+  addTransaction: async (
+    tx,
+    updateBalance = true
+  ) => {
     const record = {
       ...tx,
       id: tx.id || generateId(),
@@ -132,6 +154,9 @@ const useFinanceStore = create((set, get) => ({
 
     await saveTransaction(record);
 
+    /*
+     * Add/upsert the transaction locally.
+     */
     set((state) => {
       const existingIndex =
         state.transactions.findIndex(
@@ -152,7 +177,9 @@ const useFinanceStore = create((set, get) => ({
             parseDateToTimestamp(a.date)
         );
 
-        return { transactions };
+        return {
+          transactions,
+        };
       }
 
       const transactions = [
@@ -172,7 +199,47 @@ const useFinanceStore = create((set, get) => ({
     });
 
     /*
-     * Generate anomaly information from locally-created transactions.
+     * Only locally-created transactions change the account balance.
+     *
+     * Transfers remain excluded here because TransferModal explicitly
+     * updates both accounts.
+     */
+    if (
+      updateBalance &&
+      (
+        record.type === 'INCOME' ||
+        record.type === 'EXPENSE'
+      )
+    ) {
+      const account =
+        useFinanceStore
+          .getState()
+          .accounts
+          .find(
+            (a) =>
+              a.id ===
+              record.accountId
+          );
+
+      if (account) {
+        const delta =
+          getTransactionBalanceDelta(
+            record
+          );
+
+        if (delta !== 0) {
+          await get().updateAccount({
+            ...account,
+            balance:
+              account.balance +
+              delta,
+          });
+        }
+      }
+    }
+
+    /*
+     * Generate anomaly information.
      */
     let anomalyEvent = null;
 
@@ -180,25 +247,31 @@ const useFinanceStore = create((set, get) => ({
       anomalyEvent = {
         type: 'INCOME',
         id: record.id,
-        accountId: record.accountId,
+        accountId:
+          record.accountId,
       };
-    } else if (record.type === 'EXPENSE') {
+    } else if (
+      record.type === 'EXPENSE'
+    ) {
       anomalyEvent = {
         type: 'EXPENSE',
         id: record.id,
-        accountId: record.accountId,
+        accountId:
+          record.accountId,
       };
-    } else if (record.type === 'TRANSFER') {
+    } else if (
+      record.type === 'TRANSFER'
+    ) {
       anomalyEvent = {
         type: 'TRANSFER',
         id: record.id,
-        accountId: record.accountId,
+        accountId:
+          record.accountId,
         toAccountId:
           record.toAccountId,
       };
     }
 
-    // Overspend overrides the normal event.
     const budget =
       get().getMonthlyBudgetUZS();
 
@@ -210,7 +283,8 @@ const useFinanceStore = create((set, get) => ({
       anomalyEvent = {
         type: 'OVERSPEND',
         id: record.id,
-        accountId: record.accountId,
+        accountId:
+          record.accountId,
       };
     }
 
@@ -219,27 +293,155 @@ const useFinanceStore = create((set, get) => ({
     });
   },
 
-  updateTransaction: async (tx) => {
+  /*
+   * ================================================================
+   * TRANSACTION UPDATE
+   * ================================================================
+   *
+   * For local edits:
+   *
+   * 1. Reverse the old transaction's effect.
+   * 2. Apply the new transaction's effect.
+   *
+   * This correctly handles:
+   *
+   *   amount change
+   *   type change
+   *   account change
+   *
+   * For remote updates, updateBalance=false prevents any account
+   * balance mutation because the account object itself is synchronized
+   * separately.
+   */
+  updateTransaction: async (
+    tx,
+    updateBalance = true
+  ) => {
+    const oldTransaction =
+      useFinanceStore
+        .getState()
+        .transactions.find(
+          (t) => t.id === tx.id
+        );
+
     await saveTransaction(tx);
 
+    /*
+     * Update transaction state.
+     */
     set((state) => ({
-      transactions: state.transactions
-        .map((t) =>
-          t.id === tx.id
-            ? tx
-            : t
-        )
-        .sort(
-          (a, b) =>
-            parseDateToTimestamp(
-              b.date
-            ) -
-            parseDateToTimestamp(
-              a.date
-            )
-        ),
+      transactions:
+        state.transactions
+          .map((t) =>
+            t.id === tx.id
+              ? tx
+              : t
+          )
+          .sort(
+            (a, b) =>
+              parseDateToTimestamp(
+                b.date
+              ) -
+              parseDateToTimestamp(
+                a.date
+              )
+          ),
     }));
 
+    /*
+     * Adjust balances only for LOCAL transaction edits.
+     */
+    if (
+      updateBalance &&
+      oldTransaction
+    ) {
+      const oldDelta =
+        getTransactionBalanceDelta(
+          oldTransaction
+        );
+
+      const newDelta =
+        getTransactionBalanceDelta(
+          tx
+        );
+
+      const oldAccount =
+        useFinanceStore
+          .getState()
+          .accounts
+          .find(
+            (a) =>
+              a.id ===
+              oldTransaction.accountId
+          );
+
+      const newAccount =
+        useFinanceStore
+          .getState()
+          .accounts
+          .find(
+            (a) =>
+              a.id ===
+              tx.accountId
+          );
+
+      /*
+       * Same account.
+       */
+      if (
+        oldAccount &&
+        newAccount &&
+        oldAccount.id ===
+          newAccount.id
+      ) {
+        const netDelta =
+          newDelta -
+          oldDelta;
+
+        if (netDelta !== 0) {
+          await get().updateAccount({
+            ...newAccount,
+            balance:
+              newAccount.balance +
+              netDelta,
+          });
+        }
+      } else {
+        /*
+         * Reverse old account effect.
+         */
+        if (
+          oldAccount &&
+          oldDelta !== 0
+        ) {
+          await get().updateAccount({
+            ...oldAccount,
+            balance:
+              oldAccount.balance -
+              oldDelta,
+          });
+        }
+
+        /*
+         * Apply new account effect.
+         */
+        if (
+          newAccount &&
+          newDelta !== 0
+        ) {
+          await get().updateAccount({
+            ...newAccount,
+            balance:
+              newAccount.balance +
+              newDelta,
+          });
+        }
+      }
+    }
+
+    /*
+     * Anomaly event.
+     */
     let anomalyEvent = null;
 
     if (tx.type === 'INCOME') {
@@ -292,9 +494,36 @@ const useFinanceStore = create((set, get) => ({
     });
   },
 
-  deleteTransaction: async (id) => {
+  /*
+   * ================================================================
+   * TRANSACTION DELETION
+   * ================================================================
+   *
+   * Local deletion reverses the transaction's balance effect.
+   *
+   * Remote deletion passes updateBalance=false because the synchronized
+   * account object carries the authoritative balance.
+   */
+  deleteTransaction: async (
+    id,
+    updateBalance = true
+  ) => {
+    const transaction =
+      useFinanceStore
+        .getState()
+        .transactions.find(
+          (t) => t.id === id
+        );
+
+    if (!transaction) {
+      return;
+    }
+
     await deleteTransaction(id);
 
+    /*
+     * Remove transaction locally and record tombstone.
+     */
     set((state) => ({
       transactions:
         state.transactions.filter(
@@ -311,18 +540,51 @@ const useFinanceStore = create((set, get) => ({
               id,
             ],
     }));
+
+    /*
+     * Reverse local balance effect.
+     */
+    if (updateBalance) {
+      const delta =
+        getTransactionBalanceDelta(
+          transaction
+        );
+
+      if (delta !== 0) {
+        const account =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                transaction.accountId
+            );
+
+        if (account) {
+          await get().updateAccount({
+            ...account,
+            balance:
+              account.balance -
+              delta,
+          });
+        }
+      }
+    }
   },
 
   /*
-   * Add or replace an account by ID.
-   *
-   * This prevents duplicate account cards even if synchronization
-   * attempts to insert the same record more than once.
+   * ================================================================
+   * ACCOUNT CREATION
+   * ================================================================
    */
+
   addAccount: async (account) => {
     const record = {
       ...account,
-      id: account.id || generateId(),
+      id:
+        account.id ||
+        generateId(),
     };
 
     await saveAccount(record);
@@ -355,26 +617,37 @@ const useFinanceStore = create((set, get) => ({
     });
   },
 
-  updateAccount: async (account) => {
+  /*
+   * ================================================================
+   * ACCOUNT UPDATE
+   * ================================================================
+   */
+
+  updateAccount: async (
+    account
+  ) => {
     await saveAccount(account);
 
     set((state) => ({
-      accounts: state.accounts.map(
-        (a) =>
-          a.id === account.id
-            ? account
-            : a
-      ),
+      accounts:
+        state.accounts.map(
+          (a) =>
+            a.id === account.id
+              ? account
+              : a
+        ),
     }));
   },
 
   /*
-   * Explicit account deletion.
-   *
-   * The ID is recorded separately so useSync can propagate the deletion
-   * even when synchronization is happening at the same time.
+   * ================================================================
+   * ACCOUNT DELETION
+   * ================================================================
    */
-  deleteAccount: async (id) => {
+
+  deleteAccount: async (
+    id
+  ) => {
     await deleteAccount(id);
 
     set((state) => ({
@@ -395,7 +668,9 @@ const useFinanceStore = create((set, get) => ({
     }));
   },
 
-  clearDeletedAccountId: (id) =>
+  clearDeletedAccountId: (
+    id
+  ) =>
     set((state) => ({
       deletedAccountIds:
         state.deletedAccountIds.filter(
@@ -404,7 +679,9 @@ const useFinanceStore = create((set, get) => ({
         ),
     })),
 
-  clearDeletedTransactionId: (id) =>
+  clearDeletedTransactionId: (
+    id
+  ) =>
     set((state) => ({
       deletedTransactionIds:
         state.deletedTransactionIds.filter(
@@ -412,6 +689,12 @@ const useFinanceStore = create((set, get) => ({
             existingId !== id
         ),
     })),
+
+  /*
+   * ================================================================
+   * BUDGETS / EXCHANGE RATES
+   * ================================================================
+   */
 
   setMonthlyBudget: async (
     month,
@@ -456,6 +739,12 @@ const useFinanceStore = create((set, get) => ({
     set({
       anomalyEvent: null,
     }),
+
+  /*
+   * ================================================================
+   * CALCULATIONS
+   * ================================================================
+   */
 
   getTotalBalanceInUZS: () => {
     const {
@@ -533,9 +822,7 @@ const useFinanceStore = create((set, get) => ({
       getCurrentMonthKey();
 
     return monthKey in budgets
-      ? budgets[
-          monthKey
-        ]
+      ? budgets[monthKey]
       : null;
   },
 
