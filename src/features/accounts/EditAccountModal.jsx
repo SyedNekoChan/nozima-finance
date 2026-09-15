@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, parseAmount } from '../../lib/currency.js';
+import { formatAmount, parseAmount, convertBetween } from '../../lib/currency.js';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 
 export default function EditAccountModal({ isOpen, onClose, account }) {
   const updateAccount = useFinanceStore((s) => s.updateAccount);
   const addTransaction = useFinanceStore((s) => s.addTransaction);
+  const exchangeRates = useFinanceStore((s) => s.exchangeRates);
 
   const [adjustmentMode, setAdjustmentMode] = useState('+ ADD');
   const [amountInput, setAmountInput] = useState('');
@@ -52,8 +53,33 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
     const adjAmount = parseAmount(amountInput);
     const hasAdjustment = !isNaN(adjAmount) && adjAmount > 0;
 
-    // metadata-only change; balance meaning shifts with currency but the number is left untouched intentionally
-    const updatedAccount = { ...account, name: nameInput.trim(), currency: currencyInput };
+    /*
+     * Currency change: convert the account's existing numeric balance
+     * into the new currency using the current exchange rate table, so
+     * the stored balance stays mathematically meaningful (e.g. 500
+     * USD -> the equivalent amount in the new currency, not a raw
+     * "500" reinterpreted under a different currency label).
+     *
+     * Historical transactions are NEVER touched here — each already
+     * carries its own tx.currency snapshot from when it was recorded,
+     * and Calendar/DailyLog/Ledger already interpret every
+     * transaction via tx.currency, not the account's current
+     * currency. Changing the account's currency only ever affects
+     * the account's own balance figure going forward.
+     */
+    const currencyChanged = currencyInput !== account.currency;
+
+    const convertedBalance = currencyChanged
+      ? convertBetween(account.balance, account.currency, currencyInput, exchangeRates)
+      : account.balance;
+
+    // metadata + balance change; balance is converted so its meaning is preserved across the currency change
+    const updatedAccount = {
+      ...account,
+      name: nameInput.trim(),
+      currency: currencyInput,
+      balance: convertedBalance,
+    };
 
     if (!hasAdjustment) {
       await updateAccount(updatedAccount);
@@ -67,7 +93,7 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
       date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       type: adjType,
       amount: adjAmount,
-      currency: account.currency,
+      currency: currencyInput,
       accountId: account.id,
       toAccountId: null,
       category: 'OTHER',
@@ -79,8 +105,8 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
     await addTransaction(adjTx);
 
     const newBalance = adjustmentMode === '+ ADD'
-      ? account.balance + adjAmount
-      : account.balance - adjAmount;
+      ? updatedAccount.balance + adjAmount
+      : updatedAccount.balance - adjAmount;
     await updateAccount({ ...updatedAccount, balance: newBalance });
 
     onClose();
