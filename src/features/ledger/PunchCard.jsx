@@ -40,11 +40,6 @@ export default function PunchCard({
       (s) => s.updateTransaction
     );
 
-  const updateAccount =
-    useFinanceStore(
-      (s) => s.updateAccount
-    );
-
   const [date, setDate] =
     useState(getTodayDateString());
 
@@ -78,7 +73,7 @@ export default function PunchCard({
     useRef(null);
 
   /*
-   * Reset form whenever the modal target changes.
+   * Reset form when the modal target changes.
    */
   useEffect(() => {
     if (editingTx) {
@@ -94,13 +89,15 @@ export default function PunchCard({
         String(editingTx.amount)
       );
       setCategory(
-        editingTx.category || 'FOOD'
+        editingTx.category ||
+          'FOOD'
       );
       setNote(
         editingTx.note || ''
       );
       setImageData(
-        editingTx.imageData || null
+        editingTx.imageData ||
+          null
       );
       setExchangeRateInput(
         editingTx.exchangeRate
@@ -122,33 +119,37 @@ export default function PunchCard({
       );
 
       setToAccountId(null);
-
       setAmountInput('');
-
       setCategory('FOOD');
-
       setNote('');
-
       setImageData(null);
-
       setExchangeRateInput('');
     }
   }, [
     editingTx,
     isOpen,
     initialDate,
+    accounts,
   ]);
 
+  /*
+   * Always resolve the currently selected account from the latest
+   * Zustand state.
+   *
+   * This is important when several account cards exist.
+   */
   const sourceAccount =
     accounts.find(
-      (a) => a.id === accountId
+      (a) =>
+        a.id === accountId
     );
 
   const destAccount =
     type === 'TRANSFER'
       ? accounts.find(
           (a) =>
-            a.id === toAccountId
+            a.id ===
+            toAccountId
         )
       : null;
 
@@ -170,7 +171,9 @@ export default function PunchCard({
   useEffect(() => {
     if (
       isCrossCurrency &&
-      !exchangeRateInput
+      !exchangeRateInput &&
+      sourceAccount &&
+      destAccount
     ) {
       const srcRate =
         exchangeRates[
@@ -182,7 +185,10 @@ export default function PunchCard({
           destAccount.currency
         ];
 
-      if (srcRate && dstRate) {
+      if (
+        srcRate &&
+        dstRate
+      ) {
         const rate =
           srcRate / dstRate;
 
@@ -217,8 +223,8 @@ export default function PunchCard({
       setAccountId(id);
 
       /*
-       * Prevent an amount in the previous account's currency from
-       * accidentally being reused.
+       * Clear amount when changing accounts because the currency may
+       * have changed.
        */
       setAmountInput('');
     };
@@ -244,213 +250,22 @@ export default function PunchCard({
     };
 
   const calculatedDestination =
-    parseAmount(amountInput) *
-    (parseAmount(
-      exchangeRateInput
-    ) || 0);
-
-  /*
-   * Returns the effect a transaction has on an account balance.
-   *
-   * INCOME  -> +amount
-   * EXPENSE -> -amount
-   * TRANSFER is handled by TransferModal, so this returns 0 here.
-   */
-  const getBalanceDelta =
-    (transaction) => {
-      if (
-        transaction.type ===
-        'INCOME'
-      ) {
-        return transaction.amount;
-      }
-
-      if (
-        transaction.type ===
-        'EXPENSE'
-      ) {
-        return -transaction.amount;
-      }
-
-      return 0;
-    };
-
-  /*
-   * Apply the account balance changes caused by a newly-created or
-   * edited ledger transaction.
-   */
-  const updateBalancesForTransaction =
-    async ({
-      oldTransaction,
-      newTransaction,
-    }) => {
-      /*
-       * ---------------------------------------------------------------
-       * NEW TRANSACTION
-       * ---------------------------------------------------------------
-       */
-      if (!oldTransaction) {
-        if (
-          newTransaction.type ===
-          'TRANSFER'
-        ) {
-          /*
-           * TransferModal already handles transfers directly.
-           */
-          return;
-        }
-
-        const account =
-          useFinanceStore
-            .getState()
-            .accounts.find(
-              (a) =>
-                a.id ===
-                newTransaction.accountId
-            );
-
-        if (!account) {
-          return;
-        }
-
-        const delta =
-          getBalanceDelta(
-            newTransaction
-          );
-
-        if (delta === 0) {
-          return;
-        }
-
-        await updateAccount({
-          ...account,
-          balance:
-            account.balance +
-            delta,
-        });
-
-        return;
-      }
-
-      /*
-       * ---------------------------------------------------------------
-       * EDITING AN EXISTING TRANSACTION
-       * ---------------------------------------------------------------
-       *
-       * First remove the old transaction's effect.
-       * Then apply the new transaction's effect.
-       *
-       * This works even if:
-       *
-       *   - amount changes
-       *   - type changes
-       *   - account changes
-       */
-      const oldAccount =
-        useFinanceStore
-          .getState()
-          .accounts.find(
-            (a) =>
-              a.id ===
-              oldTransaction.accountId
-          );
-
-      const newAccount =
-        useFinanceStore
-          .getState()
-          .accounts.find(
-            (a) =>
-              a.id ===
-              newTransaction.accountId
-          );
-
-      const oldDelta =
-        getBalanceDelta(
-          oldTransaction
-        );
-
-      const newDelta =
-        getBalanceDelta(
-          newTransaction
-        );
-
-      /*
-       * If the old transaction affected an account, reverse it.
-       */
-      if (
-        oldAccount &&
-        oldDelta !== 0
-      ) {
-        /*
-         * When the old and new transaction belong to the same account,
-         * combine the two operations into one update later.
-         */
-      }
-
-      /*
-       * Same account:
-       *
-       * balance += newDelta - oldDelta
-       *
-       * This is both simpler and avoids an unnecessary intermediate
-       * state update.
-       */
-      if (
-        oldAccount &&
-        newAccount &&
-        oldAccount.id ===
-          newAccount.id
-      ) {
-        const netDelta =
-          newDelta -
-          oldDelta;
-
-        if (netDelta !== 0) {
-          await updateAccount({
-            ...newAccount,
-            balance:
-              newAccount.balance +
-              netDelta,
-          });
-        }
-
-        return;
-      }
-
-      /*
-       * Different accounts:
-       *
-       * 1. Reverse old transaction from old account.
-       * 2. Apply new transaction to new account.
-       */
-      if (
-        oldAccount &&
-        oldDelta !== 0
-      ) {
-        await updateAccount({
-          ...oldAccount,
-          balance:
-            oldAccount.balance -
-            oldDelta,
-        });
-      }
-
-      if (
-        newAccount &&
-        newDelta !== 0
-      ) {
-        await updateAccount({
-          ...newAccount,
-          balance:
-            newAccount.balance +
-            newDelta,
-        });
-      }
-    };
+    parseAmount(
+      amountInput
+    ) *
+    (
+      parseAmount(
+        exchangeRateInput
+      ) || 0
+    );
 
   const handleSave =
     async () => {
       if (!accountId) {
+        return;
+      }
+
+      if (!sourceAccount) {
         return;
       }
 
@@ -474,10 +289,6 @@ export default function PunchCard({
             accountId
         )
       ) {
-        return;
-      }
-
-      if (!sourceAccount) {
         return;
       }
 
@@ -528,32 +339,19 @@ export default function PunchCard({
       };
 
       /*
-       * Save/update the transaction first.
+       * The store now owns transaction → balance synchronization.
        */
       if (editingTx) {
         await updateTransaction(
-          tx
+          tx,
+          true
         );
       } else {
         await addTransaction(
-          tx
+          tx,
+          true
         );
       }
-
-      /*
-       * Then update the account balance.
-       *
-       * Transfers remain managed by TransferModal because they affect
-       * two accounts and already have dedicated transfer logic.
-       */
-      await updateBalancesForTransaction(
-        {
-          oldTransaction:
-            editingTx,
-          newTransaction:
-            tx,
-        }
-      );
 
       onClose();
     };
@@ -597,21 +395,23 @@ export default function PunchCard({
             'EXPENSE',
             'INCOME',
             'TRANSFER',
-          ].map((option) => (
-            <Button
-              key={option}
-              active={
-                type === option
-              }
-              onClick={() =>
-                handleTypeChange(
-                  option
-                )
-              }
-            >
-              {option}
-            </Button>
-          ))}
+          ].map(
+            (option) => (
+              <Button
+                key={option}
+                active={
+                  type === option
+                }
+                onClick={() =>
+                  handleTypeChange(
+                    option
+                  )
+                }
+              >
+                {option}
+              </Button>
+            )
+          )}
         </div>
       </div>
 
@@ -620,17 +420,20 @@ export default function PunchCard({
           ACCOUNT
         </span>
 
-        {accounts.length === 0 ? (
+        {accounts.length ===
+        0 ? (
           <span className="font-mono text-xs text-gray-500">
-            [ NO ACCOUNTS — CREATE
-            ONE FIRST ]
+            [ NO ACCOUNTS —
+            CREATE ONE FIRST ]
           </span>
         ) : (
           <div className="flex gap-2 overflow-x-auto pb-1">
             {accounts.map(
               (account) => (
                 <Button
-                  key={account.id}
+                  key={
+                    account.id
+                  }
                   active={
                     accountId ===
                     account.id
@@ -641,7 +444,9 @@ export default function PunchCard({
                     )
                   }
                 >
-                  {account.name}
+                  {
+                    account.name
+                  }
                 </Button>
               )
             )}
@@ -678,7 +483,9 @@ export default function PunchCard({
                       )
                     }
                   >
-                    {account.name}
+                    {
+                      account.name
+                    }
                   </Button>
                 )
               )}
@@ -695,7 +502,9 @@ export default function PunchCard({
           <input
             type="text"
             inputMode="numeric"
-            value={amountInput}
+            value={
+              amountInput
+            }
             onChange={(e) =>
               setAmountInput(
                 e.target.value
@@ -706,7 +515,9 @@ export default function PunchCard({
           />
 
           <span className="font-mono text-xs text-gray-500">
-            {currencyCode}
+            {
+              currencyCode
+            }
           </span>
         </div>
       </div>
