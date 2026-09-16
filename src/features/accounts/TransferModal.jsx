@@ -117,10 +117,10 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
     <Modal isOpen={isOpen} onClose={handleClose} title={`TRANSFER: ${sourceAccount?.name || ''}`} size="md">
       <div className="border-b border-gray-800 pb-4 mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">FROM</span>
-        <div className="flex items-center gap-4">
-          <span className="font-mono text-sm text-white">[ {sourceAccount.name} ]</span>
-          <span className="font-mono text-xs text-gray-500">{sourceAccount.currency}</span>
-          <span className="font-mono text-xs text-gray-500 ml-auto">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="font-mono text-sm text-white min-w-0 break-words">[ {sourceAccount.name} ]</span>
+          <span className="font-mono text-xs text-gray-500 flex-shrink-0">{sourceAccount.currency}</span>
+          <span className="font-mono text-xs text-gray-500 sm:ml-auto flex-shrink-0">
             {formatAmount(sourceAccount.balance, sourceAccount.currency)}
           </span>
         </div>
