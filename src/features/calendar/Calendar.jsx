@@ -149,8 +149,8 @@ export default function Calendar() {
             const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
 
             const baseClass = isSelected
-              ? 'flex flex-col items-center justify-center border-2 bg-white text-black border-white transition-none'
-              : 'flex flex-col items-center justify-center border-2 border-gray-800 bg-black text-white hover:border-white transition-none';
+              ? 'flex flex-col items-center justify-center border bg-white text-black border-white md:border-2 transition-none'
+              : 'flex flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 transition-none';
 
             return (
               <button
