@@ -20,7 +20,7 @@ export default function Header({ sync }) {
 
   return (
     <>
-      <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 md:px-8 py-3 flex justify-between items-center text-xs md:text-sm font-mono uppercase tracking-widest relative z-30">
+      <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 md:px-8 py-3 flex flex-wrap md:flex-nowrap justify-between items-center gap-x-4 gap-y-1 text-xs md:text-sm font-mono uppercase tracking-widest relative z-30">
         <span className="flex items-center whitespace-nowrap">
           <span
             className="text-white cursor-pointer"
@@ -31,7 +31,7 @@ export default function Header({ sync }) {
             [ SYSTEM: ONLINE ]
           </span>
           <span
-            className={`ml-4 text-gray-500 transition-none ${showDistance ? 'opacity-100' : 'opacity-0'}`}
+            className={`ml-4 text-gray-500 transition-none hidden md:inline ${showDistance ? 'opacity-100' : 'opacity-0'}`}
           >
             [ DISTANCE: {distance} ]
           </span>
