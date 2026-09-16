@@ -40,6 +40,20 @@ export default function PunchCard({
       (s) => s.updateTransaction
     );
 
+  // TRANSFER creation/editing routes through these two centralized
+  // store actions instead of addTransaction/updateTransaction directly,
+  // so PunchCard never computes or applies transfer balance math itself
+  // — TransferModal uses the exact same two actions.
+  const createTransfer =
+    useFinanceStore(
+      (s) => s.createTransfer
+    );
+
+  const editTransfer =
+    useFinanceStore(
+      (s) => s.editTransfer
+    );
+
   const [date, setDate] =
     useState(getTodayDateString());
 
@@ -68,6 +82,14 @@ export default function PunchCard({
     exchangeRateInput,
     setExchangeRateInput,
   ] = useState('');
+
+  const [errorMsg, setErrorMsg] =
+    useState('');
+
+  // Guards the submit path against rapid double-click / repeated
+  // submission for every transaction type, not just transfers.
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
 
   const fileInputRef =
     useRef(null);
@@ -125,6 +147,9 @@ export default function PunchCard({
       setImageData(null);
       setExchangeRateInput('');
     }
+
+    setErrorMsg('');
+    setIsSubmitting(false);
   }, [
     editingTx,
     isOpen,
@@ -261,6 +286,11 @@ export default function PunchCard({
 
   const handleSave =
     async () => {
+      // Guards against rapid double-click / repeated submission.
+      if (isSubmitting) {
+        return;
+      }
+
       if (!accountId) {
         return;
       }
@@ -292,68 +322,119 @@ export default function PunchCard({
         return;
       }
 
-      const tx = {
-        id:
-          editingTx?.id ||
-          crypto.randomUUID(),
+      const resolvedDate =
+        date.trim() ||
+        getTodayDateString();
 
-        date:
-          date.trim() ||
-          getTodayDateString(),
+      setIsSubmitting(true);
+      setErrorMsg('');
 
-        type,
+      try {
+        /*
+         * TRANSFER creation/editing goes through the same centralized
+         * store actions TransferModal uses — createTransfer /
+         * editTransfer — so there is exactly one implementation of
+         * transfer balance math regardless of which UI surface
+         * initiated it. PunchCard never computes a transfer's
+         * balance effect itself.
+         */
+        if (type === 'TRANSFER') {
+          if (editingTx) {
+            await editTransfer(
+              editingTx,
+              {
+                sourceAccountId:
+                  accountId,
+                destinationAccountId:
+                  toAccountId,
+                amount,
+                date: resolvedDate,
+                note,
+                exchangeRate:
+                  isCrossCurrency
+                    ? exchangeRateInput
+                    : null,
+                imageData,
+              }
+            );
+          } else {
+            await createTransfer({
+              sourceAccountId:
+                accountId,
+              destinationAccountId:
+                toAccountId,
+              amount,
+              date: resolvedDate,
+              note,
+              exchangeRate:
+                isCrossCurrency
+                  ? exchangeRateInput
+                  : null,
+              imageData,
+            });
+          }
 
-        amount,
+          onClose();
+          return;
+        }
 
-        currency:
-          sourceAccount.currency,
+        /*
+         * Non-transfer (INCOME/EXPENSE) path is unchanged: the store's
+         * addTransaction/updateTransaction already own single-account
+         * balance synchronization for these types.
+         */
+        const tx = {
+          id:
+            editingTx?.id ||
+            crypto.randomUUID(),
 
-        accountId,
+          date: resolvedDate,
 
-        toAccountId:
-          type === 'TRANSFER'
-            ? toAccountId
-            : null,
+          type,
 
-        category:
-          type === 'TRANSFER'
-            ? null
-            : category,
+          amount,
 
-        note:
-          note.trim(),
+          currency:
+            sourceAccount.currency,
 
-        imageData,
+          accountId,
 
-        createdAt:
-          editingTx?.createdAt ||
-          new Date().toISOString(),
+          toAccountId: null,
 
-        exchangeRate:
-          type === 'TRANSFER' &&
-          isCrossCurrency
-            ? parseAmount(
-                exchangeRateInput
-              )
-            : null,
-      };
+          category,
 
-      /*
-       * The store now owns transaction → balance synchronization.
-       */
-      if (editingTx) {
-        await updateTransaction(
-          tx,
-          true
+          note:
+            note.trim(),
+
+          imageData,
+
+          createdAt:
+            editingTx?.createdAt ||
+            new Date().toISOString(),
+
+          exchangeRate: null,
+        };
+
+        if (editingTx) {
+          await updateTransaction(
+            tx,
+            true
+          );
+        } else {
+          await addTransaction(
+            tx,
+            true
+          );
+        }
+
+        onClose();
+      } catch (err) {
+        setErrorMsg(
+          err?.message ||
+            'SAVE FAILED'
         );
-      } else {
-        await addTransaction(
-          tx,
-          true
-        );
+        setIsSubmitting(false);
       }
-
-      onClose();
     };
 
   return (
@@ -661,13 +742,22 @@ export default function PunchCard({
           </div>
         )}
 
+      {errorMsg && (
+        <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">
+          {errorMsg}
+        </div>
+      )}
+
       <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
         <Button
           onClick={handleSave}
+          disabled={isSubmitting}
         >
-          {editingTx
-            ? 'SAVE CHANGES'
-            : 'SAVE ENTRY'}
+          {isSubmitting
+            ? 'SAVING...'
+            : editingTx
+              ? 'SAVE CHANGES'
+              : 'SAVE ENTRY'}
         </Button>
       </div>
     </Modal>
