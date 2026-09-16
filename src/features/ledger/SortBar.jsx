@@ -27,7 +27,7 @@ export default function SortBar({ sortBy, sortDirection, onSortChange }) {
               className="text-xs md:text-sm px-3 py-1"
               onClick={() => handleSort(option)}
             >
-              [ {label} ]
+              {label}
             </Button>
           );
         })}
