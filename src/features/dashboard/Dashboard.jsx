@@ -70,13 +70,13 @@ export default function Dashboard() {
           <HeroStats />
         </div>
 
-        <div className="flex flex-col items-start md:items-end gap-6 flex-shrink-0">
+        <div className="flex flex-col items-start md:items-end gap-6 flex-shrink-0 min-w-0 w-full md:w-auto">
           <div>
             <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500">
               SPENT THIS MONTH
             </span>
             <br />
-            <span className="font-mono text-3xl md:text-4xl text-white mt-1">
+            <span className="font-mono text-xl sm:text-3xl md:text-4xl text-white mt-1">
               {formatAmount(spentThisMonth, 'UZS')}
             </span>
           </div>
@@ -90,7 +90,7 @@ export default function Dashboard() {
             </div>
             {monthlyBudget ? (
               <>
-                <span className="font-mono text-3xl md:text-4xl text-white mt-1">
+                <span className="font-mono text-xl sm:text-3xl md:text-4xl text-white mt-1">
                   {formatAmount(monthlyBudget, 'UZS')}
                 </span>
                 <div className="mt-2">
@@ -98,7 +98,7 @@ export default function Dashboard() {
                 </div>
               </>
             ) : (
-              <span className="font-mono text-3xl md:text-4xl text-white mt-1">
+              <span className="font-mono text-xl sm:text-3xl md:text-4xl text-white mt-1">
                 [ ! SET BUDGET ! ]
               </span>
             )}
