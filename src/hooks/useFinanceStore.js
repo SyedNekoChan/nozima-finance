@@ -38,14 +38,17 @@ function uniqueById(records) {
 }
 
 /*
- * Return the balance effect of a transaction.
+ * Return the single-account balance effect of a transaction.
  *
  * INCOME  -> positive
  * EXPENSE -> negative
  * TRANSFER -> 0
  *
- * Transfers are handled separately by TransferModal because they affect
- * two accounts.
+ * TRANSFER always touches TWO accounts (source + destination), so its
+ * balance effect can never be expressed as one delta on one account.
+ * Transfers are handled explicitly and centrally by the
+ * applyTransferBalanceEffect() action below (sign +1 to apply, -1 to
+ * reverse), never through this single-delta helper.
  */
 function getTransactionBalanceDelta(tx) {
   if (!tx) {
@@ -61,6 +64,28 @@ function getTransactionBalanceDelta(tx) {
   }
 
   return 0;
+}
+
+/*
+ * The amount the DESTINATION account actually receives for a transfer.
+ *
+ * Same-currency transfer: destination receives exactly the source amount.
+ * Cross-currency transfer: destination receives amount * exchangeRate,
+ * where exchangeRate is "1 source unit = exchangeRate destination units"
+ * (the same direction already established by TransferModal/PunchCard's
+ * rate-suggestion logic: exchangeRates[source] / exchangeRates[dest]).
+ *
+ * Centralized here so creation, editing, and deletion-reversal can never
+ * compute "what the destination got" differently from one another.
+ */
+function getReceivedAmount(tx) {
+  const sourceAmount = Number(tx?.amount) || 0;
+
+  if (tx?.exchangeRate) {
+    return sourceAmount * (Number(tx.exchangeRate) || 0);
+  }
+
+  return sourceAmount;
 }
 
 const useFinanceStore = create((set, get) => ({
@@ -138,6 +163,427 @@ const useFinanceStore = create((set, get) => ({
     set({
       pendingEditTx: null,
     }),
+
+  /*
+   * ================================================================
+   * TRANSFER BALANCE EFFECT (apply / reverse)
+   * ================================================================
+   *
+   * The single, centralized place that moves money between two
+   * accounts for a TRANSFER transaction. Used by addTransaction,
+   * updateTransaction, and deleteTransaction alike so there is
+   * exactly one implementation of "what a transfer does to balances"
+   * — never a component-level (PunchCard/TransferModal) copy of this
+   * logic.
+   *
+   * Always re-reads accounts fresh from the store immediately before
+   * each write, rather than trusting a caller-supplied account
+   * object, so two applications in sequence (e.g. reverse-old then
+   * apply-new during an edit) never operate on stale balances.
+   *
+   * sign = +1  -> apply the transfer (source -amount, dest +received)
+   * sign = -1  -> reverse the transfer (source +amount, dest -received)
+   *
+   * A transfer whose destination account no longer exists (e.g. it
+   * was deleted) only reverses/applies the side that still exists —
+   * this mirrors the tolerant behavior already relied upon by the
+   * account-deletion cascade.
+   */
+  applyTransferBalanceEffect: async (
+    tx,
+    sign
+  ) => {
+    if (!tx || tx.type !== 'TRANSFER') {
+      return;
+    }
+
+    const sourceAmount =
+      Number(tx.amount) || 0;
+
+    const receivedAmount =
+      getReceivedAmount(tx);
+
+    const sourceAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) => a.id === tx.accountId
+        );
+
+    if (
+      sourceAccount &&
+      sourceAmount !== 0
+    ) {
+      await get().updateAccount({
+        ...sourceAccount,
+        balance:
+          sourceAccount.balance -
+          sign * sourceAmount,
+      });
+    }
+
+    const destinationAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) => a.id === tx.toAccountId
+        );
+
+    if (
+      destinationAccount &&
+      receivedAmount !== 0
+    ) {
+      await get().updateAccount({
+        ...destinationAccount,
+        balance:
+          destinationAccount.balance +
+          sign * receivedAmount,
+      });
+    }
+  },
+
+  /*
+   * ================================================================
+   * CREATE TRANSFER (single authoritative entry point)
+   * ================================================================
+   *
+   * Both PunchCard and TransferModal call this instead of maintaining
+   * their own balance-mutation logic. Validates inputs, persists the
+   * transaction, and applies its balance effect atomically from the
+   * store's perspective (sequenced awaits; no un-awaited fire-and-
+   * forget writes).
+   *
+   * Throws on validation failure so the caller (UI) can catch it and
+   * show an error, rather than silently doing nothing.
+   */
+  createTransfer: async ({
+    sourceAccountId,
+    destinationAccountId,
+    amount,
+    date,
+    note,
+    exchangeRate,
+    imageData,
+    id,
+    createdAt,
+  }) => {
+    if (
+      !sourceAccountId ||
+      !destinationAccountId
+    ) {
+      throw new Error(
+        'SELECT SOURCE AND DESTINATION'
+      );
+    }
+
+    if (
+      sourceAccountId ===
+      destinationAccountId
+    ) {
+      throw new Error(
+        'SOURCE AND DESTINATION MUST DIFFER'
+      );
+    }
+
+    const numericAmount =
+      Number(amount);
+
+    if (
+      !numericAmount ||
+      Number.isNaN(
+        numericAmount
+      ) ||
+      numericAmount <= 0
+    ) {
+      throw new Error(
+        'INVALID AMOUNT'
+      );
+    }
+
+    const sourceAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) =>
+            a.id ===
+            sourceAccountId
+        );
+
+    const destinationAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) =>
+            a.id ===
+            destinationAccountId
+        );
+
+    if (
+      !sourceAccount ||
+      !destinationAccount
+    ) {
+      throw new Error(
+        'ACCOUNT NOT FOUND'
+      );
+    }
+
+    const isCrossCurrency =
+      sourceAccount.currency !==
+      destinationAccount.currency;
+
+    let numericRate = null;
+
+    if (isCrossCurrency) {
+      numericRate = Number(
+        exchangeRate
+      );
+
+      if (
+        !numericRate ||
+        Number.isNaN(
+          numericRate
+        ) ||
+        numericRate <= 0
+      ) {
+        throw new Error(
+          'INVALID EXCHANGE RATE'
+        );
+      }
+    }
+
+    const tx = {
+      id:
+        id ||
+        crypto.randomUUID(),
+      date,
+      type: 'TRANSFER',
+      amount: numericAmount,
+      currency:
+        sourceAccount.currency,
+      accountId:
+        sourceAccountId,
+      toAccountId:
+        destinationAccountId,
+      category: null,
+      note:
+        (note || '').trim() ||
+        'Transfer',
+      imageData:
+        imageData || null,
+      createdAt:
+        createdAt ||
+        new Date().toISOString(),
+      exchangeRate: numericRate,
+    };
+
+    await get().addTransaction(
+      tx,
+      true
+    );
+
+    return tx;
+  },
+
+  /*
+   * ================================================================
+   * EDIT TRANSFER (single authoritative entry point)
+   * ================================================================
+   *
+   * Reverses the OLD transfer's effect on the OLD source/destination
+   * accounts, then applies the NEW transfer's effect on the (possibly
+   * different) NEW source/destination accounts, before persisting the
+   * updated transaction record. This correctly supports every
+   * combination of change: amount only, source only, destination
+   * only, both accounts, exchange rate, or date — because reversal
+   * and application are always computed and executed as two fully
+   * separate, sequenced steps, never merged into a single "net delta"
+   * (which is only safe when both sides share the same two accounts).
+   */
+  editTransfer: async (
+    existingTx,
+    {
+      sourceAccountId,
+      destinationAccountId,
+      amount,
+      date,
+      note,
+      exchangeRate,
+      imageData,
+    }
+  ) => {
+    if (
+      !existingTx ||
+      existingTx.type !== 'TRANSFER'
+    ) {
+      throw new Error(
+        'NOT A TRANSFER'
+      );
+    }
+
+    if (
+      !sourceAccountId ||
+      !destinationAccountId
+    ) {
+      throw new Error(
+        'SELECT SOURCE AND DESTINATION'
+      );
+    }
+
+    if (
+      sourceAccountId ===
+      destinationAccountId
+    ) {
+      throw new Error(
+        'SOURCE AND DESTINATION MUST DIFFER'
+      );
+    }
+
+    const numericAmount =
+      Number(amount);
+
+    if (
+      !numericAmount ||
+      Number.isNaN(
+        numericAmount
+      ) ||
+      numericAmount <= 0
+    ) {
+      throw new Error(
+        'INVALID AMOUNT'
+      );
+    }
+
+    const sourceAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) =>
+            a.id ===
+            sourceAccountId
+        );
+
+    const destinationAccount =
+      useFinanceStore
+        .getState()
+        .accounts.find(
+          (a) =>
+            a.id ===
+            destinationAccountId
+        );
+
+    if (
+      !sourceAccount ||
+      !destinationAccount
+    ) {
+      throw new Error(
+        'ACCOUNT NOT FOUND'
+      );
+    }
+
+    const isCrossCurrency =
+      sourceAccount.currency !==
+      destinationAccount.currency;
+
+    let numericRate = null;
+
+    if (isCrossCurrency) {
+      numericRate = Number(
+        exchangeRate
+      );
+
+      if (
+        !numericRate ||
+        Number.isNaN(
+          numericRate
+        ) ||
+        numericRate <= 0
+      ) {
+        throw new Error(
+          'INVALID EXCHANGE RATE'
+        );
+      }
+    }
+
+    const updatedTx = {
+      ...existingTx,
+      date:
+        date || existingTx.date,
+      amount: numericAmount,
+      currency:
+        sourceAccount.currency,
+      accountId:
+        sourceAccountId,
+      toAccountId:
+        destinationAccountId,
+      category: null,
+      note:
+        note !== undefined
+          ? note.trim() ||
+            'Transfer'
+          : existingTx.note,
+      imageData:
+        imageData !== undefined
+          ? imageData
+          : existingTx.imageData,
+      exchangeRate: numericRate,
+    };
+
+    /*
+     * STEP 1: reverse the OLD transfer's effect on the OLD accounts.
+     * STEP 2: persist the updated record.
+     * STEP 3: apply the NEW transfer's effect on the NEW accounts.
+     *
+     * Reversal always runs first and uses existingTx (the pre-edit
+     * record) so it undoes exactly what was originally applied, even
+     * if source/destination/amount/rate are all changing at once.
+     */
+    await get().applyTransferBalanceEffect(
+      existingTx,
+      -1
+    );
+
+    await saveTransaction(
+      updatedTx
+    );
+
+    set((state) => ({
+      transactions:
+        state.transactions
+          .map((t) =>
+            t.id ===
+            updatedTx.id
+              ? updatedTx
+              : t
+          )
+          .sort(
+            (a, b) =>
+              parseDateToTimestamp(
+                b.date
+              ) -
+              parseDateToTimestamp(
+                a.date
+              )
+          ),
+    }));
+
+    await get().applyTransferBalanceEffect(
+      updatedTx,
+      1
+    );
+
+    set({
+      anomalyEvent: {
+        type: 'TRANSFER',
+        id: updatedTx.id,
+        accountId:
+          updatedTx.accountId,
+        toAccountId:
+          updatedTx.toAccountId,
+      },
+    });
+
+    return updatedTx;
+  },
 
   /*
    * ================================================================
@@ -223,39 +669,55 @@ const useFinanceStore = create((set, get) => ({
     });
 
     /*
-     * Only local INCOME/EXPENSE transactions modify balances.
+     * Local INCOME/EXPENSE transactions modify a single account's
+     * balance. Local TRANSFER transactions modify BOTH the source and
+     * destination account balances, via the same centralized
+     * applyTransferBalanceEffect() used by editTransfer and
+     * deleteTransaction, so there is exactly one implementation of
+     * "what a transfer does to balances" regardless of which UI
+     * surface (PunchCard or TransferModal) created it.
+     *
+     * Remote/synced transactions (updateBalance=false) never touch
+     * balances here — the account's own balance is synchronized
+     * independently via its own Yjs map.
      */
-    if (
-      updateBalance &&
-      (
+    if (updateBalance) {
+      if (
         record.type === 'INCOME' ||
         record.type === 'EXPENSE'
-      )
-    ) {
-      const account =
-        useFinanceStore
-          .getState()
-          .accounts
-          .find(
-            (a) =>
-              a.id ===
-              record.accountId
-          );
+      ) {
+        const account =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                record.accountId
+            );
 
-      if (account) {
-        const delta =
-          getTransactionBalanceDelta(
-            record
-          );
+        if (account) {
+          const delta =
+            getTransactionBalanceDelta(
+              record
+            );
 
-        if (delta !== 0) {
-          await get().updateAccount({
-            ...account,
-            balance:
-              account.balance +
-              delta,
-          });
+          if (delta !== 0) {
+            await get().updateAccount({
+              ...account,
+              balance:
+                account.balance +
+                delta,
+            });
+          }
         }
+      } else if (
+        record.type === 'TRANSFER'
+      ) {
+        await get().applyTransferBalanceEffect(
+          record,
+          1
+        );
       }
     }
 
@@ -367,98 +829,191 @@ const useFinanceStore = create((set, get) => ({
      * Local edits modify balances.
      *
      * Remote edits do not.
+     *
+     * TRANSFER transactions are handled via the same centralized
+     * applyTransferBalanceEffect() helper used by createTransfer,
+     * editTransfer, and deleteTransaction: the OLD record's effect is
+     * always fully reversed first, then the NEW record's effect is
+     * fully applied, as two separate sequenced steps. This correctly
+     * handles every combination of change — amount, source,
+     * destination, exchange rate, or a type change into/out of
+     * TRANSFER — without ever computing a "net delta" that would only
+     * be valid if both records shared the same two accounts.
+     *
+     * INCOME/EXPENSE-only edits keep the original single-account net-
+     * delta path unchanged.
      */
     if (
       updateBalance &&
       oldTransaction
     ) {
-      const oldDelta =
-        getTransactionBalanceDelta(
-          oldTransaction
-        );
+      const oldIsTransfer =
+        oldTransaction.type ===
+        'TRANSFER';
 
-      const newDelta =
-        getTransactionBalanceDelta(
-          tx
-        );
+      const newIsTransfer =
+        tx.type === 'TRANSFER';
 
-      const oldAccount =
-        useFinanceStore
-          .getState()
-          .accounts
-          .find(
-            (a) =>
-              a.id ===
-              oldTransaction.accountId
-          );
-
-      const newAccount =
-        useFinanceStore
-          .getState()
-          .accounts
-          .find(
-            (a) =>
-              a.id ===
-              tx.accountId
-          );
-
-      /*
-       * Same account:
-       *
-       * new balance =
-       * old balance
-       * - old transaction effect
-       * + new transaction effect
-       */
       if (
-        oldAccount &&
-        newAccount &&
-        oldAccount.id ===
-          newAccount.id
+        oldIsTransfer ||
+        newIsTransfer
       ) {
-        const netDelta =
-          newDelta -
-          oldDelta;
+        if (oldIsTransfer) {
+          await get().applyTransferBalanceEffect(
+            oldTransaction,
+            -1
+          );
+        } else {
+          const oldDelta =
+            getTransactionBalanceDelta(
+              oldTransaction
+            );
 
-        if (
-          netDelta !== 0
-        ) {
-          await get().updateAccount({
-            ...newAccount,
-            balance:
-              newAccount.balance +
-              netDelta,
-          });
+          const oldAccount =
+            useFinanceStore
+              .getState()
+              .accounts
+              .find(
+                (a) =>
+                  a.id ===
+                  oldTransaction.accountId
+              );
+
+          if (
+            oldAccount &&
+            oldDelta !== 0
+          ) {
+            await get().updateAccount({
+              ...oldAccount,
+              balance:
+                oldAccount.balance -
+                oldDelta,
+            });
+          }
+        }
+
+        if (newIsTransfer) {
+          await get().applyTransferBalanceEffect(
+            tx,
+            1
+          );
+        } else {
+          const newDelta =
+            getTransactionBalanceDelta(
+              tx
+            );
+
+          const newAccount =
+            useFinanceStore
+              .getState()
+              .accounts
+              .find(
+                (a) =>
+                  a.id ===
+                  tx.accountId
+              );
+
+          if (
+            newAccount &&
+            newDelta !== 0
+          ) {
+            await get().updateAccount({
+              ...newAccount,
+              balance:
+                newAccount.balance +
+                newDelta,
+            });
+          }
         }
       } else {
+        const oldDelta =
+          getTransactionBalanceDelta(
+            oldTransaction
+          );
+
+        const newDelta =
+          getTransactionBalanceDelta(
+            tx
+          );
+
+        const oldAccount =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                oldTransaction.accountId
+            );
+
+        const newAccount =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                tx.accountId
+            );
+
         /*
-         * Reverse the old account.
+         * Same account:
+         *
+         * new balance =
+         * old balance
+         * - old transaction effect
+         * + new transaction effect
          */
         if (
           oldAccount &&
-          oldDelta !== 0
-        ) {
-          await get().updateAccount({
-            ...oldAccount,
-            balance:
-              oldAccount.balance -
-              oldDelta,
-          });
-        }
-
-        /*
-         * Apply the new account.
-         */
-        if (
           newAccount &&
-          newDelta !== 0
+          oldAccount.id ===
+            newAccount.id
         ) {
-          await get().updateAccount({
-            ...newAccount,
-            balance:
-              newAccount.balance +
-              newDelta,
-          });
+          const netDelta =
+            newDelta -
+            oldDelta;
+
+          if (
+            netDelta !== 0
+          ) {
+            await get().updateAccount({
+              ...newAccount,
+              balance:
+                newAccount.balance +
+                netDelta,
+            });
+          }
+        } else {
+          /*
+           * Reverse the old account.
+           */
+          if (
+            oldAccount &&
+            oldDelta !== 0
+          ) {
+            await get().updateAccount({
+              ...oldAccount,
+              balance:
+                oldAccount.balance -
+                oldDelta,
+            });
+          }
+
+          /*
+           * Apply the new account.
+           */
+          if (
+            newAccount &&
+            newDelta !== 0
+          ) {
+            await get().updateAccount({
+              ...newAccount,
+              balance:
+                newAccount.balance +
+                newDelta,
+            });
+          }
         }
       }
     }
@@ -578,72 +1133,21 @@ const useFinanceStore = create((set, get) => ({
       ) {
         /*
          * TRANSFER has a zero delta in getTransactionBalanceDelta()
-         * because it moves two accounts, not one. Its creation/edit
-         * balance movement is handled explicitly by PunchCard and
-         * TransferModal, so its deletion reversal must be handled
-         * explicitly here too.
+         * because it moves two accounts, not one. Its balance
+         * movement (creation, editing, and this deletion reversal
+         * alike) is handled by the single centralized
+         * applyTransferBalanceEffect() helper — sign -1 reverses
+         * exactly what sign +1 originally applied:
          *
          * source += original source amount
          * destination -= original received amount
          *   (received = amount * exchangeRate for cross-currency,
          *    otherwise received = amount)
          */
-        const sourceAccount =
-          useFinanceStore
-            .getState()
-            .accounts
-            .find(
-              (a) =>
-                a.id ===
-                transaction.accountId
-            );
-
-        const destinationAccount =
-          useFinanceStore
-            .getState()
-            .accounts
-            .find(
-              (a) =>
-                a.id ===
-                transaction.toAccountId
-            );
-
-        const sourceAmount =
-          Number(
-            transaction.amount
-          ) || 0;
-
-        const receivedAmount =
-          transaction.exchangeRate
-            ? sourceAmount *
-              Number(
-                transaction.exchangeRate
-              )
-            : sourceAmount;
-
-        if (
-          sourceAccount &&
-          sourceAmount !== 0
-        ) {
-          await get().updateAccount({
-            ...sourceAccount,
-            balance:
-              sourceAccount.balance +
-              sourceAmount,
-          });
-        }
-
-        if (
-          destinationAccount &&
-          receivedAmount !== 0
-        ) {
-          await get().updateAccount({
-            ...destinationAccount,
-            balance:
-              destinationAccount.balance -
-              receivedAmount,
-          });
-        }
+        await get().applyTransferBalanceEffect(
+          transaction,
+          -1
+        );
       } else {
         const delta =
           getTransactionBalanceDelta(
