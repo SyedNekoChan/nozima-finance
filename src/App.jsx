@@ -32,7 +32,7 @@ export default function App() {
   const ActiveTabComponent = TAB_COMPONENTS[activeTab] || Dashboard;
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
+    <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
       <Header sync={sync} />
       <main className="relative flex-1 min-h-0 overflow-hidden">
         <Anomaly />
