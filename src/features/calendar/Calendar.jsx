@@ -19,7 +19,6 @@ const parseTxDate = (dateStr) => {
 
 export default function Calendar() {
   const transactions = useFinanceStore((s) => s.transactions);
-  const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const getMonthlyBudgetUZS = useFinanceStore((s) => s.getMonthlyBudgetUZS);
   const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
@@ -33,11 +32,13 @@ export default function Calendar() {
 
   const computedDailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
-  // resolves a transaction's amount into UZS using its account's currency
+  // resolves a transaction's amount into UZS using its OWN stored
+  // currency snapshot (tx.currency), not the current account's
+  // currency — an account's currency can be edited after the fact,
+  // and historical transactions must keep interpreting their
+  // original amount under the currency they were recorded in.
   const toUZS = (tx) => {
-    const account = accounts.find((a) => a.id === tx.accountId);
-    const currency = account ? account.currency : 'UZS';
-    return convertToBase(tx.amount, currency, exchangeRates);
+    return convertToBase(tx.amount, tx.currency, exchangeRates);
   };
 
   const monthTx = useMemo(() => {
@@ -55,7 +56,7 @@ export default function Calendar() {
       if (tx.type === 'EXPENSE') expense += toUZS(tx);
     }
     return { totalIn: income, totalOut: expense };
-  }, [monthTx, accounts, exchangeRates]);
+  }, [monthTx, exchangeRates]);
 
   // sum of EXPENSE transactions for a given day-of-month, in UZS
   const getDaySpending = (day) => {

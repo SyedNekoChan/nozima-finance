@@ -9,7 +9,6 @@ const FALLBACK_ALLOWANCE = 100000;
 
 export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const transactions = useFinanceStore((s) => s.transactions);
-  const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
   const setActiveTab = useFinanceStore((s) => s.setActiveTab);
@@ -30,12 +29,13 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
     let sum = 0;
     for (const tx of dayTransactions) {
       if (tx.type !== 'EXPENSE') continue;
-      const account = accounts.find((a) => a.id === tx.accountId);
-      const currency = account ? account.currency : 'UZS';
-      sum += convertToBase(tx.amount, currency, exchangeRates);
+      // uses tx.currency (the historical snapshot), not the current
+      // account's currency, so an account currency change afterward
+      // cannot retroactively reinterpret this transaction's amount
+      sum += convertToBase(tx.amount, tx.currency, exchangeRates);
     }
     return sum;
-  }, [dayTransactions, accounts, exchangeRates]);
+  }, [dayTransactions, exchangeRates]);
 
   const status = spentToday > dailyAllowance ? 'OVER' : 'UNDER';
 
