@@ -3,18 +3,19 @@ import useFinanceStore from '../../hooks/useFinanceStore.js';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import { formatAmount, parseAmount } from '../../lib/currency.js';
+import { getTodayDateString } from '../../lib/date.js';
 
 export default function TransferModal({ isOpen, onClose, sourceAccount }) {
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
-  const updateAccount = useFinanceStore((s) => s.updateAccount);
-  const addTransaction = useFinanceStore((s) => s.addTransaction);
+  const createTransfer = useFinanceStore((s) => s.createTransfer);
 
   const [destinationId, setDestinationId] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [note, setNote] = useState('');
   const [rateInput, setRateInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // reset form whenever a new transfer session starts
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
     setNote('');
     setRateInput('');
     setErrorMsg('');
+    setIsSubmitting(false);
   }, [sourceAccount, isOpen]);
 
   const availableDestinations = useMemo(
@@ -63,6 +65,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
   if (!sourceAccount) return null;
 
   const handleClose = () => {
+    if (isSubmitting) return;
     setDestinationId('');
     setAmountInput('');
     setNote('');
@@ -71,46 +74,55 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
     onClose();
   };
 
-  const handleTransfer = () => {
+  // The centralized store-level createTransfer() action owns every part of
+  // the transfer's balance math (validation, same/cross-currency handling,
+  // source/destination updates, persistence). This component only collects
+  // input and forwards it — it never computes or applies a balance itself.
+  const handleTransfer = async () => {
+    // Guards against rapid double-click / repeated submission: once a
+    // submission is in flight, further clicks are ignored until it
+    // resolves (the button is also disabled below for the same reason).
+    if (isSubmitting) return;
+
     if (!destinationAccount) {
       setErrorMsg('SELECT DESTINATION');
       return;
     }
+
     const amt = parseAmount(amountInput);
     if (isNaN(amt) || amt <= 0) {
       setErrorMsg('INVALID AMOUNT');
       return;
     }
-    let rate = null;
+
     if (isCrossCurrency) {
-      rate = parseAmount(rateInput);
+      const rate = parseAmount(rateInput);
       if (isNaN(rate) || rate <= 0) {
         setErrorMsg('INVALID RATE');
         return;
       }
     }
-    const finalReceived = isCrossCurrency ? amt * rate : amt;
 
-    const tx = {
-      id: crypto.randomUUID(),
-      date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      type: 'TRANSFER',
-      amount: amt,
-      currency: sourceAccount.currency,
-      accountId: sourceAccount.id,
-      toAccountId: destinationAccount.id,
-      category: null,
-      note: note.trim() || 'Transfer',
-      imageData: null,
-      createdAt: new Date().toISOString(),
-      exchangeRate: isCrossCurrency ? rate : null,
-    };
+    setIsSubmitting(true);
+    setErrorMsg('');
 
-    addTransaction(tx);
-    updateAccount({ ...sourceAccount, balance: sourceAccount.balance - amt });
-    updateAccount({ ...destinationAccount, balance: destinationAccount.balance + finalReceived });
+    try {
+      await createTransfer({
+        sourceAccountId: sourceAccount.id,
+        destinationAccountId: destinationAccount.id,
+        amount: amt,
+        date: getTodayDateString(),
+        note,
+        exchangeRate: isCrossCurrency ? rateInput : null,
+      });
 
-    handleClose();
+      // The modal only closes after the full transfer (persistence +
+      // both account balance updates) has completed successfully.
+      handleClose();
+    } catch (err) {
+      setErrorMsg(err?.message || 'TRANSFER FAILED');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -136,6 +148,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
               <Button
                 key={account.id}
                 active={destinationId === account.id}
+                disabled={isSubmitting}
                 onClick={() => {
                   setDestinationId(account.id);
                   setErrorMsg('');
@@ -156,7 +169,8 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
           value={amountInput}
           onChange={(e) => setAmountInput(e.target.value)}
           placeholder="0"
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-2xl"
+          disabled={isSubmitting}
+          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-2xl disabled:opacity-40"
         />
         <span className="font-mono text-xs text-gray-500 mt-1 block">{sourceAccount.currency}</span>
       </div>
@@ -172,7 +186,8 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
             inputMode="decimal"
             value={rateInput}
             onChange={(e) => setRateInput(e.target.value)}
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm"
+            disabled={isSubmitting}
+            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm disabled:opacity-40"
           />
           {showReceived && (
             <div className="mt-3 font-mono text-sm text-gray-400">
@@ -195,7 +210,8 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="optional"
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm"
+          disabled={isSubmitting}
+          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm disabled:opacity-40"
         />
       </div>
 
@@ -204,8 +220,12 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
       )}
 
       <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
-        <Button onClick={handleTransfer} active={true} disabled={!destinationId || !amountInput}>
-          CONFIRM TRANSFER
+        <Button
+          onClick={handleTransfer}
+          active={true}
+          disabled={isSubmitting || !destinationId || !amountInput}
+        >
+          {isSubmitting ? 'TRANSFERRING...' : 'CONFIRM TRANSFER'}
         </Button>
       </div>
     </Modal>
