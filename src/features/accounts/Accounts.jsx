@@ -35,12 +35,12 @@ export default function Accounts() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-800">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b border-gray-800">
+        <div className="min-w-0">
           <span className="font-mono text-sm uppercase tracking-widest text-gray-500 block mb-1">
             [ &gt; ACCOUNTS ]
           </span>
-          <span className="font-mono text-3xl font-bold">{formatAmount(totalUZS, 'UZS')}</span>
+          <span className="font-mono text-2xl sm:text-3xl font-bold break-words">{formatAmount(totalUZS, 'UZS')}</span>
         </div>
         <Button onClick={() => setIsNewOpen(true)} active={true}>
           + NEW ACCOUNT
