@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import useFinanceStore from '../hooks/useFinanceStore.js';
 import { isSpecialDate } from '../lib/date.js';
@@ -52,6 +52,17 @@ function SpherePoints() {
 
   const clearAnomalyEvent = useFinanceStore(
     (s) => s.clearAnomalyEvent
+  );
+
+  /*
+   * Persistent STATE (not the one-shot event): re-derived from
+   * budget/spend on every render. Drives an ongoing "living" idle
+   * reaction — ambient breathing gets stronger and less regular
+   * while over budget — fully independent of anomalyEvent, so it
+   * cannot repeat-fire and needs no clearing.
+   */
+  const isOverBudget = useFinanceStore(
+    (s) => s.getIsOverBudgetThisMonth()
   );
 
   const geometry = useMemo(
@@ -170,14 +181,20 @@ function SpherePoints() {
       state.clock.elapsedTime;
 
     const isGlitching =
-      performance.now() <
+      performance.now() 
       glitchUntilRef.current;
 
-    // Rotation: frozen during glitch.
+    // Rotation: frozen during glitch. Slightly faster, still linear,
+    // while the persistent over-budget state holds — restrained
+    // "alive" motion, not a spring/bounce.
     if (!isGlitching) {
+      const revolutionSeconds =
+        isOverBudget ? 30 : 45;
+
       rotationRef.current +=
         delta *
-        ((Math.PI * 2) / 45);
+        ((Math.PI * 2) /
+          revolutionSeconds);
     }
 
     if (pointsRef.current) {
@@ -279,13 +296,22 @@ function SpherePoints() {
         baseNormals[i3 + 2]
       );
 
-      // Idle breathing.
+      // Idle breathing. Persistent over-budget STATE (not the
+      // one-shot event) widens and roughens this, so the sphere reads
+      // as "currently living in an anomalous state" continuously,
+      // distinct from the sharp one-shot OVERSPEND glitch below.
+      const breathAmplitude =
+        isOverBudget ? 0.07 : 0.03;
+
+      const breathSpeed =
+        isOverBudget ? 0.9 : 0.5;
+
       const idleDisp =
         Math.sin(
-          time * 0.5 +
+          time * breathSpeed +
             tmpBase.x * 2 +
             tmpBase.y * 2
-        ) * 0.03;
+        ) * breathAmplitude;
 
       tmpVec
         .copy(tmpBase)
@@ -377,8 +403,11 @@ function SpherePoints() {
     posAttr.needsUpdate = true;
 
     if (materialRef.current) {
-      materialRef.current.opacity =
-        isGlitching ? 0.9 : 0.6;
+      materialRef.current.opacity = isGlitching
+        ? 0.9
+        : isOverBudget
+        ? 0.75
+        : 0.6;
     }
   });
 
@@ -392,10 +421,53 @@ function SpherePoints() {
     };
   }, [geometry]);
 
+  /*
+   * "Bleeds from right" (design.md) assumes a wide viewport. On a
+   * narrow/tall mobile canvas the perspective frustum at this camera
+   * distance is much narrower horizontally than on desktop, so a
+   * fixed radius+offset pushes the sphere partly or fully outside the
+   * visible frustum — the actual cause of clipping/disappearance on
+   * small screens, not a CSS clip. `viewport.width` (from
+   * useThree(), react-three-fiber's own frustum-derived world width
+   * at the camera's focal plane) is used directly rather than
+   * reimplementing the FOV/distance trigonometry, so this always
+   * matches the real camera regardless of future camera tuning.
+   *
+   * Strategy: keep the DEFAULT radius (2) and offset (2.5) — the
+   * original desktop composition — whenever the frustum comfortably
+   * fits them with a safety margin. Once the viewport narrows enough
+   * that even a centered default-radius sphere would clip, shrink the
+   * radius just enough to fit (never centered offset AND full radius
+   * fighting each other, never arbitrarily tiny — down to ~1.47 at
+   * the narrowest required width, a ~26% reduction, not a shrink to
+   * nothing). This is continuous math, not a new breakpoint.
+   */
+  const { viewport } = useThree();
+
+  const usableHalfWidth =
+    (viewport.width / 2) * 0.92;
+
+  const sphereRadius = Math.min(
+    2,
+    usableHalfWidth
+  );
+
+  const offsetX = Math.min(
+    2.5,
+    Math.max(
+      0,
+      usableHalfWidth - sphereRadius
+    )
+  );
+
+  const sphereScale =
+    sphereRadius / 2;
+
   return (
     <points
       ref={pointsRef}
-      position={[2.5, 0, 0]}
+      position={[offsetX, 0, 0]}
+      scale={sphereScale}
     >
       <primitive
         object={geometry}
@@ -416,24 +488,100 @@ function SpherePoints() {
   );
 }
 
-export default function Anomaly() {
+/*
+ * Persistent status readout. Purely level-based (re-reads store state
+ * on every render) — completely separate from anomalyEvent, so it
+ * can never repeat-fire and needs no dismiss/clear. It is the
+ * design.md "[ ! OVER BUDGET ! ]" indicator, now surfaced once at the
+ * app shell so it stays visible across Dashboard/Ledger/Calendar/
+ * Accounts without duplicating the anomaly component per page.
+ * AsciiProgressBar (Dashboard's budget bar) intentionally no longer
+ * renders this same string, so this is the single authoritative
+ * OVER BUDGET indicator on every screen including Dashboard.
+ *
+ * Positioned as a small fixed terminal readout rather than a toast:
+ * top-anchored, inset from the edges by viewport-relative spacing
+ * plus safe-area insets on all three sides so it never touches the
+ * screen edge (or sits under a notch/rounded corner) on any phone,
+ * sized with clamp-style responsive text so it stays legible without
+ * becoming either a tiny effect or an oversized banner, and sits at
+ * z-20 — above ordinary tab content (z-10) but below Header (z-30),
+ * Footer (z-50) and Modal (z-50), so it never covers navigation or
+ * dialogs.
+ */
+function OverBudgetIndicator({ isOverBudget }) {
+  if (!isOverBudget) return null;
+
   return (
-    <div className="absolute inset-0 z-0 !pointer-events-none blur-2xl opacity-30 mix-blend-screen overflow-hidden">
-      <Canvas
+    <div
+      className="absolute z-20 pointer-events-none flex justify-center"
+      style={{
+        top: 'max(0.5rem, env(safe-area-inset-top))',
+        left: 'max(0.5rem, env(safe-area-inset-left))',
+        right: 'max(0.5rem, env(safe-area-inset-right))',
+      }}
+    >
+      <span
+        className="font-mono font-bold uppercase tracking-widest text-white bg-black border-2 border-white px-3 py-1 whitespace-nowrap brutalist-overbudget-pulse"
         style={{
-          pointerEvents: 'none',
-        }}
-        camera={{
-          position: [0, 0, 6],
-          fov: 60,
-        }}
-        dpr={[1, 1.5]}
-        gl={{
-          antialias: false,
+          fontSize: 'clamp(0.65rem, 3.2vw, 0.95rem)',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
-        <SpherePoints />
-      </Canvas>
+        [ ! OVER BUDGET ! ]
+      </span>
     </div>
+  );
+}
+
+export default function Anomaly() {
+  const isOverBudget = useFinanceStore(
+    (s) => s.getIsOverBudgetThisMonth()
+  );
+
+  return (
+    <>
+      {/*
+        Ambient sphere layer stays at z-0 (behind every tab's z-10
+        content), exactly as design.md specifies — a background
+        presence, not a foreground one.
+      */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <div
+          className={`absolute inset-0 !pointer-events-none mix-blend-screen transition-none ${
+            isOverBudget
+              ? 'blur-xl opacity-50'
+              : 'blur-2xl opacity-30'
+          }`}
+        >
+          <Canvas
+            style={{
+              pointerEvents: 'none',
+            }}
+            camera={{
+              position: [0, 0, 6],
+              fov: 60,
+            }}
+            dpr={[1, 1.5]}
+            gl={{
+              antialias: false,
+            }}
+          >
+            <SpherePoints />
+          </Canvas>
+        </div>
+      </div>
+
+      {/*
+        The status readout is a SEPARATE top-level layer (its own
+        stacking context, z-20) rather than nested inside the z-0
+        sphere wrapper above — nesting it there would have capped its
+        effective stacking order at z-0, hiding it behind every tab's
+        z-10 content on Dashboard/Ledger/Calendar/Accounts alike.
+      */}
+      <OverBudgetIndicator isOverBudget={isOverBudget} />
+    </>
   );
 }
