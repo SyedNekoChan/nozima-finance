@@ -426,26 +426,46 @@ function SpherePoints() {
    * narrow/tall mobile canvas the perspective frustum at this camera
    * distance is much narrower horizontally than on desktop, so a
    * fixed radius+offset pushes the sphere partly or fully outside the
-   * visible frustum — the actual cause of clipping/disappearance on
-   * small screens, not a CSS clip. `viewport.width` (from
-   * useThree(), react-three-fiber's own frustum-derived world width
-   * at the camera's focal plane) is used directly rather than
-   * reimplementing the FOV/distance trigonometry, so this always
-   * matches the real camera regardless of future camera tuning.
+   * visible frustum — the primary cause of geometric clipping on
+   * small screens, not a CSS clip.
    *
-   * Strategy: keep the DEFAULT radius (2) and offset (2.5) — the
-   * original desktop composition — whenever the frustum comfortably
-   * fits them with a safety margin. Once the viewport narrows enough
-   * that even a centered default-radius sphere would clip, shrink the
-   * radius just enough to fit (never centered offset AND full radius
-   * fighting each other, never arbitrarily tiny — down to ~1.47 at
-   * the narrowest required width, a ~26% reduction, not a shrink to
-   * nothing). This is continuous math, not a new breakpoint.
+   * There is a second, independent clipping source layered on top of
+   * that: the whole sphere layer carries a CSS `blur` filter (see
+   * Anomaly() below), and that blurred visual bloom is itself hard-
+   * clipped by the wrapper's `overflow-hidden` at the exact viewport
+   * edge. The blur's bloom, in world-space units, is NOT the same as
+   * a fixed percentage margin — it scales with how many world units
+   * one CSS pixel covers, which itself shrinks as the viewport gets
+   * wider (more world width packed into the same frustum) and grows
+   * on narrow phones (less world width per screen, so each CSS pixel
+   * of blur "costs" more world-space). At the required mobile widths
+   * this blur-bloom margin is larger than a flat 8% cushion would
+   * cover, so the earlier fixed-percentage margin under-margined and
+   * still let the blurred edge get visibly clipped.
+   *
+   * `size.width` (CSS pixels) and `viewport.width` (world units) are
+   * both already known to react-three-fiber for the SAME canvas, so
+   * their ratio gives an exact world-units-per-CSS-pixel conversion
+   * with no separate trigonometry to keep in sync with the camera.
+   * BLUR_MAX_PX matches the larger of the two blur classes actually
+   * applied below (blur-2xl, the non-anomalous default state) so the
+   * margin covers the worst case regardless of which state is active.
    */
-  const { viewport } = useThree();
+  const { viewport, size } = useThree();
 
-  const usableHalfWidth =
-    (viewport.width / 2) * 0.92;
+  const worldUnitsPerPixel =
+    viewport.width / size.width;
+
+  const BLUR_MAX_PX = 40; // Tailwind blur-2xl
+
+  const blurMarginWorld =
+    BLUR_MAX_PX * worldUnitsPerPixel;
+
+  const usableHalfWidth = Math.max(
+    0,
+    viewport.width / 2 -
+      blurMarginWorld
+  );
 
   const sphereRadius = Math.min(
     2,
