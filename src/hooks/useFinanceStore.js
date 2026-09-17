@@ -760,20 +760,42 @@ const useFinanceStore = create((set, get) => ({
       };
     }
 
-    const budget =
-      get().getMonthlyBudgetUZS();
-
     if (
-      budget !== null &&
-      get().getSpentThisMonthInUZS() >
-        budget
+      record.type ===
+      'EXPENSE'
     ) {
-      anomalyEvent = {
-        type: 'OVERSPEND',
-        id: record.id,
-        accountId:
-          record.accountId,
-      };
+      const budget =
+        get().getMonthlyBudgetUZS();
+
+      if (budget !== null) {
+        const spentAfter =
+          get().getSpentThisMonthInUZS();
+
+        const spentBefore =
+          get().getSpentThisMonthInUZS(
+            record.id
+          );
+
+        /*
+         * Edge-triggered: only fire OVERSPEND on the write that
+         * carries spending from at-or-under budget to over budget.
+         * A level check here (spentAfter > budget alone) would
+         * re-fire OVERSPEND on every later transaction of any type
+         * for the rest of the month, clobbering their real reactions.
+         */
+        if (
+          spentBefore <=
+            budget &&
+          spentAfter > budget
+        ) {
+          anomalyEvent = {
+            type: 'OVERSPEND',
+            id: record.id,
+            accountId:
+              record.accountId,
+          };
+        }
+      }
     }
 
     set({
@@ -1057,20 +1079,41 @@ const useFinanceStore = create((set, get) => ({
       };
     }
 
-    const budget =
-      get().getMonthlyBudgetUZS();
-
     if (
-      budget !== null &&
-      get().getSpentThisMonthInUZS() >
-        budget
+      tx.type === 'EXPENSE'
     ) {
-      anomalyEvent = {
-        type: 'OVERSPEND',
-        id: tx.id,
-        accountId:
-          tx.accountId,
-      };
+      const budget =
+        get().getMonthlyBudgetUZS();
+
+      if (budget !== null) {
+        const spentAfter =
+          get().getSpentThisMonthInUZS();
+
+        const spentBefore =
+          get().getSpentThisMonthInUZS(
+            tx.id
+          );
+
+        /*
+         * Edge-triggered: only fire OVERSPEND on the write that
+         * carries spending from at-or-under budget to over budget.
+         * A level check here (spentAfter > budget alone) would
+         * re-fire OVERSPEND on every later transaction of any type
+         * for the rest of the month, clobbering their real reactions.
+         */
+        if (
+          spentBefore <=
+            budget &&
+          spentAfter > budget
+        ) {
+          anomalyEvent = {
+            type: 'OVERSPEND',
+            id: tx.id,
+            accountId:
+              tx.accountId,
+          };
+        }
+      }
     }
 
     set({
@@ -1448,8 +1491,11 @@ const useFinanceStore = create((set, get) => ({
       );
     },
 
+  // excludeId: skip one transaction's own contribution, so callers can
+  // compare "spend including this write" vs "spend without it" to
+  // detect the moment a single write crosses the budget threshold.
   getSpentThisMonthInUZS:
-    () => {
+    (excludeId) => {
       const {
         transactions,
         exchangeRates,
@@ -1466,6 +1512,14 @@ const useFinanceStore = create((set, get) => ({
 
       return transactions
         .filter((t) => {
+          if (
+            excludeId &&
+            t.id ===
+              excludeId
+          ) {
+            return false;
+          }
+
           const [
             ,
             mm,
@@ -1527,6 +1581,31 @@ const useFinanceStore = create((set, get) => ({
       return (
         budget /
         getDaysInCurrentMonth()
+      );
+    },
+
+  /*
+   * Persistent anomaly STATE — "are we currently over budget" — kept
+   * fully separate from anomalyEvent, which represents a one-shot
+   * occurrence. This is a pure re-derivation from budget/spend on
+   * every call, so it is naturally level-based: it stays true for as
+   * long as the condition holds and needs no clearing, and it never
+   * fires or re-fires anything by itself.
+   */
+  getIsOverBudgetThisMonth:
+    () => {
+      const budget =
+        get().getMonthlyBudgetUZS();
+
+      if (
+        budget === null
+      ) {
+        return false;
+      }
+
+      return (
+        get().getSpentThisMonthInUZS() >
+        budget
       );
     },
 }));
