@@ -422,41 +422,20 @@ function SpherePoints() {
   }, [geometry]);
 
   /*
-   * "Bleeds from right" (design.md) assumes a wide viewport. On a
-   * narrow/tall mobile canvas the perspective frustum at this camera
-   * distance is much narrower horizontally than on desktop, so a
-   * fixed radius+offset pushes the sphere partly or fully outside the
-   * visible frustum — the primary cause of geometric clipping on
-   * small screens, not a CSS clip.
-   *
-   * There is a second, independent clipping source layered on top of
-   * that: the whole sphere layer carries a CSS `blur` filter (see
-   * Anomaly() below), and that blurred visual bloom is itself hard-
-   * clipped by the wrapper's `overflow-hidden` at the exact viewport
-   * edge. The blur's bloom, in world-space units, is NOT the same as
-   * a fixed percentage margin — it scales with how many world units
-   * one CSS pixel covers, which itself shrinks as the viewport gets
-   * wider (more world width packed into the same frustum) and grows
-   * on narrow phones (less world width per screen, so each CSS pixel
-   * of blur "costs" more world-space). At the required mobile widths
-   * this blur-bloom margin is larger than a flat 8% cushion would
-   * cover, so the earlier fixed-percentage margin under-margined and
-   * still let the blurred edge get visibly clipped.
-   *
    * `size.width` (CSS pixels) and `viewport.width` (world units) are
    * both already known to react-three-fiber for the SAME canvas, so
    * their ratio gives an exact world-units-per-CSS-pixel conversion
    * with no separate trigonometry to keep in sync with the camera.
    * BLUR_MAX_PX matches the larger of the two blur classes actually
-   * applied below (blur-2xl, the non-anomalous default state) so the
-   * margin covers the worst case regardless of which state is active.
+   * applied below (blur-lg, the over-budget state) so the margin
+   * covers the worst case regardless of which state is active.
    */
   const { viewport, size } = useThree();
 
   const worldUnitsPerPixel =
     viewport.width / size.width;
 
-  const BLUR_MAX_PX = 40; // Tailwind blur-2xl
+  const BLUR_MAX_PX = 16; // Tailwind blur-lg
 
   const blurMarginWorld =
     BLUR_MAX_PX * worldUnitsPerPixel;
@@ -497,7 +476,7 @@ function SpherePoints() {
 
       <pointsMaterial
         ref={materialRef}
-        size={0.04}
+        size={0.07}
         color="#888888"
         sizeAttenuation
         transparent
@@ -580,10 +559,10 @@ export default function Anomaly() {
       */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         <div
-          className={`absolute inset-0 !pointer-events-none mix-blend-screen transition-none ${
+          className={`absolute inset-0 !pointer-events-none transition-none ${
             isOverBudget
-              ? 'blur-xl opacity-50'
-              : 'blur-2xl opacity-30'
+              ? 'blur-lg opacity-70'
+              : 'blur-md opacity-45'
           }`}
         >
           <Canvas
