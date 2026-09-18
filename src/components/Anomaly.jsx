@@ -521,19 +521,9 @@ function OverBudgetIndicator({ isOverBudget }) {
       }}
     >
       <span
-        className="font-mono font-bold uppercase tracking-widest text-white bg-black border-2 border-white px-3 py-0.5 whitespace-nowrap brutalist-overbudget-pulse"
+        className="font-mono font-bold uppercase tracking-widest text-white bg-black border border-white px-1.5 py-px whitespace-nowrap brutalist-overbudget-pulse"
         style={{
-          /*
-           * At the narrowest required mobile widths (320-430px), this
-           * badge's own rendered height sits close to where the top
-           * tab's own top-of-content glyphs begin (e.g. Dashboard's
-           * HeroStats heading, right below Dashboard's own top
-           * padding) — margins here were tightened slightly (top
-           * inset, vertical padding, font-size ceiling) specifically
-           * to keep clearance without shrinking the badge to the
-           * point of being a "tiny effect".
-           */
-          fontSize: 'clamp(0.6rem, 3vw, 0.85rem)',
+          fontSize: 'clamp(0.5rem, 2.2vw, 0.65rem)',
           maxWidth: '100%',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
