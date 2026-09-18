@@ -37,3 +37,15 @@ html, body, #root {
   animation: heart-pulse 0.5s linear;
   animation-iteration-count: 3;
 }
+
+/* Persistent OVER BUDGET readout: restrained continuous border/opacity
+   pulse (linear only, no scale/bounce) so it reads as an ongoing
+   living-state indicator rather than a one-shot toast notification */
+@keyframes overbudget-pulse {
+  0%, 100% { opacity: 1; border-color: #ffffff; }
+  50% { opacity: 0.7; border-color: #888888; }
+}
+
+.brutalist-overbudget-pulse {
+  animation: overbudget-pulse 1.6s linear infinite;
+}
