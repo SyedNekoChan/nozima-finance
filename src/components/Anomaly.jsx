@@ -578,7 +578,7 @@ export default function Anomaly() {
         content), exactly as design.md specifies — a background
         presence, not a foreground one.
       */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         <div
           className={`absolute inset-0 !pointer-events-none mix-blend-screen transition-none ${
             isOverBudget
