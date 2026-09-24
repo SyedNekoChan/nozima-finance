@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount } from '../../lib/currency.js';
 import Button from '../../components/Button.jsx';
+import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 
 export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
   const accounts = useFinanceStore((s) => s.accounts);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const sourceAccount = accounts.find((a) => a.id === tx.accountId);
   const destAccount = tx.type === 'TRANSFER' ? accounts.find((a) => a.id === tx.toAccountId) : null;
@@ -43,7 +46,11 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
           <img
             src={tx.imageData}
             alt="receipt"
-            className="mt-2 w-12 h-12 object-cover border-2 border-white filter grayscale contrast-125"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewerOpen(true);
+            }}
+            className="mt-2 w-12 h-12 object-cover border-2 border-white filter grayscale contrast-125 cursor-pointer"
           />
         )}
       </div>
@@ -64,6 +71,12 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
           </Button>
         </div>
       </div>
+
+      <ImageViewerModal
+        isOpen={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        imageData={tx.imageData}
+      />
     </div>
   );
 }
