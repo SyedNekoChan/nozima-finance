@@ -6,6 +6,7 @@ import {
 } from '../../lib/currency.js';
 import { getTodayDateString } from '../../lib/date.js';
 import Modal from '../../components/Modal.jsx';
+import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 import Button from '../../components/Button.jsx';
 
 const CATEGORIES = [
@@ -77,6 +78,11 @@ export default function PunchCard({
 
   const [imageData, setImageData] =
     useState(null);
+
+  const [
+    imageViewerOpen,
+    setImageViewerOpen,
+  ] = useState(false);
 
   const [
     exchangeRateInput,
@@ -438,10 +444,11 @@ export default function PunchCard({
     };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={
         editingTx
           ? 'EDIT ENTRY'
           : 'NEW LEDGER ENTRY'
@@ -660,7 +667,12 @@ export default function PunchCard({
             <img
               src={imageData}
               alt="receipt"
-              className="w-24 h-24 object-cover border-2 border-white filter grayscale contrast-125"
+              onClick={() =>
+                setImageViewerOpen(
+                  true
+                )
+              }
+              className="w-12 h-12 object-cover border-2 border-white filter grayscale contrast-125 cursor-pointer"
             />
 
             <div className="mt-2">
@@ -760,6 +772,15 @@ export default function PunchCard({
               : 'SAVE ENTRY'}
         </Button>
       </div>
-    </Modal>
+      </Modal>
+
+      <ImageViewerModal
+        isOpen={imageViewerOpen}
+        onClose={() =>
+          setImageViewerOpen(false)
+        }
+        imageData={imageData}
+      />
+    </>
   );
 }
