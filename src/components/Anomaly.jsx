@@ -41,6 +41,124 @@ function heartTarget(base) {
   );
 }
 
+const MAX_OFFSET_PER_VERTEX = 0.6;
+
+/*
+ * Apply ONE financial event's permanent contribution to the
+ * accumulated-offset buffer, in place. Called exactly once per event
+ * (from the anomalyEvent useEffect), never per-frame.
+ *
+ * Each event type gets a visually distinct, spatially-localized-or-
+ * global signature so the sphere's evolving shape stays legible as
+ * "more income happened here" vs "more spend happened there" rather
+ * than washing into uniform noise:
+ *
+ * - INCOME:  a localized outward bump at a random point (spike).
+ * - EXPENSE: a localized inward dent at a random point.
+ * - TRANSFER: a low-amplitude wave applied globally (using each
+ *   vertex's own base position, not a random target), so transfers
+ *   read as a ripple across the whole sphere rather than one spot —
+ *   consistent with design.md's "rippling wave" — and repeated
+ *   transfers keep adding gentle ripples rather than one single dent.
+ * - OVERSPEND: same shape as EXPENSE (a harder inward dent), since
+ *   overspending IS an expense that crossed the budget threshold;
+ *   the violent glitch remains a SEPARATE, transient, non-accumulating
+ *   effect layered on top by the existing eventsRef/glitch system.
+ *
+ * Every contribution is added onto whatever is already in the buffer
+ * (never overwritten), and each vertex's total is clamped to
+ * +/-MAX_OFFSET_PER_VERTEX so unbounded activity roughens the sphere
+ * further without any single point ever spiking off to infinity.
+ */
+function applyPersistentDisplacement(
+  offsets,
+  basePositions,
+  baseNormals,
+  vertexCount,
+  type
+) {
+  const tmpB = new THREE.Vector3();
+  const tmpN = new THREE.Vector3();
+
+  if (type === 'TRANSFER') {
+    // Global low-amplitude ripple: every vertex gets a small nudge
+    // derived from its own position, so the whole sphere gains a
+    // subtle wave rather than one localized mark.
+    const amplitude = 0.025;
+    const frequency = 4.5;
+    const phase =
+      Math.random() * Math.PI * 2;
+
+    for (
+      let i = 0;
+      i < vertexCount;
+      i++
+    ) {
+      const i3 = i * 3;
+
+      tmpB.set(
+        basePositions[i3],
+        basePositions[i3 + 1],
+        basePositions[i3 + 2]
+      );
+
+      const wave =
+        Math.sin(
+          tmpB.x * frequency +
+            tmpB.y * frequency +
+            phase
+        ) * amplitude;
+
+      offsets[i] =
+        THREE.MathUtils.clamp(
+          offsets[i] + wave,
+          -MAX_OFFSET_PER_VERTEX,
+          MAX_OFFSET_PER_VERTEX
+        );
+    }
+
+    return;
+  }
+
+  // INCOME / EXPENSE / OVERSPEND: a localized bump or dent centered
+  // on a random point on the sphere, added onto the buffer.
+  const target = randomUnitVector();
+
+  const intensity =
+    type === 'INCOME' ? 0.35 : -0.3;
+
+  const spread = 6;
+
+  for (
+    let i = 0;
+    i < vertexCount;
+    i++
+  ) {
+    const i3 = i * 3;
+
+    tmpN.set(
+      baseNormals[i3],
+      baseNormals[i3 + 1],
+      baseNormals[i3 + 2]
+    );
+
+    const dist =
+      tmpN.distanceTo(target);
+
+    const falloff = Math.exp(
+      -dist * dist * spread
+    );
+
+    offsets[i] =
+      THREE.MathUtils.clamp(
+        offsets[i] +
+          intensity * falloff,
+        -MAX_OFFSET_PER_VERTEX,
+        MAX_OFFSET_PER_VERTEX
+      );
+  }
+}
+
 function SpherePoints() {
   const pointsRef = useRef();
   const geomRef = useRef();
@@ -84,6 +202,29 @@ function SpherePoints() {
 
   const vertexCount =
     basePositions.length / 3;
+
+  /*
+   * PERSISTENT accumulated per-vertex displacement, separate from the
+   * transient event system below. Unlike eventsRef (which decays via
+   * `life` and disappears), this buffer is written to ONCE per
+   * financial event — inside the anomalyEvent useEffect, never inside
+   * the per-frame loop — and then simply read every frame exactly
+   * like basePositions/baseNormals, alongside idle breathing and any
+   * active transient reaction. Because the per-frame loop always
+   * rebuilds tmpVec from tmpBase (the immutable unit-sphere vertex)
+   * and never writes back into this buffer or into basePositions
+   * itself, there is no frame-to-frame drift: re-rendering,
+   * re-mounting the glitch, or idle breathing can never accumulate
+   * additional displacement on their own — only a genuine new
+   * anomalyEvent can.
+   *
+   * Clamped per-vertex (see applyPersistentDisplacement) so repeated
+   * events roughen the sphere further without ever able to blow a
+   * single vertex out arbitrarily far.
+   */
+  const accumulatedOffsets = useRef(
+    new Float32Array(vertexCount)
+  );
 
   const eventsRef = useRef([]);
   const glitchUntilRef = useRef(0);
@@ -130,43 +271,61 @@ function SpherePoints() {
   useEffect(() => {
     if (!anomalyEvent) return;
 
-    const target = randomUnitVector();
-
-    let duration = 2.5;
-    let intensity = 0;
-
-    if (anomalyEvent.type === 'INCOME') {
-      intensity = 0.8;
-      duration = 2.5;
-    } else if (anomalyEvent.type === 'EXPENSE') {
-      intensity = -0.5;
-      duration = 2.5;
-    } else if (anomalyEvent.type === 'TRANSFER') {
-      intensity = 0.3;
-      duration = 3.0;
-    } else if (anomalyEvent.type === 'OVERSPEND') {
-      intensity = -0.6;
-      duration = 3.0;
-
-      glitchUntilRef.current =
-        performance.now() + 3000;
-    } else if (anomalyEvent.type === 'CELEBRATE') {
-      intensity = 0.6;
-      duration = 2.0;
+    if (
+      anomalyEvent.type === 'INCOME' ||
+      anomalyEvent.type === 'EXPENSE' ||
+      anomalyEvent.type === 'TRANSFER' ||
+      anomalyEvent.type === 'OVERSPEND'
+    ) {
+      /*
+       * Permanent contribution: written once, directly into the
+       * accumulated-offset buffer. This replaces the old transient
+       * "spike that decays back to the base sphere" behavior for
+       * these four event types — the sphere's shape now evolves
+       * with financial history instead of resetting.
+       */
+      applyPersistentDisplacement(
+        accumulatedOffsets.current,
+        basePositions,
+        baseNormals,
+        vertexCount,
+        anomalyEvent.type
+      );
     }
 
-    eventsRef.current.push({
-      type: anomalyEvent.type,
-      target,
-      life: 1.0,
-      duration,
-      intensity,
-    });
+    if (anomalyEvent.type === 'OVERSPEND') {
+      /*
+       * OVERSPEND additionally gets the existing strong, TRANSIENT
+       * glitch (violent jitter + 15% shrink) on top of the permanent
+       * dent applied above — the glitch itself still fully decays;
+       * only the underlying shape change from applyPersistentDisplacement
+       * remains afterward.
+       */
+      glitchUntilRef.current =
+        performance.now() + 3000;
+    } else if (
+      anomalyEvent.type === 'CELEBRATE'
+    ) {
+      // CELEBRATE is not a financial-history event (no store action
+      // currently dispatches it) — kept as the original one-shot,
+      // fully-transient reaction via eventsRef, unrelated to the
+      // persistent accumulation model above.
+      eventsRef.current.push({
+        type: 'CELEBRATE',
+        target: randomUnitVector(),
+        life: 1.0,
+        duration: 2.0,
+        intensity: 0.6,
+      });
+    }
 
     clearAnomalyEvent();
   }, [
     anomalyEvent,
     clearAnomalyEvent,
+    basePositions,
+    baseNormals,
+    vertexCount,
   ]);
 
   useFrame((state, delta) => {
@@ -313,14 +472,33 @@ function SpherePoints() {
             tmpBase.y * 2
         ) * breathAmplitude;
 
+      /*
+       * Persistent, ACCUMULATED displacement from financial history
+       * (INCOME/EXPENSE/TRANSFER/OVERSPEND) — read here as a stable
+       * input alongside idle breathing, exactly like basePositions/
+       * baseNormals. This is the vertex's evolving "shape", separate
+       * from the moment-to-moment idle wobble above: it only changes
+       * when applyPersistentDisplacement runs (once per event), never
+       * inside this per-frame loop, so summing it in here every frame
+       * cannot itself cause drift.
+       */
+      const persistentDisp =
+        accumulatedOffsets.current[
+          i
+        ];
+
       tmpVec
         .copy(tmpBase)
         .addScaledVector(
           tmpNormal,
-          idleDisp
+          idleDisp + persistentDisp
         );
 
-      // Financial-event reactions.
+      // Financial-event reactions still active in eventsRef are, as
+      // of the persistent-accumulation model above, CELEBRATE only —
+      // INCOME/EXPENSE/TRANSFER/OVERSPEND no longer push a transient
+      // entry here (their effect is the permanent offset applied
+      // above instead).
       for (
         let e = 0;
         e < events.length;
@@ -329,53 +507,30 @@ function SpherePoints() {
         const ev =
           events[e];
 
-        if (
-          ev.type === 'CELEBRATE'
-        ) {
-          tmpVec.addScaledVector(
-            tmpNormal,
-            ev.intensity * ev.life
-          );
-
-          continue;
-        }
-
-        const dist =
-          tmpNormal.distanceTo(
-            ev.target
-          );
-
-        const spread =
-          ev.type === 'TRANSFER'
-            ? 3
-            : 12;
-
-        const falloff =
-          Math.exp(
-            -dist * dist * spread
-          );
-
         tmpVec.addScaledVector(
           tmpNormal,
-          ev.intensity *
-            falloff *
-            ev.life
+          ev.intensity * ev.life
         );
       }
 
-      // Overspend glitch:
-      // jitter + shrink.
+      // Overspend glitch: jitter + shrink, layered ON TOP OF the
+      // persistently-displaced shape (tmpVec as already computed
+      // above), NOT a reset back to the raw base sphere — the
+      // permanent dent from this same OVERSPEND event must still be
+      // visible once the glitch itself ends. The 15% shrink is now a
+      // uniform scale of the CURRENT (persistent-offset-inclusive)
+      // vector rather than of the raw base, so it still reads as
+      // "shrink" during the glitch while preserving the evolving
+      // shape underneath once isGlitching ends.
       if (isGlitching) {
         const jitter =
           0.15 * Math.random() -
           0.075;
 
-        tmpVec
-          .copy(tmpBase)
-          .addScaledVector(
-            tmpNormal,
-            jitter
-          );
+        tmpVec.addScaledVector(
+          tmpNormal,
+          jitter
+        );
 
         tmpVec.multiplyScalar(0.85);
       }
