@@ -12,12 +12,12 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
         className={`bg-black border-2 border-white flex flex-col w-full h-full [height:100dvh] md:h-auto md:[height:auto] md:w-auto md:max-h-[90vh] ${sizeCls}`}
       >
         <div className="flex justify-between items-center border-b border-white p-4">
-          <span className="font-mono uppercase tracking-widest text-sm">
+          <span className="font-mono uppercase tracking-widest text-sm text-white">
             [ &gt; {title} ]
           </span>
           <Button onClick={onClose}>X CLOSE</Button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 font-mono text-sm">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 font-mono text-sm text-white">
           {children}
         </div>
       </div>
