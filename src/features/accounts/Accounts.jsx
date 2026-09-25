@@ -63,9 +63,6 @@ export default function Accounts() {
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <span className="font-mono text-sm text-gray-500">[ NO ACCOUNTS ]</span>
-            <Button className="hidden sm:inline-block" onClick={() => setIsNewOpen(true)} active={true}>
-              + NEW ACCOUNT
-            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
