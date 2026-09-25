@@ -8,10 +8,8 @@ import { getDaysInMonth, getMonthName } from '../../lib/date.js';
 const WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 const FALLBACK_ALLOWANCE = 100000;
 
-// pads a DD/MM to 2 digits for dateString building
 const pad2 = (n) => String(n).padStart(2, '0');
 
-// DD-MM-YYYY -> Date (matches the parsing pattern already used in Ledger.jsx)
 const parseTxDate = (dateStr) => {
   const [d, m, y] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -28,15 +26,10 @@ export default function Calendar() {
   const [showDailyLog, setShowDailyLog] = useState(false);
 
   const year = viewDate.getFullYear();
-  const month = viewDate.getMonth(); // 0-indexed
+  const month = viewDate.getMonth();
 
   const computedDailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
-  // resolves a transaction's amount into UZS using its OWN stored
-  // currency snapshot (tx.currency), not the current account's
-  // currency — an account's currency can be edited after the fact,
-  // and historical transactions must keep interpreting their
-  // original amount under the currency they were recorded in.
   const toUZS = (tx) => {
     return convertToBase(tx.amount, tx.currency, exchangeRates);
   };
@@ -58,7 +51,6 @@ export default function Calendar() {
     return { totalIn: income, totalOut: expense };
   }, [monthTx, exchangeRates]);
 
-  // sum of EXPENSE transactions for a given day-of-month, in UZS
   const getDaySpending = (day) => {
     let sum = 0;
     for (const tx of monthTx) {
@@ -76,12 +68,11 @@ export default function Calendar() {
     return '#';
   };
 
-  // Monday-start calendar grid, padded to full weeks
   const getCalendarDays = (date) => {
     const y = date.getFullYear();
     const m = date.getMonth();
     const totalDays = getDaysInMonth(y, m + 1);
-    const firstDayJs = new Date(y, m, 1).getDay(); // 0=Sun..6=Sat
+    const firstDayJs = new Date(y, m, 1).getDay();
     const leadingEmpty = firstDayJs === 0 ? 6 : firstDayJs - 1;
 
     const cells = [];
@@ -110,13 +101,13 @@ export default function Calendar() {
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden p-4 md:p-8 pb-24">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="font-mono uppercase tracking-tighter text-2xl md:text-4xl text-white">
+      <div className="flex justify-between items-center mb-4 gap-2">
+        <h1 className="font-mono uppercase tracking-tighter text-lg sm:text-2xl md:text-4xl text-white whitespace-nowrap leading-none">
           [ &gt; CALENDAR.LOG ]
         </h1>
-        <div className="flex gap-2">
-          <Button onClick={handlePrevMonth}>{'< PREV'}</Button>
-          <Button onClick={handleNextMonth}>{'NEXT >'}</Button>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button className="whitespace-nowrap" onClick={handlePrevMonth}>{'< PREV'}</Button>
+          <Button className="whitespace-nowrap" onClick={handleNextMonth}>{'NEXT >'}</Button>
         </div>
       </div>
 
