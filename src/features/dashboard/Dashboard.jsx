@@ -8,7 +8,6 @@ import DotMatrixGraph from '../../components/DotMatrixGraph.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 
-// DD-MM-YYYY -> Date (matches the parsing pattern already used in Ledger.jsx)
 const parseTxDate = (dateStr) => {
   const [d, m, y] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -27,7 +26,6 @@ export default function Dashboard() {
   const now = new Date();
 
   const { graphData, graphLabels } = useMemo(() => {
-    // build last 7 months (oldest first), each keyed by year-month for matching transactions
     const months = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -55,9 +53,15 @@ export default function Dashboard() {
   }
 
   function handleSaveBudget() {
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (budgetInput.trim() === '') {
+      setMonthlyBudget(monthKey, null);
+      setShowBudgetModal(false);
+      setBudgetInput('');
+      return;
+    }
     const parsedAmount = parseFloat(budgetInput);
     if (isNaN(parsedAmount) || parsedAmount <= 0) return;
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     setMonthlyBudget(monthKey, parsedAmount);
     setShowBudgetModal(false);
     setBudgetInput('');
