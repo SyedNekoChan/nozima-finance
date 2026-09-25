@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import useFinanceStore from './hooks/useFinanceStore.js';
 import useSync from './hooks/useSync.js';
-import { ViewportChromeProvider } from './hooks/useViewportChrome.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import Anomaly from './components/Anomaly.jsx';
@@ -22,8 +21,6 @@ export default function App() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
   const loadInitialData = useFinanceStore((s) => s.loadInitialData);
 
-  // single sync instance for the app's lifetime; its state/controls are
-  // passed down to Header (and from there into SyncModal) as props
   const sync = useSync();
 
   useEffect(() => {
@@ -33,15 +30,13 @@ export default function App() {
   const ActiveTabComponent = TAB_COMPONENTS[activeTab] || Dashboard;
 
   return (
-    <ViewportChromeProvider>
-      <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
-        <Header sync={sync} />
-        <main className="relative flex-1 min-h-0 overflow-hidden">
-          <Anomaly />
-          {isLoaded && <ActiveTabComponent />}
-        </main>
-        <Footer />
-      </div>
-    </ViewportChromeProvider>
+    <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
+      <Header sync={sync} />
+      <main className="relative flex-1 min-h-0 overflow-hidden">
+        <Anomaly />
+        {isLoaded && <ActiveTabComponent />}
+      </main>
+      <Footer />
+    </div>
   );
 }
