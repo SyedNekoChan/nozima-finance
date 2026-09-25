@@ -106,8 +106,30 @@ export default function Calendar() {
           [ &gt; CALENDAR.LOG ]
         </h1>
         <div className="flex gap-2 flex-shrink-0">
-          <Button className="whitespace-nowrap" onClick={handlePrevMonth}>{'< PREV'}</Button>
-          <Button className="whitespace-nowrap" onClick={handleNextMonth}>{'NEXT >'}</Button>
+          <button
+            type="button"
+            aria-label="PREVIOUS MONTH"
+            title="PREVIOUS MONTH"
+            onClick={handlePrevMonth}
+            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="NEXT MONTH"
+            title="NEXT MONTH"
+            onClick={handleNextMonth}
+            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+          <Button className="hidden sm:inline-block whitespace-nowrap" onClick={handlePrevMonth}>{'< PREV'}</Button>
+          <Button className="hidden sm:inline-block whitespace-nowrap" onClick={handleNextMonth}>{'NEXT >'}</Button>
         </div>
       </div>
 
