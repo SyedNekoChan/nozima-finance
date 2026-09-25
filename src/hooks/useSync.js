@@ -1863,62 +1863,92 @@ export default function useSync() {
     useCallback(
       async () => {
         setStatus('PAIRING');
+        setError(null);
 
-        const bytes =
-          generateSecretBytes();
+        try {
+          const bytes =
+            generateSecretBytes();
 
-        firstJoinPendingRef.current =
-          false;
+          firstJoinPendingRef.current =
+            false;
 
-        /*
-         * Initiator: no pre-pair exclusion set. Clear any stale
-         * in-memory refs and the persisted record from a previous
-         * pairing on this device.
-         */
-        prePairLocalAccountIdsRef.current =
-          new Set();
+          /*
+           * Initiator: no pre-pair exclusion set. Clear any stale
+           * in-memory refs and the persisted record from a previous
+           * pairing on this device.
+           */
+          prePairLocalAccountIdsRef.current =
+            new Set();
 
-        prePairLocalTransactionIdsRef.current =
-          new Set();
+          prePairLocalTransactionIdsRef.current =
+            new Set();
 
-        await clearPrePairLocalIds();
+          await clearPrePairLocalIds();
 
-        await setSyncSecret(
-          secretToBase64Url(
-            bytes
-          )
-        );
-
-        const mnemonic =
-          secretToMnemonic(
-            bytes
+          await setSyncSecret(
+            secretToBase64Url(
+              bytes
+            )
           );
 
-        const code =
-          await deriveConfirmationCode(
-            bytes
+          const mnemonic =
+            secretToMnemonic(
+              bytes
+            );
+
+          const code =
+            await deriveConfirmationCode(
+              bytes
+            );
+
+          setRecoveryMnemonic(
+            mnemonic
           );
 
-        setRecoveryMnemonic(
-          mnemonic
-        );
+          setQrPayload(
+            buildQrPayload(
+              bytes
+            )
+          );
 
-        setQrPayload(
-          buildQrPayload(
+          setConfirmationCode(
+            code
+          );
+
+          /*
+           * Setting secretBytes LAST, after every other piece of
+           * pairing data (mnemonic/code/qrPayload) is already in
+           * state, triggers the main sync effect (which depends on
+           * secretBytes) only once all of that data is already
+           * available to render — so the ACTIVE/WAITING pairing UI
+           * never has a frame where secretBytes exists but the
+           * confirmation code/recovery key don't, and nothing here
+           * requires a reload to become visible.
+           */
+          setSecretBytes(
             bytes
-          )
-        );
+          );
+        } catch (err) {
+          /*
+           * A thrown/rejected error here previously left `status`
+           * stuck at 'PAIRING' forever with no pairing data ever
+           * set, silently — none of createPairing's callers awaited
+           * or caught it. Surfacing it through the existing `error`
+           * state and resetting status back to UNPAIRED makes the
+           * failure visible and retryable instead of appearing to
+           * require a refresh.
+           */
+          setStatus('UNPAIRED');
 
-        setConfirmationCode(
-          code
-        );
-
-        setSecretBytes(
-          bytes
-        );
+          setError(
+            err?.message ||
+              'FAILED TO GENERATE PAIRING'
+          );
+        }
       },
       []
     );
+
 
   /*
    * Join an existing pair using a secret received via QR or mnemonic
