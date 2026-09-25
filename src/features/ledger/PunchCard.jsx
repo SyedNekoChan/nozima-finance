@@ -8,6 +8,7 @@ import { getTodayDateString } from '../../lib/date.js';
 import Modal from '../../components/Modal.jsx';
 import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 import Button from '../../components/Button.jsx';
+import SelectorField from '../../components/SelectorField.jsx';
 
 const CATEGORIES = [
   'FOOD',
@@ -456,7 +457,7 @@ export default function PunchCard({
       size="md"
     >
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           DATE
         </span>
 
@@ -474,7 +475,7 @@ export default function PunchCard({
       </div>
 
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           TYPE
         </span>
 
@@ -504,85 +505,65 @@ export default function PunchCard({
       </div>
 
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           ACCOUNT
         </span>
 
         {accounts.length ===
         0 ? (
-          <span className="font-mono text-xs text-gray-500">
-            [ NO ACCOUNTS —
-            CREATE ONE FIRST ]
+          <span className="font-mono text-xs text-gray-500 leading-normal">
+            NO ACCOUNTS — CREATE ONE
+            FIRST
           </span>
         ) : (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {accounts.map(
-              (account) => (
-                <Button
-                  key={
-                    account.id
-                  }
-                  active={
-                    accountId ===
-                    account.id
-                  }
-                  onClick={() =>
-                    handleAccountChange(
-                      account.id
-                    )
-                  }
-                >
-                  {
-                    account.name
-                  }
-                </Button>
-              )
+          <SelectorField
+            value={accountId}
+            options={accounts.map(
+              (account) => ({
+                value: account.id,
+                label: account.name,
+              })
             )}
-          </div>
+            onChange={
+              handleAccountChange
+            }
+            placeholder="SELECT ACCOUNT"
+          />
         )}
       </div>
 
       {type === 'TRANSFER' && (
         <div className="mb-4">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             TO ACCOUNT
           </span>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {accounts
+          <SelectorField
+            value={toAccountId}
+            options={accounts
               .filter(
                 (a) =>
                   a.id !==
                   accountId
               )
               .map(
-                (account) => (
-                  <Button
-                    key={
-                      account.id
-                    }
-                    active={
-                      toAccountId ===
-                      account.id
-                    }
-                    onClick={() =>
-                      setToAccountId(
-                        account.id
-                      )
-                    }
-                  >
-                    {
-                      account.name
-                    }
-                  </Button>
-                )
+                (account) => ({
+                  value:
+                    account.id,
+                  label:
+                    account.name,
+                })
               )}
-          </div>
+            onChange={
+              setToAccountId
+            }
+            placeholder="SELECT DESTINATION"
+          />
         </div>
       )}
 
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           AMOUNT
         </span>
 
@@ -612,35 +593,27 @@ export default function PunchCard({
 
       {type !== 'TRANSFER' && (
         <div className="mb-4">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             CATEGORY
           </span>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {CATEGORIES.map(
-              (option) => (
-                <Button
-                  key={option}
-                  active={
-                    category ===
-                    option
-                  }
-                  onClick={() =>
-                    setCategory(
-                      option
-                    )
-                  }
-                >
-                  {option}
-                </Button>
-              )
+          <SelectorField
+            value={category}
+            options={CATEGORIES.map(
+              (option) => ({
+                value: option,
+                label: option,
+              })
             )}
-          </div>
+            onChange={setCategory}
+            placeholder="SELECT CATEGORY"
+            searchable={false}
+          />
         </div>
       )}
 
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           NOTE
         </span>
 
@@ -658,7 +631,7 @@ export default function PunchCard({
       </div>
 
       <div className="mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           ATTACH
         </span>
 
@@ -715,7 +688,7 @@ export default function PunchCard({
       {type === 'TRANSFER' &&
         isCrossCurrency && (
           <div className="mb-4">
-            <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
+            <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
               EXCHANGE RATE
             </span>
 
