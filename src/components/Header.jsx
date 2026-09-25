@@ -20,36 +20,59 @@ export default function Header({ sync }) {
 
   return (
     <>
-      <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-3 sm:px-4 md:px-8 py-2 md:py-3 flex flex-col md:flex-row md:justify-between md:items-center gap-1 md:gap-4 text-[10px] sm:text-xs md:text-sm font-mono uppercase tracking-wide md:tracking-widest relative z-30">
-        <div className="flex items-center justify-between md:justify-start">
-          <span className="flex items-center whitespace-nowrap">
-            <span
-              className="text-white cursor-pointer"
-              onClick={() => setShowSystemMessage(true)}
-              onMouseEnter={() => setShowDistance(true)}
-              onMouseLeave={() => setShowDistance(false)}
-            >
-              [ SYSTEM: ONLINE ]
-            </span>
-            <span
-              className={`ml-4 text-gray-500 transition-none hidden md:inline ${showDistance ? 'opacity-100' : 'opacity-0'}`}
-            >
-              [ DISTANCE: {distance} ]
-            </span>
+      <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 relative z-30 font-mono uppercase">
+        <div className="flex md:hidden items-center justify-between px-2 py-1.5 text-[9px] tracking-wide gap-1">
+          <span
+            className="text-white cursor-pointer whitespace-nowrap leading-none"
+            onClick={() => setShowSystemMessage(true)}
+          >
+            [ SYS:ON ]
+          </span>
+          <span className="text-gray-600 whitespace-nowrap leading-none">
+            [ {distance} ]
+          </span>
+          <span
+            className="text-gray-500 cursor-pointer whitespace-nowrap leading-none"
+            onClick={() => setShowSyncModal(true)}
+          >
+            [ {sync.status} ]
+          </span>
+          <span className="text-white whitespace-nowrap leading-none">
+            [ {formatTime(now)} ]
           </span>
         </div>
 
-        <div className="flex items-center justify-between md:contents">
-          <span
-            className="text-gray-500 cursor-pointer whitespace-nowrap"
-            onClick={() => setShowSyncModal(true)}
-          >
-            [ SYNC: {sync.status} _ ]
-          </span>
+        <div className="hidden md:flex md:justify-between md:items-center gap-4 px-8 py-3 text-sm tracking-widest">
+          <div className="flex items-center justify-start">
+            <span className="flex items-center whitespace-nowrap">
+              <span
+                className="text-white cursor-pointer"
+                onClick={() => setShowSystemMessage(true)}
+                onMouseEnter={() => setShowDistance(true)}
+                onMouseLeave={() => setShowDistance(false)}
+              >
+                [ SYSTEM: ONLINE ]
+              </span>
+              <span
+                className={`ml-4 text-gray-500 transition-none inline ${showDistance ? 'opacity-100' : 'opacity-0'}`}
+              >
+                [ DISTANCE: {distance} ]
+              </span>
+            </span>
+          </div>
 
-          <span className="text-white whitespace-nowrap">
-            [ {formatTime(now)} _ ]
-          </span>
+          <div className="contents">
+            <span
+              className="text-gray-500 cursor-pointer whitespace-nowrap"
+              onClick={() => setShowSyncModal(true)}
+            >
+              [ SYNC: {sync.status} _ ]
+            </span>
+
+            <span className="text-white whitespace-nowrap">
+              [ {formatTime(now)} _ ]
+            </span>
+          </div>
         </div>
       </header>
 
