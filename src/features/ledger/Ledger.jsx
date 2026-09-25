@@ -24,8 +24,6 @@ export default function Ledger() {
   const [deletingTx, setDeletingTx] = useState(null);
   const [initialDate, setInitialDate] = useState(null);
 
-  // if Calendar requested a specific day's entry, open PunchCard prefilled
-  // with that date, then clear the request so it doesn't fire again
   useEffect(() => {
     if (pendingLedgerDate) {
       setEditingTx(null);
@@ -35,8 +33,6 @@ export default function Ledger() {
     }
   }, [pendingLedgerDate, clearPendingLedgerDate]);
 
-  // if DailyLogModal requested editing a specific transaction, open PunchCard
-  // in true edit mode for it, then clear the request so it doesn't fire again
   useEffect(() => {
     if (pendingEditTx) {
       setInitialDate(null);
@@ -57,7 +53,6 @@ export default function Ledger() {
     return { totalIn, totalOut, net: totalIn - totalOut };
   }, [transactions, exchangeRates]);
 
-  // DD-MM-YYYY -> comparable timestamp
   const parseDate = (dateStr) => {
     const [d, m, y] = dateStr.split('-').map(Number);
     return new Date(y, m - 1, d).getTime();
@@ -76,7 +71,6 @@ export default function Ledger() {
         return uzsB - uzsA;
       }
       if (sortBy === 'CATEGORY') {
-        // TRANSFERs (category null) sort to the end
         if (a.category === null && b.category === null) return parseDate(b.date) - parseDate(a.date);
         if (a.category === null) return 1;
         if (b.category === null) return -1;
@@ -126,7 +120,6 @@ export default function Ledger() {
     }
   };
 
-  // group transactions by date string, preserving sorted order, for DATE view
   const groupedByDate = useMemo(() => {
     if (sortBy !== 'DATE') return null;
     const groups = [];
@@ -145,26 +138,28 @@ export default function Ledger() {
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 p-4 md:p-6">
-        <div className="flex justify-between items-center mb-3">
-          <h1 className="font-mono uppercase tracking-tighter text-2xl md:text-4xl text-white">[ &gt; LEDGER.LOG ]</h1>
-          <Button onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
+      <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 p-3 md:p-6">
+        <div className="flex justify-between items-center gap-2 mb-2 md:mb-3">
+          <h1 className="font-mono uppercase tracking-tighter text-lg md:text-4xl text-white leading-none whitespace-nowrap">
+            [ &gt; LEDGER.LOG ]
+          </h1>
+          <Button className="whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 font-mono text-xs tracking-widest text-gray-500">
-          <div>
-            TOTAL IN
-            <div className="text-white text-sm mt-1">{formatAmount(totals.totalIn, 'UZS')}</div>
+        <div className="flex items-center gap-3 md:grid md:grid-cols-4 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
+          <div className="flex items-baseline gap-1">
+            <span>IN</span>
+            <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalIn, 'UZS')}</span>
           </div>
-          <div>
-            TOTAL OUT
-            <div className="text-white text-sm mt-1">{formatAmount(totals.totalOut, 'UZS')}</div>
+          <div className="flex items-baseline gap-1">
+            <span>OUT</span>
+            <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalOut, 'UZS')}</span>
           </div>
-          <div>
-            NET
-            <div className="text-white text-sm mt-1">{formatAmount(totals.net, 'UZS')}</div>
+          <div className="flex items-baseline gap-1">
+            <span>NET</span>
+            <span className="text-white text-xs md:text-sm">{formatAmount(totals.net, 'UZS')}</span>
           </div>
-          <div>[ {transactions.length} ENTRIES ]</div>
+          <div className="hidden md:block">[ {transactions.length} ENTRIES ]</div>
         </div>
       </div>
 
