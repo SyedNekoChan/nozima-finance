@@ -40,7 +40,8 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           </h3>
           {isFutureFund && (
             <span
-              className={`font-mono text-white text-lg ${isPulsing ? 'brutalist-heart-pulse' : ''}`}
+              className={`font-mono text-2xl ${isPulsing ? 'brutalist-heart-pulse' : 'brutalist-heart-idle'}`}
+              style={{ color: '#ec4899' }}
             >
               ♥
             </span>
