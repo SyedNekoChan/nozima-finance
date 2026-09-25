@@ -143,7 +143,19 @@ export default function Ledger() {
           <h1 className="font-mono uppercase tracking-tighter text-lg md:text-4xl text-white leading-none whitespace-nowrap">
             [ &gt; LEDGER.LOG ]
           </h1>
-          <Button className="whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
+          <button
+            type="button"
+            aria-label="NEW ENTRY"
+            title="NEW ENTRY"
+            onClick={handleOpenNewEntry}
+            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px] flex-shrink-0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+          <Button className="hidden sm:inline-block whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
         </div>
 
         <div className="flex items-center gap-3 md:grid md:grid-cols-4 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
