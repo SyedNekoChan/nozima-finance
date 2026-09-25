@@ -443,7 +443,62 @@ export default function PunchCard({
           TYPE
         </span>
 
-        <div className="flex gap-2 overflow-x-auto">
+        <div className="flex sm:hidden gap-2">
+          {[
+            {
+              key: 'EXPENSE',
+              icon: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 19 19 12" />
+                </svg>
+              ),
+            },
+            {
+              key: 'INCOME',
+              icon: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              ),
+            },
+            {
+              key: 'TRANSFER',
+              icon: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+                  <polyline points="17 1 21 5 17 9" />
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                  <polyline points="7 23 3 19 7 15" />
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+              ),
+            },
+          ].map(
+            (option) => (
+              <button
+                key={option.key}
+                type="button"
+                aria-label={option.key}
+                title={option.key}
+                onClick={() =>
+                  handleTypeChange(
+                    option.key
+                  )
+                }
+                className={`flex-1 flex items-center justify-center py-2 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
+                  type === option.key
+                    ? 'bg-white text-black border-white font-bold'
+                    : 'bg-black text-white border-transparent hover:border-white'
+                }`}
+              >
+                {option.icon}
+              </button>
+            )
+          )}
+        </div>
+
+        <div className="hidden sm:flex gap-2 overflow-x-auto">
           {[
             'EXPENSE',
             'INCOME',
