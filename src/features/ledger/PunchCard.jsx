@@ -42,10 +42,6 @@ export default function PunchCard({
       (s) => s.updateTransaction
     );
 
-  // TRANSFER creation/editing routes through these two centralized
-  // store actions instead of addTransaction/updateTransaction directly,
-  // so PunchCard never computes or applies transfer balance math itself
-  // — TransferModal uses the exact same two actions.
   const createTransfer =
     useFinanceStore(
       (s) => s.createTransfer
@@ -93,17 +89,12 @@ export default function PunchCard({
   const [errorMsg, setErrorMsg] =
     useState('');
 
-  // Guards the submit path against rapid double-click / repeated
-  // submission for every transaction type, not just transfers.
   const [isSubmitting, setIsSubmitting] =
     useState(false);
 
   const fileInputRef =
     useRef(null);
 
-  /*
-   * Reset form when the modal target changes.
-   */
   useEffect(() => {
     if (editingTx) {
       setDate(editingTx.date);
@@ -164,12 +155,6 @@ export default function PunchCard({
     accounts,
   ]);
 
-  /*
-   * Always resolve the currently selected account from the latest
-   * Zustand state.
-   *
-   * This is important when several account cards exist.
-   */
   const sourceAccount =
     accounts.find(
       (a) =>
@@ -197,9 +182,6 @@ export default function PunchCard({
           destAccount.currency
     );
 
-  /*
-   * Prefill exchange rate for cross-currency transfers.
-   */
   useEffect(() => {
     if (
       isCrossCurrency &&
@@ -254,10 +236,6 @@ export default function PunchCard({
     (id) => {
       setAccountId(id);
 
-      /*
-       * Clear amount when changing accounts because the currency may
-       * have changed.
-       */
       setAmountInput('');
     };
 
@@ -293,7 +271,6 @@ export default function PunchCard({
 
   const handleSave =
     async () => {
-      // Guards against rapid double-click / repeated submission.
       if (isSubmitting) {
         return;
       }
@@ -337,14 +314,6 @@ export default function PunchCard({
       setErrorMsg('');
 
       try {
-        /*
-         * TRANSFER creation/editing goes through the same centralized
-         * store actions TransferModal uses — createTransfer /
-         * editTransfer — so there is exactly one implementation of
-         * transfer balance math regardless of which UI surface
-         * initiated it. PunchCard never computes a transfer's
-         * balance effect itself.
-         */
         if (type === 'TRANSFER') {
           if (editingTx) {
             await editTransfer(
@@ -385,11 +354,6 @@ export default function PunchCard({
           return;
         }
 
-        /*
-         * Non-transfer (INCOME/EXPENSE) path is unchanged: the store's
-         * addTransaction/updateTransaction already own single-account
-         * balance synchronization for these types.
-         */
         const tx = {
           id:
             editingTx?.id ||
@@ -479,7 +443,7 @@ export default function PunchCard({
           TYPE
         </span>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto">
           {[
             'EXPENSE',
             'INCOME',
@@ -491,6 +455,7 @@ export default function PunchCard({
                 active={
                   type === option
                 }
+                className="whitespace-nowrap flex-shrink-0"
                 onClick={() =>
                   handleTypeChange(
                     option
