@@ -6,19 +6,12 @@ function formatCompact(value) {
   return `${value}`;
 }
 
-export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
-  if (!data || data.length === 0 || !labels || labels.length !== data.length) {
-    return <div className="text-gray-500 text-sm">[ NO DATA ]</div>;
-  }
-
-  const paddingX = 60;
-  const paddingY = 30;
-  const graphWidth = 1000 - paddingX - 20;
-  const graphHeight = 200 - paddingY * 2;
+function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, paddingY, className }) {
+  const graphWidth = viewBoxWidth - paddingX - 20;
+  const graphHeight = viewBoxHeight - paddingY * 2;
   const maxValue = Math.max(...data);
-  const baselineY = 200 - paddingY;
+  const baselineY = viewBoxHeight - paddingY;
 
-  // guard div-by-zero when single data point or flat maxValue of 0
   const points = data.map((value, i) => {
     const x = data.length > 1 ? paddingX + (i / (data.length - 1)) * graphWidth : paddingX;
     const y = maxValue > 0 ? baselineY - (value / maxValue) * graphHeight : baselineY;
@@ -30,9 +23,9 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
 
   return (
     <svg
-      viewBox="0 0 1000 200"
+      viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
       preserveAspectRatio="none"
-      className="w-full h-auto text-white overflow-visible"
+      className={className}
     >
       {gridRatios.map((ratio) => {
         const y = paddingY + (1 - ratio) * graphHeight;
@@ -40,7 +33,7 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
           <line
             key={`grid-${ratio}`}
             x1={paddingX}
-            x2={1000 - 20}
+            x2={viewBoxWidth - 20}
             y1={y}
             y2={y}
             stroke="#333"
@@ -52,7 +45,7 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
 
       <line
         x1={paddingX}
-        x2={1000 - 20}
+        x2={viewBoxWidth - 20}
         y1={baselineY}
         y2={baselineY}
         stroke="#555"
@@ -99,7 +92,7 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
         <text
           key={`xlabel-${i}`}
           x={points[i].x}
-          y={200 - 5}
+          y={viewBoxHeight - 5}
           textAnchor="middle"
           fill="#666"
           fontSize="11"
@@ -109,5 +102,34 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
         </text>
       ))}
     </svg>
+  );
+}
+
+export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
+  if (!data || data.length === 0 || !labels || labels.length !== data.length) {
+    return <div className="text-gray-500 text-sm">[ NO DATA ]</div>;
+  }
+
+  return (
+    <>
+      <GraphSvg
+        data={data}
+        labels={labels}
+        viewBoxWidth={600}
+        viewBoxHeight={280}
+        paddingX={36}
+        paddingY={30}
+        className="block sm:hidden w-full h-auto text-white overflow-visible"
+      />
+      <GraphSvg
+        data={data}
+        labels={labels}
+        viewBoxWidth={1000}
+        viewBoxHeight={200}
+        paddingX={60}
+        paddingY={30}
+        className="hidden sm:block w-full h-auto text-white overflow-visible"
+      />
+    </>
   );
 }
