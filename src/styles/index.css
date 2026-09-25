@@ -27,6 +27,16 @@ html, body, #root {
   outline-offset: 2px;
 }
 
+/* Terminal-style blinking cursor for the NOZIMA_ trailing underscore */
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.brutalist-cursor-blink {
+  animation: cursor-blink 1s linear infinite;
+}
+
 /* OUR_FUTURE funding reaction: subtle scale/opacity pulse, linear timing only */
 @keyframes heart-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -36,6 +46,16 @@ html, body, #root {
 .brutalist-heart-pulse {
   animation: heart-pulse 0.5s linear;
   animation-iteration-count: 3;
+}
+
+/* OUR_FUTURE card: continuous idle pulse for the heart, always active */
+@keyframes heart-idle-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.brutalist-heart-idle {
+  animation: heart-idle-pulse 1.8s linear infinite;
 }
 
 /* Persistent OVER BUDGET readout: restrained continuous border/opacity
