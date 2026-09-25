@@ -449,8 +449,8 @@ export default function PunchCard({
               key: 'EXPENSE',
               icon: (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 19 19 12" />
+                  <rect x="2" y="6" width="20" height="12" />
+                  <line x1="9" y1="12" x2="15" y2="12" />
                 </svg>
               ),
             },
@@ -458,8 +458,9 @@ export default function PunchCard({
               key: 'INCOME',
               icon: (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <polyline points="5 12 12 5 19 12" />
+                  <rect x="2" y="6" width="20" height="12" />
+                  <line x1="12" y1="9" x2="12" y2="15" />
+                  <line x1="9" y1="12" x2="15" y2="12" />
                 </svg>
               ),
             },
