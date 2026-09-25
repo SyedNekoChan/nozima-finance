@@ -58,14 +58,14 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
         </span>
       </div>
 
-      <div className="flex justify-between gap-3 pt-3 border-t border-gray-800">
-        <Button onClick={() => onEdit(account)} className="text-xs px-3 py-1">
+      <div className="flex justify-between gap-2 pt-3 border-t border-gray-800">
+        <Button onClick={() => onEdit(account)} className="text-xs px-2 py-1 whitespace-nowrap flex-shrink-0">
           EDIT
         </Button>
-        <Button onClick={() => onTransfer(account)} className="text-xs px-3 py-1">
+        <Button onClick={() => onTransfer(account)} className="text-xs px-2 py-1 whitespace-nowrap flex-shrink-0">
           TRANSFER
         </Button>
-        <Button onClick={() => onDelete(account)} className="text-xs px-3 py-1">
+        <Button onClick={() => onDelete(account)} className="text-xs px-2 py-1 whitespace-nowrap flex-shrink-0">
           DELETE
         </Button>
       </div>
