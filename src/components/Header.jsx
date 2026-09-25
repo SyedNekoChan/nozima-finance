@@ -21,7 +21,7 @@ export default function Header({ sync }) {
   return (
     <>
       <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 relative z-30 font-mono uppercase">
-        <div className="md:hidden flex items-center justify-between px-2 py-2.5 text-[8px] leading-none tracking-tight gap-1 overflow-hidden">
+        <div className="md:hidden flex items-center justify-start px-2 py-2.5 text-[8px] leading-none tracking-tight gap-2.5 overflow-hidden">
           <span
             className="flex-shrink-0 flex items-center gap-1 text-white cursor-pointer whitespace-nowrap"
             onClick={() => setShowSystemMessage(true)}
