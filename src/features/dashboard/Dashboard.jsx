@@ -90,7 +90,19 @@ export default function Dashboard() {
               <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500">
                 BUDGET LIMIT
               </span>
-              <Button onClick={openBudgetModal}>EDIT</Button>
+              <button
+                type="button"
+                aria-label="EDIT BUDGET"
+                title="EDIT BUDGET"
+                onClick={openBudgetModal}
+                className="sm:hidden flex items-center justify-center w-8 h-8 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </button>
+              <Button className="hidden sm:inline-block" onClick={openBudgetModal}>EDIT</Button>
             </div>
             {monthlyBudget ? (
               <>
