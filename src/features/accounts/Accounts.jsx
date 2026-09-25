@@ -42,7 +42,19 @@ export default function Accounts() {
           </span>
           <span className="font-mono text-2xl sm:text-3xl font-bold break-words">{formatAmount(totalUZS, 'UZS')}</span>
         </div>
-        <Button onClick={() => setIsNewOpen(true)} active={true}>
+        <button
+          type="button"
+          aria-label="NEW ACCOUNT"
+          title="NEW ACCOUNT"
+          onClick={() => setIsNewOpen(true)}
+          className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-white bg-white text-black transition-none select-none cursor-pointer active:translate-y-[1px]"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <Button className="hidden sm:inline-block" onClick={() => setIsNewOpen(true)} active={true}>
           + NEW ACCOUNT
         </Button>
       </div>
@@ -51,7 +63,7 @@ export default function Accounts() {
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-4">
             <span className="font-mono text-sm text-gray-500">[ NO ACCOUNTS ]</span>
-            <Button onClick={() => setIsNewOpen(true)} active={true}>
+            <Button className="hidden sm:inline-block" onClick={() => setIsNewOpen(true)} active={true}>
               + NEW ACCOUNT
             </Button>
           </div>
