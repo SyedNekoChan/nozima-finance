@@ -100,9 +100,9 @@ export default function Calendar() {
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden p-4 md:p-8 pb-24">
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <h1 className="font-mono uppercase tracking-tighter text-lg sm:text-2xl md:text-4xl text-white whitespace-nowrap leading-none">
+    <div className="flex flex-col h-full w-full overflow-hidden px-4 pt-3 pb-3 sm:p-4 sm:pb-24 md:p-8">
+      <div className="flex justify-between items-center mb-2 sm:mb-4 gap-2 min-w-0">
+        <h1 className="font-mono uppercase tracking-tighter text-lg sm:text-2xl md:text-4xl text-white whitespace-nowrap leading-none min-w-0">
           [ &gt; CALENDAR.LOG ]
         </h1>
         <div className="flex gap-2 flex-shrink-0">
@@ -133,21 +133,35 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 font-mono text-xs tracking-widest text-gray-500 mb-6">
+      <div className="grid sm:hidden grid-cols-2 gap-x-3 gap-y-1.5 font-mono tracking-widest text-gray-500 mb-2 border-y border-dashed border-gray-800 py-2">
+        {[
+          ['MONTH', `${getMonthName(month + 1)} ${year}`],
+          ['BUDGET', formatAmount(getMonthlyBudgetUZS() || 0, 'UZS')],
+          ['TOTAL IN', formatAmount(totalIn, 'UZS')],
+          ['TOTAL OUT', formatAmount(totalOut, 'UZS')],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <div className="text-[10px] leading-tight">{label}</div>
+            <div className="text-xs text-white tracking-normal break-words leading-tight">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden sm:grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 font-mono text-xs tracking-widest text-gray-500 mb-6">
         <div>MONTH: {getMonthName(month + 1)} {year}</div>
         <div>TOTAL IN: {formatAmount(totalIn, 'UZS')}</div>
         <div>TOTAL OUT: {formatAmount(totalOut, 'UZS')}</div>
         <div>BUDGET: {formatAmount(getMonthlyBudgetUZS() || 0, 'UZS')}</div>
       </div>
 
-      <div className="font-mono text-xs tracking-widest text-gray-500 mb-2">
+      <div className="font-mono text-[10px] sm:text-xs tracking-widest text-gray-500 mb-2 leading-tight">
         DAILY ALLOWANCE: {formatAmount(computedDailyAllowance, 'UZS')}
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
         <div className="grid grid-cols-7 gap-1 md:gap-2 mb-2">
           {WEEKDAYS.map((day) => (
-            <div key={day} className="text-center font-mono text-xs text-gray-500 py-1">
+            <div key={day} className="text-center font-mono text-[10px] sm:text-xs text-gray-500 py-1">
               {day}
             </div>
           ))}
@@ -162,23 +176,23 @@ export default function Calendar() {
             const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
 
             const baseClass = isSelected
-              ? 'flex flex-col items-center justify-center border bg-white text-black border-white md:border-2 transition-none'
-              : 'flex flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 transition-none';
+              ? 'flex flex-row sm:flex-col items-center justify-center border bg-white text-black border-white md:border-2 transition-none'
+              : 'flex flex-row sm:flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 transition-none';
 
             return (
               <button
                 key={cell.dateString}
-                className={`${baseClass} p-1 md:p-2 h-full w-full cursor-pointer`}
+                className={`${baseClass} p-0 sm:p-1 md:p-2 h-full w-full min-w-0 cursor-pointer`}
                 onClick={() => {
                   setSelectedDate({ day: cell.day, dateString: cell.dateString });
                   setShowDailyLog(true);
                 }}
               >
-                <span className="font-mono text-sm md:text-base font-bold">
+                <span className={`font-mono ${isSelected ? 'text-[10px]' : 'text-xs'} sm:text-sm md:text-base font-bold whitespace-nowrap`}>
                   {isSelected ? `[ ${cell.day} ]` : cell.day}
                 </span>
                 {!isSelected && (
-                  <span className="font-mono text-xs mt-1 text-gray-400">
+                  <span className="font-mono text-[10px] sm:text-xs ml-0.5 sm:ml-0 mt-0 sm:mt-1 text-gray-400">
                     {cell.spendingLevel}
                   </span>
                 )}

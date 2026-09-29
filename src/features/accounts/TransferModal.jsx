@@ -127,7 +127,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={`TRANSFER: ${sourceAccount?.name || ''}`} size="md">
-      <div className="border-b border-gray-800 pb-4 mb-6">
+      <div className="border-b border-gray-800 pb-3 sm:pb-4 mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">FROM</span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="font-mono text-sm text-white min-w-0 break-words">[ {sourceAccount.name} ]</span>
@@ -138,9 +138,9 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">TO</span>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap sm:flex-nowrap gap-1 sm:gap-2 sm:overflow-x-auto pb-1">
           {availableDestinations.length === 0 ? (
             <span className="font-mono text-xs text-gray-500">[ NO OTHER ACCOUNTS ]</span>
           ) : (
@@ -161,7 +161,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">AMOUNT</span>
         <input
           type="text"
@@ -176,7 +176,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
       </div>
 
       {isCrossCurrency && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">EXCHANGE RATE</span>
           <span className="block font-mono text-xs text-gray-500 mb-2">
             1 {sourceAccount.currency} = ? {destinationAccount.currency}
@@ -198,12 +198,12 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
       )}
 
       {!isCrossCurrency && showReceived && destinationAccount && (
-        <div className="mb-6 font-mono text-sm text-gray-400">
+        <div className="mb-4 sm:mb-6 font-mono text-sm text-gray-400">
           YOU WILL RECEIVE: {formatAmount(received, destinationAccount.currency)}
         </div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">NOTE</span>
         <input
           type="text"
@@ -219,10 +219,11 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
         <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">{errorMsg}</div>
       )}
 
-      <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
+      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button
           onClick={handleTransfer}
           active={true}
+          className="w-full sm:w-auto"
           disabled={isSubmitting || !destinationId || !amountInput}
         >
           {isSubmitting ? 'TRANSFERRING...' : 'CONFIRM TRANSFER'}

@@ -26,12 +26,12 @@ export default function SortBar({ sortBy, sortDirection, onSortChange }) {
   };
 
   return (
-    <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-3 md:px-6 py-2 md:py-3">
-      <div className="flex items-center gap-2 md:hidden">
+    <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 sm:px-3 md:px-6 py-2 md:py-3">
+      <div className="flex items-center justify-end sm:justify-start gap-2 md:hidden">
         <span className="font-mono text-xs tracking-widest text-gray-500 leading-none whitespace-nowrap">
           SORT:
         </span>
-        <div className="w-40">
+        <div className="w-36 sm:w-40">
           <SelectorField
             value={`${sortBy}_${sortDirection}`}
             options={options}

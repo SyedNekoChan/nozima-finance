@@ -138,9 +138,9 @@ export default function Ledger() {
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 p-3 md:p-6">
-        <div className="flex justify-between items-center gap-2 mb-2 md:mb-3">
-          <h1 className="font-mono uppercase tracking-tighter text-lg md:text-4xl text-white leading-none whitespace-nowrap">
+      <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 py-3 sm:p-3 md:p-6">
+        <div className="flex justify-between items-center gap-2 mb-2 md:mb-3 min-w-0">
+          <h1 className="font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0">
             [ &gt; LEDGER.LOG ]
           </h1>
           <button
@@ -158,16 +158,16 @@ export default function Ledger() {
           <Button className="hidden sm:inline-block whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
         </div>
 
-        <div className="flex items-center gap-3 md:grid md:grid-cols-4 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
-          <div className="flex items-baseline gap-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:flex-nowrap sm:gap-3 md:grid md:grid-cols-4 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
+          <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>IN</span>
             <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalIn, 'UZS')}</span>
           </div>
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>OUT</span>
             <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalOut, 'UZS')}</span>
           </div>
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>NET</span>
             <span className="text-white text-xs md:text-sm">{formatAmount(totals.net, 'UZS')}</span>
           </div>
@@ -177,14 +177,14 @@ export default function Ledger() {
 
       <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-black">
-        <div className="pb-24">
+      <div className="flex-1 overflow-y-auto px-4 py-2 sm:p-4 md:p-6 bg-black">
+        <div className="pb-4 sm:pb-24">
           {sortedTransactions.length === 0 ? (
             <div className="text-gray-500 font-mono text-sm">[ NO ENTRIES YET ]</div>
           ) : sortBy === 'DATE' ? (
             groupedByDate.map((group) => (
               <div key={group.date}>
-                <div className="mt-6 mb-2 border-b border-dashed border-gray-700 pb-1">
+                <div className="mt-3 mb-1 sm:mt-6 sm:mb-2 border-b border-dashed border-gray-700 pb-1">
                   <span className="font-mono text-xs tracking-widest text-gray-500">--- {group.date} ---</span>
                 </div>
                 {group.items.map((tx) => (

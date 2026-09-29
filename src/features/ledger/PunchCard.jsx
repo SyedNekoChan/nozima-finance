@@ -420,7 +420,7 @@ export default function PunchCard({
       }
       size="md"
     >
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           DATE
         </span>
@@ -438,7 +438,7 @@ export default function PunchCard({
         />
       </div>
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           TYPE
         </span>
@@ -487,13 +487,16 @@ export default function PunchCard({
                     option.key
                   )
                 }
-                className={`flex-1 flex items-center justify-center py-2 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
+                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-1.5 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
                   type === option.key
                     ? 'bg-white text-black border-white font-bold'
                     : 'bg-black text-white border-transparent hover:border-white'
                 }`}
               >
                 {option.icon}
+                <span className="font-mono text-[10px] leading-none tracking-wide uppercase">
+                  {option.key}
+                </span>
               </button>
             )
           )}
@@ -525,7 +528,7 @@ export default function PunchCard({
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           ACCOUNT
         </span>
@@ -554,7 +557,7 @@ export default function PunchCard({
       </div>
 
       {type === 'TRANSFER' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             TO ACCOUNT
           </span>
@@ -583,7 +586,7 @@ export default function PunchCard({
         </div>
       )}
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           AMOUNT
         </span>
@@ -613,7 +616,7 @@ export default function PunchCard({
       </div>
 
       {type !== 'TRANSFER' && (
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             CATEGORY
           </span>
@@ -633,7 +636,7 @@ export default function PunchCard({
         </div>
       )}
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           NOTE
         </span>
@@ -651,7 +654,7 @@ export default function PunchCard({
         />
       </div>
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
           ATTACH
         </span>
@@ -708,7 +711,7 @@ export default function PunchCard({
 
       {type === 'TRANSFER' &&
         isCrossCurrency && (
-          <div className="mb-4">
+          <div className="mb-3 sm:mb-4">
             <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
               EXCHANGE RATE
             </span>
@@ -749,13 +752,14 @@ export default function PunchCard({
         )}
 
       {errorMsg && (
-        <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">
+        <div className="font-mono text-xs text-gray-400 mb-3 sm:mb-4 border-l-2 border-white pl-3">
           {errorMsg}
         </div>
       )}
 
-      <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
+      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button
+          className="w-full sm:w-auto"
           onClick={handleSave}
           disabled={isSubmitting}
         >

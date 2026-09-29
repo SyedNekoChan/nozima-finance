@@ -66,7 +66,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="NEW ACCOUNT" size="md">
-      <div className="mb-5">
+      <div className="mb-3 sm:mb-5">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">NAME</span>
         <input
           type="text"
@@ -77,9 +77,9 @@ export default function NewAccountModal({ isOpen, onClose }) {
         />
       </div>
 
-      <div className="mb-5">
+      <div className="mb-3 sm:mb-5">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">TYPE</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1 sm:gap-2">
           {ACCOUNT_TYPES.map((option) => (
             <Button key={option} onClick={() => setType(option)} active={type === option}>
               {option}
@@ -88,9 +88,9 @@ export default function NewAccountModal({ isOpen, onClose }) {
         </div>
       </div>
 
-      <div className="mb-5">
+      <div className="mb-3 sm:mb-5">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENCY</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1 sm:gap-2">
           {CURRENCY_OPTIONS.map((option) => (
             <Button key={option} onClick={() => setCurrency(option)} active={currency === option}>
               {option}
@@ -103,7 +103,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
       </div>
 
       {currency === 'OTHER' && (
-        <div className="mb-5">
+        <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CODE</span>
           <input
             type="text"
@@ -123,8 +123,8 @@ export default function NewAccountModal({ isOpen, onClose }) {
         </div>
       )}
 
-      <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
-        <Button onClick={handleSave} active={true}>
+      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
+        <Button onClick={handleSave} active={true} className="w-full sm:w-auto">
           SAVE ACCOUNT
         </Button>
       </div>

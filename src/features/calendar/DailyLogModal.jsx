@@ -64,19 +64,19 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`DAILY LOG: ${selectedDate?.dateString || ''}`} size="md">
-      <div className="border-b border-gray-800 pb-4 mb-4">
-        <div className="grid grid-cols-3 gap-2 md:gap-4 font-mono text-xs tracking-widest text-gray-500">
-          <div>
+      <div className="border-b border-gray-800 pb-3 mb-3 sm:pb-4 sm:mb-4">
+        <div className="grid grid-cols-3 gap-2 md:gap-4 font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
+          <div className="min-w-0">
             <div>DAILY ALLOWANCE</div>
-            <div className="text-white text-sm mt-1">{formatAmount(dailyAllowance, 'UZS')}</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dailyAllowance, 'UZS')}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div>SPENT TODAY</div>
-            <div className="text-white text-sm mt-1">{formatAmount(spentToday, 'UZS')}</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(spentToday, 'UZS')}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div>STATUS</div>
-            <div className={`text-white text-sm mt-1 font-bold ${status === 'OVER' ? 'underline' : ''}`}>
+            <div className={`text-white text-xs sm:text-sm mt-1 font-bold ${status === 'OVER' ? 'underline' : ''}`}>
               [ {status} ]
             </div>
           </div>
@@ -101,8 +101,8 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
         </div>
       )}
 
-      <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
-        <Button onClick={handleAddEntryForDay}>+ ADD ENTRY FOR THIS DAY</Button>
+      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
+        <Button className="w-full sm:w-auto" onClick={handleAddEntryForDay}>+ ADD ENTRY FOR THIS DAY</Button>
       </div>
 
       <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">

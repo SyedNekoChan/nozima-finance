@@ -6,7 +6,7 @@ function formatCompact(value) {
   return `${value}`;
 }
 
-function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, paddingY, className }) {
+function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, paddingY, className, aspect = 'none' }) {
   const graphWidth = viewBoxWidth - paddingX - 20;
   const graphHeight = viewBoxHeight - paddingY * 2;
   const maxValue = Math.max(...data);
@@ -24,7 +24,7 @@ function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, padding
   return (
     <svg
       viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
-      preserveAspectRatio="none"
+      preserveAspectRatio={aspect}
       className={className}
     >
       {gridRatios.map((ratio) => {
@@ -115,11 +115,12 @@ export default function DotMatrixGraph({ data, labels, currencyCode = 'UZS' }) {
       <GraphSvg
         data={data}
         labels={labels}
-        viewBoxWidth={600}
-        viewBoxHeight={280}
-        paddingX={36}
-        paddingY={30}
-        className="block sm:hidden w-full h-auto text-white overflow-visible"
+        viewBoxWidth={360}
+        viewBoxHeight={240}
+        paddingX={34}
+        paddingY={28}
+        aspect="xMidYMid meet"
+        className="block sm:hidden w-full flex-1 min-h-0 text-white overflow-visible"
       />
       <GraphSvg
         data={data}

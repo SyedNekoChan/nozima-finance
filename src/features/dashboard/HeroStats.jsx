@@ -7,13 +7,14 @@ export default function HeroStats() {
   const nameWithoutCursor = HER_NAME_CYRILLIC.replace(/_$/, '');
 
   return (
-    <div className="flex flex-col items-start min-w-0">
-      <h1 className="font-mono uppercase tracking-tighter text-3xl sm:text-5xl md:text-8xl text-white break-words">
+    <div className="flex flex-col items-start min-w-0 w-full">
+      {/* mobile: balance first, name beneath; sm+ keeps name above balance */}
+      <h1 className="order-2 sm:order-1 mt-1 sm:mt-0 font-mono uppercase tracking-tighter text-[length:clamp(1.5rem,8.5vw,2.25rem)] sm:text-5xl md:text-8xl text-white break-words leading-none sm:leading-normal">
         {nameWithoutCursor}
         <span className="brutalist-cursor-blink">_</span>
       </h1>
-      <div className="mt-4 md:mt-6 w-full min-w-0">
-        <p className="font-mono font-bold tracking-tight text-2xl sm:text-4xl md:text-7xl text-white break-words">
+      <div className="order-1 sm:order-2 mt-0 sm:mt-4 md:mt-6 w-full min-w-0">
+        <p className="font-mono font-bold tracking-tight text-[length:clamp(1.25rem,7.5vw,1.875rem)] sm:text-4xl md:text-7xl text-white break-words">
           {formatAmount(totalBalance, 'UZS')}
         </p>
       </div>

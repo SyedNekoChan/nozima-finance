@@ -32,15 +32,15 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
   }, []);
 
   return (
-    <div className="border-2 border-white bg-black p-4 flex flex-col justify-between min-h-[160px] relative">
+    <div className="border-2 border-white bg-black p-3 sm:p-4 flex flex-col justify-between min-h-0 sm:min-h-[160px] relative min-w-0">
       <div>
         <div className="flex justify-between items-start">
-          <h3 className="font-mono uppercase tracking-widest text-sm text-white">
+          <h3 className="font-mono uppercase tracking-widest text-sm text-white break-words min-w-0">
             [ {account.name} ]
           </h3>
           {isFutureFund && (
             <span
-              className={`font-mono text-2xl ${isPulsing ? 'brutalist-heart-pulse' : 'brutalist-heart-idle'}`}
+              className={`flex-shrink-0 ml-2 font-mono text-2xl ${isPulsing ? 'brutalist-heart-pulse' : 'brutalist-heart-idle'}`}
               style={{ color: '#ec4899' }}
             >
               ♥
@@ -52,20 +52,20 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
         </span>
       </div>
 
-      <div className="my-4">
+      <div className="my-2 sm:my-4">
         {/* opacity subordinates negative balances instead of color */}
-        <span className={`font-mono font-bold text-2xl md:text-3xl text-white ${isNegative ? 'opacity-70' : ''}`}>
+        <span className={`font-mono font-bold text-xl sm:text-2xl md:text-3xl text-white break-words ${isNegative ? 'opacity-70' : ''}`}>
           {formatAmount(account.balance, account.currency)}
         </span>
       </div>
 
-      <div className="flex sm:hidden justify-between gap-2 pt-3 border-t border-gray-800">
+      <div className="flex sm:hidden justify-between gap-2 pt-2 border-t border-gray-800">
         <button
           type="button"
           aria-label="EDIT"
           title="EDIT"
           onClick={() => onEdit(account)}
-          className="flex-1 flex items-center justify-center py-2 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <path d="M12 20h9" />
@@ -77,7 +77,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           aria-label="TRANSFER"
           title="TRANSFER"
           onClick={() => onTransfer(account)}
-          className="flex-1 flex items-center justify-center py-2 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <polyline points="17 1 21 5 17 9" />
@@ -91,7 +91,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           aria-label="DELETE"
           title="DELETE"
           onClick={() => onDelete(account)}
-          className="flex-1 flex items-center justify-center py-2 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <polyline points="3 6 5 6 21 6" />

@@ -35,19 +35,19 @@ export default function Accounts() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-b border-gray-800">
+      <div className="flex flex-nowrap sm:flex-wrap items-center justify-between gap-3 px-4 py-3 sm:py-4 border-b border-gray-800">
         <div className="min-w-0">
           <span className="font-mono text-sm uppercase tracking-widest text-gray-500 block mb-1">
             [ &gt; ACCOUNTS ]
           </span>
-          <span className="font-mono text-2xl sm:text-3xl font-bold break-words">{formatAmount(totalUZS, 'UZS')}</span>
+          <span className="font-mono text-[length:clamp(1.25rem,7vw,1.875rem)] sm:text-3xl font-bold break-words block">{formatAmount(totalUZS, 'UZS')}</span>
         </div>
         <button
           type="button"
           aria-label="NEW ACCOUNT"
           title="NEW ACCOUNT"
           onClick={() => setIsNewOpen(true)}
-          className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-white bg-white text-black transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="sm:hidden flex-shrink-0 flex items-center justify-center w-9 h-9 border-2 border-white bg-white text-black transition-none select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -59,13 +59,13 @@ export default function Accounts() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-24">
+      <div className="flex-1 overflow-y-auto px-4 py-3 pb-4 sm:py-4 sm:pb-24">
         {accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div className="flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
             <span className="font-mono text-sm text-gray-500">[ NO ACCOUNTS ]</span>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {accounts.map((account) => (
               <AccountCard
                 key={account.id}

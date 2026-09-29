@@ -114,15 +114,15 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={`EDIT: ${account.name}`} size="md">
-      <div className="border-b border-gray-800 pb-4 mb-6">
+      <div className="border-b border-gray-800 pb-3 sm:pb-4 mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENT BALANCE</span>
         <span className="font-mono text-2xl md:text-3xl text-white">
           {formatAmount(account.balance, account.currency)}
         </span>
       </div>
 
-      <div className="mb-6 pb-6 border-b border-gray-800">
-        <div className="mb-5">
+      <div className="mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-gray-800">
+        <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">ADJUSTMENT</span>
           <div className="flex gap-2">
             <Button active={adjustmentMode === '+ ADD'} onClick={() => setAdjustmentMode('+ ADD')}>
@@ -134,7 +134,7 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
           </div>
         </div>
 
-        <div className="mb-5">
+        <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">AMOUNT</span>
           <input
             type="text"
@@ -159,10 +159,10 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-4">ACCOUNT DETAILS</span>
 
-        <div className="mb-5">
+        <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">NAME</span>
           <input
             type="text"
@@ -191,8 +191,8 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
         </div>
       )}
 
-      <div className="flex justify-end mt-6 border-t border-gray-800 pt-4">
-        <Button onClick={handleSave} active={true}>
+      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
+        <Button onClick={handleSave} active={true} className="w-full sm:w-auto">
           SAVE CHANGES
         </Button>
       </div>
