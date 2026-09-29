@@ -21,27 +21,26 @@ export default function Header({ sync }) {
   return (
     <>
       <header className="flex-shrink-0 w-full bg-black border-b border-gray-800 relative z-30 font-mono uppercase">
-        <div className="md:hidden flex items-center justify-center px-3 py-2 sm:px-2 sm:py-2.5 text-[9px] min-[375px]:text-[10px] sm:text-[8px] leading-none tracking-tight gap-2.5 sm:gap-2 overflow-hidden">
+        <div className="md:hidden grid grid-cols-2 grid-rows-2 font-mono uppercase text-[10px] leading-none tracking-wider">
           <span
-            className="flex-shrink-0 flex items-center gap-1 text-white cursor-pointer whitespace-nowrap"
+            className="col-start-1 row-start-1 min-w-0 truncate px-3 pt-2 pb-1.5 text-white cursor-pointer whitespace-nowrap"
             onClick={() => setShowSystemMessage(true)}
           >
-            <span className="text-white">●</span>
-            <span>ONLINE</span>
+            SYSTEM: ONLINE
           </span>
 
-          <span className="flex-shrink-0 text-gray-500 whitespace-nowrap">
-            {distance}
+          <span className="col-start-1 row-start-2 min-w-0 truncate mx-3 mb-2 px-1.5 py-1 border border-gray-800 text-gray-500 whitespace-nowrap justify-self-start max-w-[calc(100%-1.5rem)]">
+            DISTANCE: {distance}
           </span>
 
           <span
-            className="min-w-0 text-gray-500 cursor-pointer whitespace-nowrap truncate"
+            className="col-start-2 row-start-1 min-w-0 truncate px-3 pt-2 pb-1.5 text-right text-gray-500 cursor-pointer whitespace-nowrap"
             onClick={() => setShowSyncModal(true)}
           >
-            SYNC:{sync.status}
+            SYNC: {sync.status}
           </span>
 
-          <span className="flex-shrink-0 text-white whitespace-nowrap">
+          <span className="col-start-2 row-start-2 min-w-0 truncate mx-3 mb-2 px-1.5 py-1 border border-white text-white whitespace-nowrap justify-self-end max-w-[calc(100%-1.5rem)]">
             {formatTime(now)}
           </span>
         </div>
