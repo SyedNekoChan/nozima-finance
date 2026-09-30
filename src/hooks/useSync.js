@@ -19,8 +19,8 @@ import {
   setPendingJoin,
   clearPendingJoin,
 } from '../lib/db.js';
-import { PAIRING_TTL_MS, PAIRING_MAX_ATTEMPTS } from '../lib/constants.js';
-import { PeerMesh, MSG_SV, MSG_UPDATE, MSG_CTL } from '../lib/p2p.js';
+import { PAIRING_TTL_MS, PAIRING_MAX_ATTEMPTS, SYNC_STAGE } from '../lib/constants.js';
+import { PeerMesh, SignalChannel, MSG_SV, MSG_UPDATE, syncLog } from '../lib/p2p.js';
 import {
   generateSecretBytes,
   secretToBase64Url,
@@ -37,24 +37,29 @@ import {
   normalizeConfirmationCode,
   generateDeviceId,
   derivePairingRoom,
+  createPairingKeyPair,
+  derivePairingSessionKey,
+  encryptJson,
+  decryptJson,
 } from '../lib/pairing.js';
 
 const ERR_SIGNALING = 'SIGNALING UNAVAILABLE';
 const ERR_NO_PEER = 'NO PAIRED DEVICE ONLINE';
 const ERR_LINK = 'PEER LINK FAILED';
+const ERR_PROTOCOL = 'SIGNALING PROTOCOL ERROR';
+const JOIN_EVERY_MS = 3000;
+const HOST_STALE_MS = 25000;
+const AWAIT_IDLE_MS = 10 * 60 * 1000;
+const SIGNALING_GIVEUP_MS = 45000;
 const PAIR_FIND_TIMEOUT_MS = 30000;
 const PAIR_SIGNALING_TIMEOUT_MS = 8000;
-const CONFIRM_TIMEOUT_MS = 10000;
 const NO_PEER_AFTER_MS = 30000;
 const FORCE_SYNC_TIMEOUT_MS = 12000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const isTransientError = (e) =>
-  e === ERR_SIGNALING || e === ERR_NO_PEER || e === ERR_LINK;
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-const encodeCtl = (obj) => enc.encode(JSON.stringify(obj));
+  e === ERR_SIGNALING || e === ERR_NO_PEER || e === ERR_LINK || e === ERR_PROTOCOL;
 
 export default function useSync() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
@@ -74,7 +79,8 @@ export default function useSync() {
   const [qrPayload, setQrPayload] = useState(null);
   const [hostCode, setHostCode] = useState(null);
   const [pendingCode, setPendingCode] = useState(null);
-  const [joinUi, setJoinUi] = useState({ stage: 'CONNECTING', left: null });
+  const [joinUi, setJoinUi] = useState({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
+  const [transportStage, setTransportStage] = useState(SYNC_STAGE.SIGNALING_CONNECTING);
 
   const secretRef = useRef(null);
   secretRef.current = secretBytes;
@@ -90,6 +96,8 @@ export default function useSync() {
   const joinApiRef = useRef(null);
   const joinUiRef = useRef(joinUi);
   joinUiRef.current = joinUi;
+  const mnemonicRef = useRef(null);
+  mnemonicRef.current = recoveryMnemonic;
 
   const peersRef = useRef(0);
   const syncedRef = useRef(false);
@@ -345,11 +353,14 @@ export default function useSync() {
     const clearTransient = () =>
       setError((current) => (isTransientError(current) ? null : current));
 
+    let lastStage = null;
+
     const refresh = () => {
       if (cancelled || !mesh) return;
 
       const open = mesh.openPeers.length;
       const signaling = mesh.signaling;
+      const failure = mesh.signalingFailure;
 
       peersRef.current = open;
       setPeerCount(open);
@@ -359,16 +370,30 @@ export default function useSync() {
         syncedRef.current = false;
       }
 
+      let stage;
+
+      if (signaling === 'connecting') stage = SYNC_STAGE.SIGNALING_CONNECTING;
+      else if (signaling === 'unavailable') stage = SYNC_STAGE.SIGNALING_FAILURE;
+      else if (open > 0) {
+        stage = syncedPeers.size > 0 ? SYNC_STAGE.SYNC_COMPLETE : SYNC_STAGE.WEBRTC_CONNECTED;
+      } else if (mesh.connectingCount > 0) stage = SYNC_STAGE.WEBRTC_CONNECTING;
+      else if (Date.now() - startedAt > NO_PEER_AFTER_MS) stage = SYNC_STAGE.NO_PEER;
+      else stage = SYNC_STAGE.PEER_DISCOVERY;
+
+      if (stage !== lastStage) {
+        lastStage = stage;
+        syncLog('transport stage', stage, mesh.sig.diagnostics());
+      }
+
+      setTransportStage(stage);
+
       if (open > 0) {
         clearTransient();
       } else if (signaling === 'unavailable') {
-        setTransient(ERR_SIGNALING);
+        setTransient(failure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
       } else if (mesh.linkFailed) {
         setTransient(ERR_LINK);
-      } else if (
-        signaling === 'ready' &&
-        Date.now() - startedAt > NO_PEER_AFTER_MS
-      ) {
+      } else if (stage === SYNC_STAGE.NO_PEER) {
         setTransient(ERR_NO_PEER);
       } else {
         clearTransient();
@@ -452,9 +477,10 @@ export default function useSync() {
 
   /*
    * ---------------------------------------------------------------
-   * PAIRING HOST (generator device): serves the pairing rendezvous
-   * and releases the sync secret ONLY after the confirmation code
-   * is verified here (rate-limited, persisted).
+   * PAIRING HOST (generator device). The whole handshake runs over
+   * the encrypted signaling relay (no WebRTC needed). The sync secret
+   * is released ONLY after the confirmation code is verified here, and
+   * only encrypted to the one joining session that proved it.
    * ---------------------------------------------------------------
    */
 
@@ -462,9 +488,17 @@ export default function useSync() {
     if (!secretBytes || !hostCode || paused) return undefined;
 
     let cancelled = false;
-    let mesh = null;
+    let chan = null;
     let expiry = null;
     let queue = Promise.resolve();
+    const sessions = new Map();
+    const code = normalizePairingCode(hostCode);
+
+    const hideCodes = () => {
+      if (cancelled) return;
+      setConfirmationCode(null);
+      setQrPayload(null);
+    };
 
     const consume = async () => {
       pairSessionRef.current = null;
@@ -472,9 +506,19 @@ export default function useSync() {
 
       if (!cancelled) {
         setHostCode(null);
-        setConfirmationCode(null);
-        setQrPayload(null);
+        hideCodes();
       }
+    };
+
+    const expire = async () => {
+      const session = pairSessionRef.current;
+
+      if (!session) return;
+
+      const next = { ...session, status: 'expired' };
+      pairSessionRef.current = next;
+      await setPairSession(next);
+      hideCodes();
     };
 
     const persist = async (next) => {
@@ -482,38 +526,136 @@ export default function useSync() {
       await setPairSession(next);
     };
 
-    const handle = async (peerId, msg) => {
-      const reply = (obj) => mesh.send(peerId, MSG_CTL, encodeCtl(obj));
+    // null when the session can still accept this device.
+    const unavailable = (session, dev) => {
+      if (!session) return 'PAIRING CODE ALREADY USED';
+
+      if (
+        session.status === 'expired' ||
+        Date.now() - session.createdAt > PAIRING_TTL_MS
+      ) {
+        return 'PAIRING CODE EXPIRED';
+      }
+
+      if (session.claimedBy && session.claimedBy !== dev) {
+        return 'PAIRING CODE ALREADY USED';
+      }
+
+      if (session.attempts >= PAIRING_MAX_ATTEMPTS) return 'TOO MANY ATTEMPTS';
+
+      return null;
+    };
+
+    const handle = async (msg) => {
+      if (typeof msg.sid !== 'string' || msg.sid.length > 32) return;
+
+      if (msg.k === 'join') {
+        if (typeof msg.pub !== 'string' || typeof msg.dev !== 'string') return;
+
+        const session = pairSessionRef.current;
+        const bad = unavailable(session, msg.dev);
+
+        if (bad) {
+          syncLog('host: join rejected', bad);
+          chan.publish({ k: 'reject', sid: msg.sid, t: msg.f, r: bad });
+          return;
+        }
+
+        let rec = sessions.get(msg.sid);
+
+        if (!rec) {
+          try {
+            const pair = await createPairingKeyPair();
+            const key = await derivePairingSessionKey(
+              pair.privateKey,
+              msg.pub,
+              msg.sid,
+              code
+            );
+
+            rec = {
+              f: msg.f,
+              dev: msg.dev,
+              peerPub: msg.pub,
+              hostPub: pair.pub,
+              key,
+              lastN: 0,
+              resp: null,
+            };
+          } catch {
+            chan.publish({
+              k: 'reject',
+              sid: msg.sid,
+              t: msg.f,
+              r: 'MALFORMED JOIN REQUEST',
+            });
+            return;
+          }
+
+          sessions.set(msg.sid, rec);
+
+          if (sessions.size > 20) sessions.delete(sessions.keys().next().value);
+        } else if (rec.peerPub !== msg.pub || rec.f !== msg.f) {
+          return;
+        }
+
+        syncLog('host: challenge sent', msg.sid);
+
+        chan.publish({
+          k: 'challenge',
+          sid: msg.sid,
+          t: msg.f,
+          pub: rec.hostPub,
+          left: PAIRING_MAX_ATTEMPTS - session.attempts,
+        });
+        return;
+      }
+
+      const rec = sessions.get(msg.sid);
+
+      if (!rec || rec.f !== msg.f) return;
+
+      let body;
+
+      try {
+        body = await decryptJson(rec.key, msg.c);
+      } catch {
+        return;
+      }
+
+      if (msg.k === 'ack') {
+        const session = pairSessionRef.current;
+
+        if (body.a === 'ack' && session && session.claimedBy === rec.dev) {
+          syncLog('host: pairing acknowledged, session consumed');
+          await consume();
+        }
+        return;
+      }
+
+      if (msg.k !== 'confirm') return;
+      if (typeof body.n !== 'number' || typeof body.code !== 'string') return;
+
+      if (body.n === rec.lastN && rec.resp) {
+        chan.publish({ k: 'resp', sid: msg.sid, t: rec.f, c: rec.resp });
+        return;
+      }
+
+      if (body.n <= rec.lastN) return;
+
+      rec.lastN = body.n;
+
       const session = pairSessionRef.current;
+      const bad = unavailable(session, rec.dev);
+      let out;
 
-      if (!session) return reply({ a: 'reject', r: 'PAIRING CODE ALREADY USED' });
-
-      if (Date.now() - session.createdAt > PAIRING_TTL_MS) {
-        return reply({ a: 'reject', r: 'PAIRING CODE EXPIRED' });
-      }
-
-      if (session.claimedBy && session.claimedBy !== msg.dev) {
-        return reply({ a: 'reject', r: 'PAIRING CODE ALREADY USED' });
-      }
-
-      if (msg.a === 'ack') {
-        if (session.claimedBy && session.claimedBy === msg.dev) await consume();
-        return undefined;
-      }
-
-      if (session.attempts >= PAIRING_MAX_ATTEMPTS) {
-        return reply({ a: 'reject', r: 'TOO MANY ATTEMPTS' });
-      }
-
-      if (msg.a === 'join') {
-        return reply({ a: 'challenge', left: PAIRING_MAX_ATTEMPTS - session.attempts });
-      }
-
-      if (msg.a === 'confirm') {
+      if (bad) {
+        out = { a: 'reject', r: bad, n: body.n };
+      } else {
         let ok = false;
 
         try {
-          const given = normalizeConfirmationCode(msg.c);
+          const given = normalizeConfirmationCode(body.code);
           const expected = session.confirmationCode;
           let diff = given.length ^ expected.length;
           for (let i = 0; i < expected.length; i += 1) {
@@ -528,47 +670,42 @@ export default function useSync() {
           const next = { ...session, attempts: session.attempts + 1 };
           await persist(next);
 
-          return next.attempts >= PAIRING_MAX_ATTEMPTS
-            ? reply({ a: 'reject', r: 'TOO MANY ATTEMPTS' })
-            : reply({ a: 'fail', left: PAIRING_MAX_ATTEMPTS - next.attempts });
+          if (next.attempts >= PAIRING_MAX_ATTEMPTS) {
+            hideCodes();
+            out = { a: 'reject', r: 'TOO MANY ATTEMPTS', n: body.n };
+          } else {
+            out = { a: 'fail', left: PAIRING_MAX_ATTEMPTS - next.attempts, n: body.n };
+          }
+
+          syncLog('host: confirmation rejected', next.attempts);
+        } else {
+          await persist({ ...session, claimedBy: rec.dev });
+          out = { a: 'ok', k: secretToBase64Url(secretBytes), n: body.n };
+          syncLog('host: confirmation accepted, secret released');
         }
-
-        await persist({ ...session, claimedBy: msg.dev });
-
-        return reply({ a: 'ok', k: secretToBase64Url(secretBytes) });
       }
 
-      return undefined;
+      rec.resp = await encryptJson(rec.key, out);
+      chan.publish({ k: 'resp', sid: msg.sid, t: rec.f, c: rec.resp });
     };
 
     (async () => {
       try {
-        const room = await derivePairingRoom(normalizePairingCode(hostCode));
+        const room = await derivePairingRoom(code);
 
         if (cancelled) return;
 
-        mesh = new PeerMesh({
+        chan = new SignalChannel({
           ...room,
-          onMessage: (peerId, type, bytes) => {
-            if (type !== MSG_CTL) return;
-
-            let msg;
-
-            try {
-              msg = JSON.parse(dec.decode(bytes));
-            } catch {
-              return;
-            }
-
-            if (!msg || typeof msg.dev !== 'string') return;
-
+          onMessage: (msg) => {
             queue = queue
-              .then(() => handle(peerId, msg))
+              .then(() => handle(msg))
               .catch((e) => console.error('[SYNC] Pairing host error:', e?.message || e));
           },
+          onChange: () => {},
         });
 
-        await mesh.start();
+        await chan.start();
 
         if (cancelled) return;
 
@@ -578,7 +715,7 @@ export default function useSync() {
           : 0;
 
         expiry = setTimeout(() => {
-          consume().catch(() => {});
+          expire().catch(() => {});
         }, Math.max(0, Math.min(remaining, 2 ** 31 - 1)));
       } catch (hostError) {
         console.error('[SYNC] Pairing host failed:', hostError?.message || hostError);
@@ -588,14 +725,15 @@ export default function useSync() {
     return () => {
       cancelled = true;
       if (expiry) clearTimeout(expiry);
-      if (mesh) mesh.stop();
+      if (chan) chan.stop();
     };
   }, [secretBytes, hostCode, paused, linkEpoch]);
 
   /*
    * ---------------------------------------------------------------
-   * PAIRING JOINER: pending (NOT paired) until the generator accepts
-   * the confirmation code and releases the sync secret.
+   * PAIRING JOINER. PENDING (never paired) until the generator has
+   * verified the confirmation code and released the sync secret over
+   * the signaling relay. Every wait has a deterministic timeout.
    * ---------------------------------------------------------------
    */
 
@@ -603,44 +741,77 @@ export default function useSync() {
     if (!pendingCode || secretBytes) return undefined;
 
     let cancelled = false;
-    let mesh = null;
-    let host = null;
-    let since = Date.now();
+    let chan = null;
+    let keyPair = null;
+    let key = null;
+    let hostF = null;
+    let hostPub = null;
     let watchdog = null;
-    let verifyTimer = null;
+    let joinTimer = null;
+    let verifyTimers = [];
     let completing = false;
+    let lastN = 0;
+    let readyOnce = false;
+    let sigDownSince = Date.now();
+    let discoverySince = Date.now();
+    let hostSeen = 0;
+    let awaitingSince = 0;
 
     const deviceId = pendingDeviceRef.current;
+    const sid = generateDeviceId();
 
-    const ctl = (peerId, obj) =>
-      mesh.send(peerId, MSG_CTL, encodeCtl({ ...obj, dev: deviceId }));
+    const setStage = (stage, left) => {
+      syncLog('join stage', stage);
+      setJoinUi((ui) => ({ stage, left: left === undefined ? ui.left : left }));
+    };
+
+    const clearVerify = () => {
+      verifyTimers.forEach(clearTimeout);
+      verifyTimers = [];
+    };
 
     const abort = async (reason) => {
       if (cancelled) return;
 
       cancelled = true;
+      syncLog('join aborted', reason);
       await clearPendingJoin().catch(() => {});
       pendingDeviceRef.current = null;
       joinApiRef.current = null;
       setPendingCode(null);
-      setJoinUi({ stage: 'CONNECTING', left: null });
+      setJoinUi({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
       setError(reason);
     };
 
-    const complete = async (encodedSecret, peerId) => {
+    const sendJoin = () => {
+      if (cancelled || completing || !chan || !keyPair) return;
+      if (joinUiRef.current.stage === SYNC_STAGE.CONFIRM_VERIFYING) return;
+
+      chan.publish({ k: 'join', sid, pub: keyPair.pub, dev: deviceId });
+    };
+
+    const complete = async (encodedSecret) => {
       if (completing || cancelled) return;
       completing = true;
 
       try {
+        setStage(SYNC_STAGE.CONFIRM_ACCEPTED);
+
         const bytes = base64UrlToSecret(String(encodedSecret));
 
         if (bytes.length !== 16) throw new Error('INVALID PAIRING RESPONSE');
 
+        setStage(SYNC_STAGE.SECRET_RELEASED);
+
         await commitJoin(bytes);
 
-        // Tell the generator it can retire the pairing code, then activate.
-        await ctl(peerId, { a: 'ack' });
-        await sleep(400);
+        // Let the generator retire the session (repeated: relay is lossy).
+        const ack = await encryptJson(key, { a: 'ack', n: lastN });
+
+        for (let i = 0; i < 3; i += 1) {
+          chan.publish({ k: 'ack', sid, t: hostF, c: ack });
+          await sleep(500);
+        }
 
         await clearPendingJoin();
         pendingDeviceRef.current = null;
@@ -649,7 +820,7 @@ export default function useSync() {
         cancelled = true;
         await activateJoin(bytes);
         setPendingCode(null);
-        setJoinUi({ stage: 'CONNECTING', left: null });
+        setJoinUi({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
       } catch (err) {
         completing = false;
         await rollbackJoin();
@@ -657,19 +828,127 @@ export default function useSync() {
       }
     };
 
+    const onMessage = async (msg) => {
+      if (cancelled || msg.sid !== sid) return;
+
+      if (msg.k === 'reject') {
+        abort(String(msg.r || 'PAIRING REJECTED'));
+        return;
+      }
+
+      if (msg.k === 'challenge') {
+        if (typeof msg.pub !== 'string') return;
+
+        // First challenge, or the generator restarted (new ephemeral key):
+        // rebind to it; the generator re-verifies everything anyway.
+        if (!key || msg.pub !== hostPub || msg.f !== hostF) {
+          let next;
+
+          try {
+            next = await derivePairingSessionKey(
+              keyPair.privateKey,
+              msg.pub,
+              sid,
+              pendingCode
+            );
+          } catch {
+            return;
+          }
+
+          const restarted = key !== null;
+
+          key = next;
+          hostF = msg.f;
+          hostPub = msg.pub;
+
+          if (restarted) {
+            clearVerify();
+            awaitingSince = Date.now();
+            syncLog('join: generator restarted, rebound');
+
+            if (joinUiRef.current.stage === SYNC_STAGE.CONFIRM_VERIFYING) {
+              setStage(SYNC_STAGE.CHALLENGE_SENT, msg.left);
+              setError('GENERATING DEVICE RESTARTED. ENTER THE CODE AGAIN');
+            }
+          }
+        }
+
+        hostSeen = Date.now();
+
+        const stage = joinUiRef.current.stage;
+
+        if (
+          stage === SYNC_STAGE.SIGNALING_CONNECTING ||
+          stage === SYNC_STAGE.SIGNALING_READY ||
+          stage === SYNC_STAGE.PEER_DISCOVERY ||
+          stage === SYNC_STAGE.SIGNALING_FAILURE
+        ) {
+          awaitingSince = Date.now();
+          setStage(SYNC_STAGE.CHALLENGE_SENT, msg.left);
+        } else {
+          setJoinUi((ui) => ({ ...ui, left: msg.left }));
+        }
+        return;
+      }
+
+      if (msg.k === 'resp') {
+        if (!key || msg.f !== hostF) return;
+
+        let body;
+
+        try {
+          body = await decryptJson(key, msg.c);
+        } catch {
+          return;
+        }
+
+        if (body.n !== lastN || cancelled) return;
+
+        clearVerify();
+
+        if (body.a === 'fail') {
+          awaitingSince = Date.now();
+          setStage(SYNC_STAGE.CHALLENGE_SENT, body.left);
+          setError(`WRONG CONFIRMATION CODE. ${body.left} ATTEMPTS LEFT`);
+        } else if (body.a === 'reject') {
+          abort(String(body.r || 'PAIRING REJECTED'));
+        } else if (body.a === 'ok') {
+          complete(body.k);
+        }
+      }
+    };
+
     joinApiRef.current = {
-      confirm: (code) => {
-        if (!host) return false;
+      confirm: async (code) => {
+        if (!key || joinUiRef.current.stage !== SYNC_STAGE.CHALLENGE_SENT) return false;
 
-        setJoinUi((ui) => ({ ...ui, stage: 'VERIFYING' }));
-        ctl(host, { a: 'confirm', c: code });
+        lastN += 1;
 
-        clearTimeout(verifyTimer);
-        verifyTimer = setTimeout(() => {
-          if (cancelled || joinUiRef.current.stage !== 'VERIFYING') return;
-          setJoinUi((ui) => ({ ...ui, stage: 'AWAITING' }));
-          setError('NO RESPONSE FROM GENERATING DEVICE');
-        }, CONFIRM_TIMEOUT_MS);
+        const n = lastN;
+        const payload = await encryptJson(key, { n, code });
+        const send = () =>
+          chan.publish({ k: 'confirm', sid, t: hostF, c: payload });
+
+        setStage(SYNC_STAGE.CONFIRM_VERIFYING);
+        send();
+
+        clearVerify();
+        verifyTimers = [
+          setTimeout(send, 3500),
+          setTimeout(send, 7000),
+          setTimeout(() => {
+            if (
+              cancelled ||
+              lastN !== n ||
+              joinUiRef.current.stage !== SYNC_STAGE.CONFIRM_VERIFYING
+            ) {
+              return;
+            }
+
+            setStage(SYNC_STAGE.CHALLENGE_SENT);
+            setError('NO RESPONSE FROM GENERATING DEVICE');
+          }, 12000),
+        ];
 
         return true;
       },
@@ -679,71 +958,79 @@ export default function useSync() {
       try {
         const room = await derivePairingRoom(pendingCode);
 
+        keyPair = await createPairingKeyPair();
+
         if (cancelled) return;
 
-        mesh = new PeerMesh({
+        chan = new SignalChannel({
           ...room,
-          onPeerOpen: (peerId) => {
-            ctl(peerId, { a: 'join' });
+          onMessage: (msg) => {
+            onMessage(msg).catch((e) =>
+              console.error('[SYNC] Pairing join error:', e?.message || e)
+            );
           },
-          onPeerClose: (peerId) => {
-            if (peerId !== host || completing) return;
-            host = null;
-            since = Date.now();
-            clearTimeout(verifyTimer);
-            setJoinUi({ stage: 'CONNECTING', left: null });
-          },
-          onMessage: (peerId, type, bytes) => {
-            if (type !== MSG_CTL || cancelled) return;
+          onChange: () => {
+            if (cancelled || readyOnce || chan.state.signaling !== 'ready') return;
 
-            let msg;
-
-            try {
-              msg = JSON.parse(dec.decode(bytes));
-            } catch {
-              return;
-            }
-
-            if (!msg) return;
-            if (host !== null && peerId !== host) return;
-
-            if (msg.a === 'reject') {
-              abort(String(msg.r || 'PAIRING REJECTED'));
-            } else if (msg.a === 'challenge') {
-              host = peerId;
-              setError(null);
-              setJoinUi({ stage: 'AWAITING', left: msg.left });
-            } else if (host === peerId && msg.a === 'fail') {
-              clearTimeout(verifyTimer);
-              setJoinUi({ stage: 'AWAITING', left: msg.left });
-              setError(`WRONG CONFIRMATION CODE. ${msg.left} ATTEMPTS LEFT`);
-            } else if (host === peerId && msg.a === 'ok') {
-              clearTimeout(verifyTimer);
-              complete(msg.k, peerId);
-            }
+            readyOnce = true;
+            sigDownSince = null;
+            discoverySince = Date.now();
+            setStage(SYNC_STAGE.PEER_DISCOVERY);
+            sendJoin();
           },
         });
 
-        meshRef.current = mesh;
-
-        await mesh.start();
+        await chan.start();
 
         if (cancelled) return;
 
+        joinTimer = setInterval(sendJoin, JOIN_EVERY_MS);
+
         watchdog = setInterval(() => {
-          if (cancelled || host || completing) return;
+          if (cancelled || completing) return;
 
-          const elapsed = Date.now() - since;
-          const signaling = mesh.signaling;
+          const now = Date.now();
+          const state = chan.state;
+          const stage = joinUiRef.current.stage;
 
-          if (signaling === 'unavailable' && elapsed > PAIR_SIGNALING_TIMEOUT_MS) {
-            abort(ERR_SIGNALING);
-          } else if (elapsed > PAIR_FIND_TIMEOUT_MS) {
-            abort(
-              signaling === 'ready'
-                ? 'PAIRING CODE NOT FOUND OR DEVICE OFFLINE'
-                : ERR_SIGNALING
-            );
+          if (state.signaling !== 'ready') {
+            if (!sigDownSince) sigDownSince = now;
+
+            if (state.signaling === 'unavailable') {
+              if (stage !== SYNC_STAGE.SIGNALING_FAILURE) {
+                setStage(SYNC_STAGE.SIGNALING_FAILURE);
+              }
+
+              if (now - sigDownSince > 8000) {
+                abort(state.failure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
+                return;
+              }
+            }
+
+            if (now - sigDownSince > SIGNALING_GIVEUP_MS) abort(ERR_SIGNALING);
+            return;
+          }
+
+          sigDownSince = null;
+
+          if (stage === SYNC_STAGE.SIGNALING_FAILURE) {
+            discoverySince = now;
+            setStage(SYNC_STAGE.PEER_DISCOVERY);
+            return;
+          }
+
+          if (stage === SYNC_STAGE.CHALLENGE_SENT) {
+            if (now - awaitingSince > AWAIT_IDLE_MS) {
+              abort('PAIRING TIMED OUT');
+            } else if (now - hostSeen > HOST_STALE_MS) {
+              discoverySince = now;
+              setStage(SYNC_STAGE.PEER_DISCOVERY);
+            }
+          } else if (
+            stage === SYNC_STAGE.PEER_DISCOVERY &&
+            now - discoverySince > 30000
+          ) {
+            abort('PAIRING CODE NOT FOUND OR DEVICE OFFLINE');
           }
         }, 1000);
       } catch (joinError) {
@@ -754,10 +1041,10 @@ export default function useSync() {
     return () => {
       cancelled = true;
       clearInterval(watchdog);
-      clearTimeout(verifyTimer);
+      clearInterval(joinTimer);
+      clearVerify();
 
-      if (mesh) mesh.stop();
-      if (meshRef.current === mesh) meshRef.current = null;
+      if (chan) chan.stop();
 
       joinApiRef.current = null;
     };
@@ -1068,7 +1355,11 @@ export default function useSync() {
           const isJoiner = Boolean(pre && pre.secret === stored);
           let session = isJoiner ? null : await getPairSession();
 
-          if (session && Date.now() - session.createdAt > PAIRING_TTL_MS) {
+          if (
+            session &&
+            (session.status === 'expired' ||
+              Date.now() - session.createdAt > PAIRING_TTL_MS)
+          ) {
             await clearPairSession();
             session = null;
           }
@@ -1081,9 +1372,12 @@ export default function useSync() {
 
           if (session) {
             pairSessionRef.current = session;
-            setQrPayload(session.pairingCode);
-            setConfirmationCode(session.confirmationCode);
             setHostCode(session.pairingCode);
+
+            if (session.attempts < PAIRING_MAX_ATTEMPTS) {
+              setQrPayload(session.pairingCode);
+              setConfirmationCode(session.confirmationCode);
+            }
           }
 
           setSecretBytes(bytes);
@@ -1102,7 +1396,7 @@ export default function useSync() {
         }
 
         pendingDeviceRef.current = pending.deviceId;
-        setJoinUi({ stage: 'CONNECTING', left: null });
+        setJoinUi({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
         setPendingCode(normalizePairingCode(pending.pairingCode));
       } catch (restoreError) {
         console.error('[SYNC] Restore failed:', restoreError?.message || restoreError);
@@ -1169,6 +1463,34 @@ export default function useSync() {
     } finally {
       joiningRef.current = false;
       setBusy(false);
+    }
+  }, []);
+
+  // Generator only: replace the pairing session with a fresh code pair.
+  const regeneratePairing = useCallback(async () => {
+    if (!secretRef.current || !mnemonicRef.current) return false;
+
+    try {
+      const session = {
+        pairingCode: generatePairingCode(),
+        confirmationCode: generateConfirmationCode(),
+        createdAt: Date.now(),
+        attempts: 0,
+        claimedBy: null,
+      };
+
+      await setPairSession(session);
+      pairSessionRef.current = session;
+
+      setError(null);
+      setQrPayload(session.pairingCode);
+      setConfirmationCode(session.confirmationCode);
+      setHostCode(session.pairingCode);
+
+      return true;
+    } catch (err) {
+      setError(err?.message || 'FAILED TO GENERATE PAIRING');
+      return false;
     }
   }, []);
 
@@ -1274,7 +1596,7 @@ export default function useSync() {
       await setPendingJoin({ pairingCode: code, deviceId, createdAt: Date.now() });
 
       pendingDeviceRef.current = deviceId;
-      setJoinUi({ stage: 'CONNECTING', left: null });
+      setJoinUi({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
       setPendingCode(code);
 
       return true;
@@ -1288,7 +1610,10 @@ export default function useSync() {
 
   // Joiner step 2: confirmation code, verified by the generating device.
   const submitConfirmation = useCallback((input) => {
-    if (joinUiRef.current.stage !== 'AWAITING' || !joinApiRef.current) {
+    if (
+      joinUiRef.current.stage !== SYNC_STAGE.CHALLENGE_SENT ||
+      !joinApiRef.current
+    ) {
       setError('NOT CONNECTED TO GENERATING DEVICE');
       return false;
     }
@@ -1313,7 +1638,7 @@ export default function useSync() {
     joinApiRef.current = null;
     setError(null);
     setPendingCode(null);
-    setJoinUi({ stage: 'CONNECTING', left: null });
+    setJoinUi({ stage: SYNC_STAGE.SIGNALING_CONNECTING, left: null });
   }, []);
 
   /*
@@ -1359,8 +1684,10 @@ export default function useSync() {
 
       if (mesh && mesh.signaling === 'ready') {
         setError(mesh.linkFailed ? ERR_LINK : ERR_NO_PEER);
+      } else if (mesh && mesh.signaling === 'connecting') {
+        setError(null);
       } else {
-        setError(ERR_SIGNALING);
+        setError(mesh?.signalingFailure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
       }
     } catch (syncError) {
       console.error('[SYNC] Force sync failed:', syncError?.message || syncError);
@@ -1437,11 +1764,20 @@ export default function useSync() {
     confirmationCode,
     recoveryMnemonic,
     qrPayload,
+    canRegenerate: Boolean(secretBytes && recoveryMnemonic && !qrPayload),
     createPairing,
     joinPairingWithMnemonic,
     joinPairingWithCode,
     submitConfirmation,
     cancelPendingJoin,
+    regeneratePairing,
+    stage: secretBytes
+      ? paused
+        ? null
+        : transportStage
+      : pendingCode
+        ? joinUi.stage
+        : null,
     pendingJoin: pendingCode
       ? { stage: joinUi.stage, attemptsLeft: joinUi.left }
       : null,
