@@ -4,17 +4,24 @@ import {
   SPECIAL_CURRENCY_SYMBOLS,
 } from './constants.js';
 
-// UZS is the pivot, so its rate is always 1 and never stored in the rates table
-const getRate = (code, rates) => (code === PRIMARY_CURRENCY ? 1 : rates[code]);
+const normCode = (code) => String(code || '').trim().toUpperCase();
+
+// UZS is the pivot, so its rate is always 1; any other code is looked up by normalized 3-letter code
+const getRate = (code, rates) => {
+  const c = normCode(code);
+  return c === PRIMARY_CURRENCY ? 1 : rates?.[c] ?? rates?.[code];
+};
+
+export { getRate };
 
 export function getCurrencySymbol(code) {
-  const symbol = SPECIAL_CURRENCY_SYMBOLS[code];
-  return symbol === undefined ? code : symbol;
+  // unknown codes have no sign; the code suffix is shown instead
+  return SPECIAL_CURRENCY_SYMBOLS[normCode(code)] || '';
 }
 
 export function formatAmount(amount, currencyCode = PRIMARY_CURRENCY) {
   const value = Number(amount) || 0;
-  const isBase = currencyCode === PRIMARY_CURRENCY;
+  const isBase = normCode(currencyCode) === PRIMARY_CURRENCY;
   const decimals = isBase ? 0 : 2;
 
   const formatted = value.toLocaleString('en-US', {
@@ -30,7 +37,7 @@ export function formatAmount(amount, currencyCode = PRIMARY_CURRENCY) {
 }
 
 export function convertToBase(amount, fromCurrency, rates = DEFAULT_EXCHANGE_RATES) {
-  if (fromCurrency === PRIMARY_CURRENCY) return amount;
+  if (normCode(fromCurrency) === PRIMARY_CURRENCY) return amount;
 
   const rate = getRate(fromCurrency, rates);
   if (!rate) {
@@ -41,7 +48,7 @@ export function convertToBase(amount, fromCurrency, rates = DEFAULT_EXCHANGE_RAT
 }
 
 export function convertBetween(amount, fromCurrency, toCurrency, rates = DEFAULT_EXCHANGE_RATES) {
-  if (fromCurrency === toCurrency) return amount;
+  if (normCode(fromCurrency) === normCode(toCurrency)) return amount;
 
   const fromRate = getRate(fromCurrency, rates);
   const toRate = getRate(toCurrency, rates);
