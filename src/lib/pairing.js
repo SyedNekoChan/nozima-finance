@@ -71,8 +71,12 @@ export function secretToMnemonic(secretBytes) {
   return bip39.entropyToMnemonic(bytesToHex(secretBytes));
 }
 
+function normalizeMnemonic(mnemonic) {
+  return String(mnemonic || '').trim().toLowerCase().split(/\s+/).join(' ');
+}
+
 export function mnemonicToSecret(mnemonic) {
-  const hex = bip39.mnemonicToEntropy(mnemonic.trim().toLowerCase());
+  const hex = bip39.mnemonicToEntropy(normalizeMnemonic(mnemonic));
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i += 1) {
     bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
@@ -82,7 +86,7 @@ export function mnemonicToSecret(mnemonic) {
 
 export function isValidMnemonic(mnemonic) {
   try {
-    return bip39.validateMnemonic(mnemonic.trim().toLowerCase());
+    return bip39.validateMnemonic(normalizeMnemonic(mnemonic));
   } catch {
     return false;
   }
@@ -196,12 +200,59 @@ export function buildQrPayload(secretBytes) {
   });
 }
 
-export function parseQrPayload(payloadString) {
-  const parsed = JSON.parse(payloadString);
+export function parseQrPayload(input) {
+  const raw = String(input || '')
+    .replace(/[\u201C\u201D]/g, '"')
+    .trim();
 
-  if (parsed.version !== DERIVATION_VERSION) {
-    throw new Error('UNSUPPORTED PAIRING VERSION');
+  if (!raw) {
+    throw new Error('EMPTY PAIRING CODE');
   }
 
-  return base64UrlToBytes(parsed.entropy);
+  if (/^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$/.test(raw)) {
+    throw new Error('CONFIRMATION CODE CANNOT PAIR. USE PAIRING CODE OR RECOVERY KEY');
+  }
+
+  let bytes;
+
+  try {
+    if (raw.startsWith('{')) {
+      const parsed = JSON.parse(raw);
+
+      if (parsed.version !== DERIVATION_VERSION) {
+        throw new Error('UNSUPPORTED PAIRING VERSION');
+      }
+
+      if (
+        typeof parsed.entropy !== 'string' ||
+        !/^[A-Za-z0-9_-]{22}$/.test(parsed.entropy)
+      ) {
+        throw new Error('MALFORMED PAIRING CODE');
+      }
+
+      bytes = base64UrlToBytes(parsed.entropy);
+    } else if (raw.split(/\s+/).length === 12) {
+      if (!isValidMnemonic(raw)) {
+        throw new Error('MALFORMED PAIRING CODE');
+      }
+
+      bytes = mnemonicToSecret(raw);
+    } else if (/^[A-Za-z0-9_-]{22}$/.test(raw)) {
+      bytes = base64UrlToBytes(raw);
+    } else {
+      throw new Error('MALFORMED PAIRING CODE');
+    }
+  } catch (err) {
+    if (/^[A-Z .]+$/.test(err?.message || '')) {
+      throw err;
+    }
+
+    throw new Error('MALFORMED PAIRING CODE');
+  }
+
+  if (bytes.length !== 16) {
+    throw new Error('MALFORMED PAIRING CODE');
+  }
+
+  return bytes;
 }
