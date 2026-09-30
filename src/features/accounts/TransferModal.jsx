@@ -147,6 +147,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
             availableDestinations.map((account) => (
               <Button
                 key={account.id}
+                className="sm:whitespace-nowrap sm:flex-shrink-0"
                 active={destinationId === account.id}
                 disabled={isSubmitting}
                 onClick={() => {
