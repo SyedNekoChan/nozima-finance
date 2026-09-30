@@ -13,6 +13,19 @@ import { SIGNALING_BROKERS, ICE_SERVERS } from './constants.js';
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+// Dev-only diagnostics: always on in dev builds, opt-in in production via
+// localStorage.setItem('nozima-sync-debug', '1'). Never shown in the UI.
+export function syncLog(...args) {
+  try {
+    if (import.meta.env.DEV || localStorage.getItem('nozima-sync-debug') === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[SYNC]', ...args);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
 const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 
@@ -62,6 +75,11 @@ class Broker {
     this.onState = onState;
     this.state = 'connecting';
     this.failures = 0;
+    this.reason = null; // network | timeout | refused | protocol
+    this.stage = 'idle';
+    this.opened = false;
+    this.acked = false;
+    this.timedOut = false;
     this.ws = null;
     this.buf = new Uint8Array(0);
     this.stopped = false;
@@ -85,6 +103,10 @@ class Broker {
     if (this.stopped) return;
 
     this.state = 'connecting';
+    this.stage = 'ws-connecting';
+    this.opened = false;
+    this.acked = false;
+    this.timedOut = false;
     this.buf = new Uint8Array(0);
 
     let ws;
@@ -103,6 +125,7 @@ class Broker {
     this.timers.push(
       setTimeout(() => {
         if (this.ws === ws && this.state !== 'ready') {
+          this.timedOut = true;
           try {
             ws.close();
           } catch {
@@ -115,6 +138,9 @@ class Broker {
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
+
+      this.opened = true;
+      this.stage = `ws-open(${ws.protocol || 'no-subprotocol'})`;
 
       ws.send(
         mqttPacket(
@@ -154,6 +180,11 @@ class Broker {
         i += 1;
         len += (b & 127) * mult;
         mult *= 128;
+
+        if (i > 4 && b & 128) {
+          this.protocolError('bad remaining length');
+          return;
+        }
       } while (b & 128);
 
       if (this.buf.length < i + len) return;
@@ -167,12 +198,28 @@ class Broker {
     }
   }
 
+  protocolError(detail) {
+    this.reason = 'protocol';
+    this.stage = `protocol-error(${detail})`;
+    syncLog('broker protocol error', this.url, detail);
+
+    try {
+      this.ws?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+
   packet(type, flags, body) {
     const ws = this.ws;
 
     if (type === 2) {
       // CONNACK
-      if (body[1] !== 0) {
+      if (body.length < 2 || body[1] !== 0) {
+        this.reason = 'refused';
+        this.stage = `connack-refused(${body[1]})`;
+        syncLog('broker CONNACK refused', this.url, body[1]);
+
         try {
           ws.close();
         } catch {
@@ -181,12 +228,18 @@ class Broker {
         return;
       }
 
+      this.stage = 'connack-ok';
+
       ws.send(
         mqttPacket(0x82, concat(Uint8Array.of(0, 1), mqttString(this.topic), Uint8Array.of(0)))
       );
     } else if (type === 9) {
       // SUBACK
-      if (body[2] === 0x80) {
+      if (body.length < 3 || body[2] === 0x80) {
+        this.reason = 'refused';
+        this.stage = 'suback-refused';
+        syncLog('broker SUBACK refused', this.url);
+
         try {
           ws.close();
         } catch {
@@ -196,7 +249,11 @@ class Broker {
       }
 
       this.state = 'ready';
+      this.stage = 'subscribed';
+      this.acked = true;
+      this.reason = null;
       this.failures = 0;
+      syncLog('broker ready', this.url);
       this.timers.push(
         setInterval(() => {
           if (this.ws === ws && ws.readyState === 1) ws.send(Uint8Array.of(0xc0, 0));
@@ -216,6 +273,14 @@ class Broker {
     if (this.ws !== ws) return;
 
     this.ws = null;
+
+    if (!this.reason) {
+      if (this.state === 'ready') this.reason = 'network';
+      else if (this.timedOut) this.reason = 'timeout';
+      else if (!this.opened) this.reason = 'network';
+      else this.reason = 'protocol';
+    }
+
     this.failed();
   }
 
@@ -223,6 +288,8 @@ class Broker {
     this.clearTimers();
     this.failures += 1;
     this.state = 'failed';
+    if (!this.reason) this.reason = 'network';
+    syncLog('broker failed', this.url, this.reason, this.stage, `#${this.failures}`);
     this.onState(this);
 
     if (this.stopped) return;
@@ -255,6 +322,136 @@ class Broker {
         /* ignore */
       }
     }
+  }
+}
+
+/*
+ * ================================================================
+ * SIGNAL CHANNEL: encrypted pub/sub over every configured broker
+ * ================================================================
+ *
+ * Used directly for the pairing handshake (no WebRTC needed) and by
+ * PeerMesh for WebRTC offer/answer/ICE exchange.
+ */
+
+export class SignalChannel {
+  /* options: { roomId, password, onMessage(msg), onChange(), brokers? } */
+  constructor(options) {
+    this.o = options;
+    this.id = hex(rand(8));
+    this.seen = [];
+    this.brokers = [];
+    this.stopped = false;
+    this.key = null;
+  }
+
+  /*
+   * signaling: 'ready' (>=1 broker subscribed) | 'unavailable' (every
+   * broker attempt failed) | 'connecting'.
+   * failure: 'network' (unreachable/timeouts) or 'protocol' (a broker
+   * answered but refused / violated MQTT) when unavailable.
+   */
+  get state() {
+    if (this.brokers.some((b) => b.state === 'ready')) {
+      return { signaling: 'ready', failure: null };
+    }
+
+    if (this.brokers.length && this.brokers.every((b) => b.failures >= 1)) {
+      const protocol = this.brokers.some(
+        (b) => b.reason === 'refused' || b.reason === 'protocol'
+      );
+      return { signaling: 'unavailable', failure: protocol ? 'protocol' : 'network' };
+    }
+
+    return { signaling: 'connecting', failure: null };
+  }
+
+  diagnostics() {
+    return this.brokers.map((b) => ({
+      url: b.url,
+      state: b.state,
+      stage: b.stage,
+      reason: b.reason,
+      failures: b.failures,
+    }));
+  }
+
+  async start() {
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      enc.encode(`nozima-signal-v2:${this.o.password}`)
+    );
+
+    this.key = await crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
+      'encrypt',
+      'decrypt',
+    ]);
+
+    if (this.stopped) return;
+
+    const topic = `nozima-finance/v2/${this.o.roomId}`;
+    const urls = this.o.brokers || SIGNALING_BROKERS;
+
+    this.brokers = urls.map(
+      (url) =>
+        new Broker(
+          url,
+          topic,
+          (payload) => this.onPayload(payload),
+          (broker) => {
+            if (this.stopped) return;
+            this.o.onChange?.(broker);
+          }
+        )
+    );
+
+    this.brokers.forEach((b) => b.start());
+  }
+
+  stop() {
+    this.stopped = true;
+    this.brokers.forEach((b) => b.stop());
+  }
+
+  async publish(message) {
+    if (this.stopped || !this.key) return;
+
+    const iv = rand(12);
+    const plain = enc.encode(
+      JSON.stringify({ ...message, f: this.id, m: hex(rand(8)) })
+    );
+    const cipher = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.key, plain)
+    );
+    const payload = concat(iv, cipher);
+
+    this.brokers.forEach((b) => b.publish(payload));
+  }
+
+  async onPayload(bytes) {
+    if (this.stopped || bytes.length < 29) return;
+
+    let msg;
+
+    try {
+      const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: bytes.slice(0, 12) },
+        this.key,
+        bytes.slice(12)
+      );
+      msg = JSON.parse(dec.decode(plain));
+    } catch {
+      return;
+    }
+
+    if (!msg || typeof msg.m !== 'string' || msg.f === this.id) return;
+    if (msg.t && msg.t !== this.id) return;
+
+    if (this.seen.includes(msg.m)) return;
+    this.seen.push(msg.m);
+    if (this.seen.length > 400) this.seen.splice(0, 200);
+
+    this.o.onMessage?.(msg);
   }
 }
 
@@ -464,14 +661,25 @@ export class PeerMesh {
    */
   constructor(options) {
     this.o = options;
-    this.id = hex(rand(8));
     this.links = new Map();
-    this.seen = [];
-    this.brokers = [];
     this.stopped = false;
     this.linkFailed = false;
     this.iceServers = options.iceServers || ICE_SERVERS;
     this.tick = 0;
+
+    this.sig = new SignalChannel({
+      roomId: options.roomId,
+      password: options.password,
+      brokers: options.brokers,
+      onMessage: (msg) => this.onSignalMessage(msg),
+      onChange: (broker) => {
+        if (this.stopped) return;
+        if (broker.state === 'ready') this.announce();
+        this.o.onChange?.();
+      },
+    });
+
+    this.id = this.sig.id;
   }
 
   get openPeers() {
@@ -480,50 +688,22 @@ export class PeerMesh {
       .map((l) => l.peerId);
   }
 
-  /*
-   * 'ready'       at least one broker is subscribed
-   * 'unavailable' every broker's connection attempt has failed (verified)
-   * 'connecting'  otherwise
-   */
+  get connectingCount() {
+    return Array.from(this.links.values()).filter((l) => !l.open && !l.closed).length;
+  }
+
   get signaling() {
-    if (this.brokers.some((b) => b.state === 'ready')) return 'ready';
-    if (this.brokers.length && this.brokers.every((b) => b.failures >= 1)) {
-      return 'unavailable';
-    }
-    return 'connecting';
+    return this.sig.state.signaling;
+  }
+
+  get signalingFailure() {
+    return this.sig.state.failure;
   }
 
   async start() {
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      enc.encode(`nozima-signal-v2:${this.o.password}`)
-    );
-
-    this.key = await crypto.subtle.importKey('raw', digest, 'AES-GCM', false, [
-      'encrypt',
-      'decrypt',
-    ]);
+    await this.sig.start();
 
     if (this.stopped) return;
-
-    const topic = `nozima-finance/v2/${this.o.roomId}`;
-    const urls = this.o.brokers || SIGNALING_BROKERS;
-
-    this.brokers = urls.map(
-      (url) =>
-        new Broker(
-          url,
-          topic,
-          (payload) => this.onPayload(payload),
-          (broker) => {
-            if (this.stopped) return;
-            if (broker.state === 'ready') this.announce();
-            this.o.onChange?.();
-          }
-        )
-    );
-
-    this.brokers.forEach((b) => b.start());
 
     this.timer = setInterval(() => this.heartbeat(), ANNOUNCE_MS);
   }
@@ -531,7 +711,7 @@ export class PeerMesh {
   stop() {
     this.stopped = true;
     clearInterval(this.timer);
-    this.brokers.forEach((b) => b.stop());
+    this.sig.stop();
     Array.from(this.links.values()).forEach((l) => l.close());
     this.links.clear();
   }
@@ -557,45 +737,26 @@ export class PeerMesh {
     this.publish({ k: 'hello' });
   }
 
-  async publish(message) {
-    if (this.stopped || !this.key) return;
-
-    const iv = rand(12);
-    const plain = enc.encode(
-      JSON.stringify({ ...message, f: this.id, m: hex(rand(8)) })
-    );
-    const cipher = new Uint8Array(
-      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.key, plain)
-    );
-    const payload = concat(iv, cipher);
-
-    this.brokers.forEach((b) => b.publish(payload));
+  publish(message) {
+    return this.sig.publish(message);
   }
 
-  async onPayload(bytes) {
-    if (this.stopped || bytes.length < 29) return;
-
-    let msg;
-
-    try {
-      const plain = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: bytes.slice(0, 12) },
-        this.key,
-        bytes.slice(12)
-      );
-      msg = JSON.parse(dec.decode(plain));
-    } catch {
-      return;
-    }
-
-    if (!msg || msg.f === this.id || (msg.t && msg.t !== this.id)) return;
-
-    if (this.seen.includes(msg.m)) return;
-    this.seen.push(msg.m);
-    if (this.seen.length > 400) this.seen.splice(0, 200);
-
+  onSignalMessage(msg) {
     if (msg.k === 'hello') this.onHello(msg.f);
     else if (msg.k === 'sig' && msg.d) this.onSignal(msg.f, msg.d);
+  }
+
+  createLink(peerId, initiator) {
+    try {
+      const link = new Link(this, peerId, initiator);
+      this.links.set(peerId, link);
+      return link;
+    } catch (e) {
+      syncLog('WebRTC unavailable', e?.message || e);
+      this.linkFailed = true;
+      this.o.onChange?.();
+      return null;
+    }
   }
 
   onHello(from) {
@@ -610,8 +771,8 @@ export class PeerMesh {
     }
 
     if (!link) {
-      link = new Link(this, from, this.id < from);
-      this.links.set(from, link);
+      link = this.createLink(from, this.id < from);
+      if (!link) return;
       this.announce();
     }
   }
@@ -622,8 +783,8 @@ export class PeerMesh {
     if (d.sdp && d.sdp.type === 'offer') {
       if (!link || link.initiator || (link.lid && link.lid !== d.l)) {
         if (link) this.linkDown(link, false);
-        link = new Link(this, from, false);
-        this.links.set(from, link);
+        link = this.createLink(from, false);
+        if (!link) return;
       }
       link.lid = d.l;
     } else if (!link || (link.lid && link.lid !== d.l)) {
