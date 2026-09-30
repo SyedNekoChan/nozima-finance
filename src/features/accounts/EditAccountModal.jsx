@@ -3,11 +3,11 @@ import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, parseAmount, convertBetween } from '../../lib/currency.js';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
+import { ensureExchangeRates } from '../../hooks/useExchangeRates.js';
 
 export default function EditAccountModal({ isOpen, onClose, account }) {
   const updateAccount = useFinanceStore((s) => s.updateAccount);
   const addTransaction = useFinanceStore((s) => s.addTransaction);
-  const exchangeRates = useFinanceStore((s) => s.exchangeRates);
 
   const [adjustmentMode, setAdjustmentMode] = useState('+ ADD');
   const [amountInput, setAmountInput] = useState('');
@@ -69,8 +69,19 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
      */
     const currencyChanged = currencyInput !== account.currency;
 
+    // never convert with a missing rate: it would zero the balance
+    if (currencyChanged && !(await ensureExchangeRates([account.currency, currencyInput]))) {
+      setErrorMsg('NO EXCHANGE RATE FOR THIS CURRENCY. CHECK CONNECTION.');
+      return;
+    }
+
     const convertedBalance = currencyChanged
-      ? convertBetween(account.balance, account.currency, currencyInput, exchangeRates)
+      ? convertBetween(
+          account.balance,
+          account.currency,
+          currencyInput,
+          useFinanceStore.getState().exchangeRates
+        )
       : account.balance;
 
     // metadata + balance change; balance is converted so its meaning is preserved across the currency change
