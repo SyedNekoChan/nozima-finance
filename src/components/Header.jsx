@@ -29,8 +29,8 @@ export default function Header({ sync }) {
             SYSTEM: ONLINE
           </span>
 
-          <span className="col-start-1 row-start-2 min-w-0 truncate mx-3 mb-2 px-1.5 py-1 border border-gray-800 text-gray-500 whitespace-nowrap justify-self-start max-w-[calc(100%-1.5rem)]">
-            DISTANCE: {distance}
+          <span className="col-start-1 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-gray-500 whitespace-nowrap">
+            [ DISTANCE: {distance} ]
           </span>
 
           <span
@@ -40,8 +40,8 @@ export default function Header({ sync }) {
             SYNC: {sync.status}
           </span>
 
-          <span className="col-start-2 row-start-2 min-w-0 truncate mx-3 mb-2 px-1.5 py-1 border border-white text-white whitespace-nowrap justify-self-end max-w-[calc(100%-1.5rem)]">
-            {formatTime(now)}
+          <span className="col-start-2 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-right text-white whitespace-nowrap">
+            [ {formatTime(now)} ]
           </span>
         </div>
 
