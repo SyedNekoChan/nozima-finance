@@ -14,6 +14,7 @@ import {
   setPrePairLocalIds,
   clearPrePairLocalIds,
 } from '../lib/db.js';
+import { SIGNALING_URLS } from '../lib/constants.js';
 import {
   generateSecretBytes,
   secretToBase64Url,
@@ -29,11 +30,10 @@ import {
   parseQrPayload,
 } from '../lib/pairing.js';
 
-// Signaling is handshake-only; both devices must share at least one reachable host.
-const SIGNALING_URLS = ['wss://y-webrtc-eu.fly.dev', 'wss://signaling.yjs.dev'];
 const ERR_SIGNALING = 'SIGNALING UNAVAILABLE';
 const ERR_NO_PEER = 'NO PAIRED DEVICE ONLINE';
-const NO_PEER_AFTER_MS = 20000;
+const SIGNALING_GRACE_MS = 15000;
+const NO_PEER_AFTER_MS = 30000;
 const FORCE_SYNC_TIMEOUT_MS = 12000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -330,8 +330,13 @@ export default function useSync() {
         (conn) => conn.connected
       );
 
+      // Connecting is not failure: only report after a grace period.
       if (!signalingUp) {
-        setTransient(ERR_SIGNALING);
+        if (Date.now() - startedAt > SIGNALING_GRACE_MS) {
+          setTransient(ERR_SIGNALING);
+        } else {
+          clearTransient();
+        }
       } else if (Date.now() - startedAt > NO_PEER_AFTER_MS) {
         setTransient(ERR_NO_PEER);
       } else {
@@ -343,6 +348,9 @@ export default function useSync() {
       try {
         const roomId = await deriveRoomId(secretBytes);
         const roomPassword = await deriveRoomPassword(secretBytes);
+
+        // Let a destroyed provider release its room before re-opening it.
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         if (cancelled) return;
 
