@@ -102,7 +102,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
         </button>
       </div>
 
-      <div className="hidden sm:flex justify-between gap-2 pt-3 border-t border-gray-800">
+      <div className="hidden sm:flex flex-wrap justify-between gap-2 pt-3 border-t border-gray-800">
         <Button onClick={() => onEdit(account)} className="text-xs px-2 py-1 whitespace-nowrap flex-shrink-0">
           EDIT
         </Button>
