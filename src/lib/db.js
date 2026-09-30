@@ -136,4 +136,41 @@ export async function clearPrePairLocalIds() {
   return db.settings.delete(PRE_PAIR_LOCAL_IDS_KEY);
 }
 
+/*
+ * Generator-side pairing session: { pairingCode, confirmationCode,
+ * createdAt, attempts, claimedBy }. Persisted so reloads never change
+ * the codes or reset the failed-attempt counter.
+ */
+const PAIR_SESSION_KEY = 'pairSession';
+
+export async function getPairSession() {
+  return getSetting(PAIR_SESSION_KEY);
+}
+
+export async function setPairSession(session) {
+  return setSetting(PAIR_SESSION_KEY, session);
+}
+
+export async function clearPairSession() {
+  return db.settings.delete(PAIR_SESSION_KEY);
+}
+
+/*
+ * Joiner-side pending pairing (code entered, confirmation not yet
+ * accepted): { pairingCode, deviceId, createdAt }. Not a pairing.
+ */
+const PENDING_JOIN_KEY = 'pendingJoin';
+
+export async function getPendingJoin() {
+  return getSetting(PENDING_JOIN_KEY);
+}
+
+export async function setPendingJoin(pending) {
+  return setSetting(PENDING_JOIN_KEY, pending);
+}
+
+export async function clearPendingJoin() {
+  return db.settings.delete(PENDING_JOIN_KEY);
+}
+
 export default db;
