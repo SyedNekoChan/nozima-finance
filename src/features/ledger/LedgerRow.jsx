@@ -21,7 +21,7 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
 
   return (
     <div className="group flex flex-row sm:flex-col md:flex-row md:items-start justify-between gap-3 sm:gap-0 py-3 sm:py-4 px-2 border-b border-dashed border-gray-800 hover:bg-white hover:text-black transition-none cursor-pointer">
-      <div className="flex flex-col min-w-0 flex-1 sm:flex-none">
+      <div className="flex flex-col min-w-0 flex-1 sm:flex-none md:flex-1">
         <div className="flex flex-wrap items-center">
           {tx.type === 'TRANSFER' ? (
             <span className="font-mono font-bold tracking-widest text-sm text-white group-hover:text-black break-words min-w-0">
