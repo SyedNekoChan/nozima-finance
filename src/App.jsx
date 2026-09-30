@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import useFinanceStore from './hooks/useFinanceStore.js';
 import useSync from './hooks/useSync.js';
+import useExchangeRates from './hooks/useExchangeRates.js';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import Anomaly from './components/Anomaly.jsx';
@@ -22,6 +23,7 @@ export default function App() {
   const loadInitialData = useFinanceStore((s) => s.loadInitialData);
 
   const sync = useSync();
+  useExchangeRates();
 
   useEffect(() => {
     loadInitialData();
