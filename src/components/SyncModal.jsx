@@ -14,7 +14,10 @@ export default function SyncModal({ isOpen, onClose, sync }) {
     qrPayload,
     createPairing,
     joinPairingWithMnemonic,
-    joinPairingWithQrPayload,
+    joinPairingWithCode,
+    submitConfirmation,
+    cancelPendingJoin,
+    pendingJoin,
     forceSync,
     disconnect,
     reconnect,
@@ -23,6 +26,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
 
   const [mnemonicInput, setMnemonicInput] = useState('');
   const [qrInput, setQrInput] = useState('');
+  const [confirmInput, setConfirmInput] = useState('');
   const [showJoinByMnemonic, setShowJoinByMnemonic] = useState(false);
   const [showJoinByQr, setShowJoinByQr] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -31,6 +35,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
   const handleClose = () => {
     setMnemonicInput('');
     setQrInput('');
+    setConfirmInput('');
     setShowJoinByMnemonic(false);
     setShowJoinByQr(false);
     setShowRecovery(false);
@@ -54,7 +59,57 @@ export default function SyncModal({ isOpen, onClose, sync }) {
         </div>
       )}
 
-      {!isPaired && (
+      {!isPaired && pendingJoin && (
+        <div className="space-y-4">
+          <span className="block font-mono text-xs tracking-widest text-gray-500">
+            {pendingJoin.stage === 'CONNECTING' && 'CONNECTING TO GENERATING DEVICE...'}
+            {pendingJoin.stage === 'AWAITING' && 'ENTER THE CONFIRMATION CODE SHOWN ON THE GENERATING DEVICE'}
+            {pendingJoin.stage === 'VERIFYING' && 'VERIFYING...'}
+          </span>
+
+          {pendingJoin.stage !== 'CONNECTING' && (
+            <div>
+              <input
+                value={confirmInput}
+                onChange={(e) => setConfirmInput(e.target.value)}
+                placeholder="000000"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={7}
+                disabled={pendingJoin.stage === 'VERIFYING'}
+                className="w-full bg-black text-white font-mono border-2 border-gray-800 focus:border-white focus:outline-none px-2 py-2 text-lg tracking-widest"
+              />
+              {pendingJoin.attemptsLeft != null && (
+                <span className="block font-mono text-xs text-gray-500 mt-1">
+                  ATTEMPTS LEFT: {pendingJoin.attemptsLeft}
+                </span>
+              )}
+              <Button
+                onClick={async () => {
+                  const ok = await submitConfirmation(confirmInput);
+                  if (ok) setConfirmInput('');
+                }}
+                active={true}
+                className="w-full mt-2"
+              >
+                CONFIRM
+              </Button>
+            </div>
+          )}
+
+          <Button
+            onClick={() => {
+              setConfirmInput('');
+              cancelPendingJoin();
+            }}
+            className="w-full"
+          >
+            CANCEL
+          </Button>
+        </div>
+      )}
+
+      {!isPaired && !pendingJoin && (
         <div className="space-y-6">
           <div>
             <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">
@@ -113,19 +168,18 @@ export default function SyncModal({ isOpen, onClose, sync }) {
 
             {showJoinByQr && (
               <div className="mt-2">
-                <span className="block font-mono text-xs text-gray-500 mb-2">
-                  PASTE SCANNED PAIRING PAYLOAD
-                </span>
-                <textarea
+                <input
                   value={qrInput}
-                  onChange={(e) => setQrInput(e.target.value)}
-                  placeholder='{"version":"v1","entropy":"..."}'
-                  rows={2}
-                  className="w-full bg-black text-white font-mono border-2 border-gray-800 focus:border-white focus:outline-none px-2 py-2 text-xs"
+                  onChange={(e) => setQrInput(e.target.value.toUpperCase())}
+                  placeholder="XXXX-XXXX-XXXX"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  maxLength={14}
+                  className="w-full bg-black text-white font-mono border-2 border-gray-800 focus:border-white focus:outline-none px-2 py-2 text-lg tracking-widest"
                 />
                 <Button
                   onClick={async () => {
-                    const ok = await joinPairingWithQrPayload(qrInput.trim());
+                    const ok = await joinPairingWithCode(qrInput.trim());
                     if (ok) {
                       setQrInput('');
                       setShowJoinByQr(false);
@@ -134,7 +188,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
                   active={true}
                   className="w-full mt-2"
                 >
-                  PAIR WITH THIS CODE
+                  CONTINUE
                 </Button>
               </div>
             )}
@@ -171,7 +225,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
                 {confirmationCode}
               </span>
               <span className="block font-mono text-xs text-gray-500 mt-1">
-                MATCH THIS ON BOTH DEVICES
+                ENTER THIS ON THE NEW DEVICE WHEN ASKED
               </span>
             </div>
           )}
@@ -203,7 +257,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
               <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">
                 PAIRING CODE (SCAN OR COPY)
               </span>
-              <span className="font-mono text-xs text-gray-300 break-all">{qrPayload}</span>
+              <span className="font-mono text-lg text-white tracking-widest break-all">{qrPayload}</span>
             </div>
           )}
 
