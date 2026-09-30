@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import Button from './Button.jsx';
+import { SYNC_STAGE } from '../lib/constants.js';
 
 export default function SyncModal({ isOpen, onClose, sync }) {
   const {
@@ -17,6 +18,9 @@ export default function SyncModal({ isOpen, onClose, sync }) {
     joinPairingWithCode,
     submitConfirmation,
     cancelPendingJoin,
+    regeneratePairing,
+    canRegenerate,
+    stage,
     pendingJoin,
     forceSync,
     disconnect,
@@ -50,6 +54,9 @@ export default function SyncModal({ isOpen, onClose, sync }) {
       <div className="mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">STATUS</span>
         <span className="font-mono text-2xl text-white">[ {status} ]</span>
+        {stage && status !== 'UNPAIRED' && (
+          <span className="block font-mono text-xs tracking-widest text-gray-500 mt-1">{stage}</span>
+        )}
       </div>
 
       {error && (
@@ -62,12 +69,22 @@ export default function SyncModal({ isOpen, onClose, sync }) {
       {!isPaired && pendingJoin && (
         <div className="space-y-4">
           <span className="block font-mono text-xs tracking-widest text-gray-500">
-            {pendingJoin.stage === 'CONNECTING' && 'CONNECTING TO GENERATING DEVICE...'}
-            {pendingJoin.stage === 'AWAITING' && 'ENTER THE CONFIRMATION CODE SHOWN ON THE GENERATING DEVICE'}
-            {pendingJoin.stage === 'VERIFYING' && 'VERIFYING...'}
+            {pendingJoin.stage === SYNC_STAGE.CHALLENGE_SENT
+              ? 'ENTER THE CONFIRMATION CODE SHOWN ON THE GENERATING DEVICE'
+              : pendingJoin.stage === SYNC_STAGE.CONFIRM_VERIFYING
+                ? 'VERIFYING...'
+                : pendingJoin.stage === SYNC_STAGE.CONFIRM_ACCEPTED ||
+                    pendingJoin.stage === SYNC_STAGE.SECRET_RELEASED
+                  ? 'CONFIRMED. FINISHING PAIRING...'
+                  : pendingJoin.stage === SYNC_STAGE.SIGNALING_FAILURE
+                    ? 'SIGNALING UNREACHABLE. RETRYING...'
+                    : pendingJoin.stage === SYNC_STAGE.PEER_DISCOVERY
+                      ? 'SEARCHING FOR GENERATING DEVICE...'
+                      : 'CONNECTING TO SIGNALING...'}
           </span>
 
-          {pendingJoin.stage !== 'CONNECTING' && (
+          {(pendingJoin.stage === SYNC_STAGE.CHALLENGE_SENT ||
+            pendingJoin.stage === SYNC_STAGE.CONFIRM_VERIFYING) && (
             <div>
               <input
                 value={confirmInput}
@@ -76,7 +93,7 @@ export default function SyncModal({ isOpen, onClose, sync }) {
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={7}
-                disabled={pendingJoin.stage === 'VERIFYING'}
+                disabled={pendingJoin.stage === SYNC_STAGE.CONFIRM_VERIFYING}
                 className="w-full bg-black text-white font-mono border-2 border-gray-800 focus:border-white focus:outline-none px-2 py-2 text-lg tracking-widest"
               />
               {pendingJoin.attemptsLeft != null && (
@@ -258,6 +275,14 @@ export default function SyncModal({ isOpen, onClose, sync }) {
                 PAIRING CODE (SCAN OR COPY)
               </span>
               <span className="font-mono text-lg text-white tracking-widest break-all">{qrPayload}</span>
+            </div>
+          )}
+
+          {canRegenerate && (
+            <div className="mb-6">
+              <Button onClick={() => regeneratePairing()} className="w-full">
+                NEW PAIRING CODE
+              </Button>
             </div>
           )}
 
