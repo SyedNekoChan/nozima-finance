@@ -6,7 +6,7 @@ function formatCompact(value) {
   return `${value}`;
 }
 
-function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, paddingY, className, aspect = 'none' }) {
+function GraphSvg({ data, labels, viewBoxWidth, viewBoxHeight, paddingX, paddingY, className, aspect = 'xMidYMid meet' }) {
   const graphWidth = viewBoxWidth - paddingX - 20;
   const graphHeight = viewBoxHeight - paddingY * 2;
   const maxValue = Math.max(...data);
