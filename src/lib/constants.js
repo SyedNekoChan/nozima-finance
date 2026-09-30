@@ -42,3 +42,9 @@ export const DEFAULT_EXCHANGE_RATES = {
   KZT: 25,
   TRY: 390,
 };
+
+// Handshake-only WebRTC signaling hosts; devices need at least one in common.
+export const SIGNALING_URLS = [
+  'wss://y-webrtc-eu.fly.dev',
+  'wss://signaling.yjs.dev',
+];
