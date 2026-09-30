@@ -159,100 +159,98 @@ export async function deriveYjsDbName(secretBytes) {
 
 /*
  * ================================================================
- * CONFIRMATION CODE (display-only, non-authoritative)
+ * PAIRING CODE / CONFIRMATION CODE (independent of the sync secret)
  * ================================================================
  *
- * Shown on both devices AFTER the secret has already been exchanged,
- * purely so the two people can visually confirm they paired with
- * each other. Never used to derive room id/password, never used as
- * manual pairing input, never transmitted, never persisted.
+ * Pairing code: ~59 random bits, rendezvous identifier only. It is NOT
+ * derived from, and reveals nothing about, the sync secret or the
+ * confirmation code.
+ *
+ * Confirmation code: 6 random digits, generated and stored ONLY on the
+ * generating device and verified there (rate-limited) before the sync
+ * secret is released to a joining device.
  */
 
-export async function deriveConfirmationCode(secretBytes) {
-  const encoder = new TextEncoder();
-  const suffix = encoder.encode('confirm-v1');
+// No 0/1/I/L/O to avoid visually ambiguous characters.
+const PAIRING_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const PAIRING_LENGTH = 12;
 
-  const combined = new Uint8Array(secretBytes.length + suffix.length);
-  combined.set(secretBytes, 0);
-  combined.set(suffix, secretBytes.length);
+function randomInt(limit) {
+  const max = Math.floor(256 / limit) * limit;
+  const buf = new Uint8Array(1);
+  for (;;) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < max) return buf[0] % limit;
+  }
+}
 
-  const digest = await crypto.subtle.digest('SHA-256', combined);
-  const hex = bytesToHex(new Uint8Array(digest)).toUpperCase();
-  const code = hex.slice(0, 12);
+export function formatPairingCode(normalized) {
+  return normalized.match(/.{1,4}/g).join('-');
+}
 
-  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`;
+export function generatePairingCode() {
+  let out = '';
+  for (let i = 0; i < PAIRING_LENGTH; i += 1) {
+    out += PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)];
+  }
+  return formatPairingCode(out);
+}
+
+export function normalizePairingCode(input) {
+  const raw = String(input || '').toUpperCase().replace(/[\s-]+/g, '');
+
+  if (!raw) throw new Error('EMPTY PAIRING CODE');
+
+  if (/^\d{6}$/.test(raw)) {
+    throw new Error('THAT IS A CONFIRMATION CODE. ENTER THE PAIRING CODE');
+  }
+
+  if (
+    raw.length !== PAIRING_LENGTH ||
+    [...raw].some((c) => !PAIRING_ALPHABET.includes(c))
+  ) {
+    throw new Error('MALFORMED PAIRING CODE');
+  }
+
+  return raw;
+}
+
+export function generateConfirmationCode() {
+  const buf = new Uint32Array(1);
+  const limit = 4294000000;
+  for (;;) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < limit) return String(buf[0] % 1000000).padStart(6, '0');
+  }
+}
+
+export function normalizeConfirmationCode(input) {
+  const raw = String(input || '').replace(/[\s-]+/g, '');
+
+  if (!/^\d{6}$/.test(raw)) {
+    throw new Error('CONFIRMATION CODE MUST BE 6 DIGITS');
+  }
+
+  return raw;
+}
+
+export function generateDeviceId() {
+  return bytesToHex(crypto.getRandomValues(new Uint8Array(8)));
 }
 
 /*
- * ================================================================
- * QR PAYLOAD
- * ================================================================
- *
- * Conceptual payload only: { version, entropy(base64url) }.
- * No room id/password/signaling info is ever encoded — those are
- * always re-derived locally by each device.
+ * Rendezvous room + signaling password for the pairing handshake,
+ * derived one-way from the (normalized) pairing code.
  */
+export async function derivePairingRoom(normalizedCode) {
+  const material = new TextEncoder().encode(normalizedCode);
 
-export function buildQrPayload(secretBytes) {
-  return JSON.stringify({
-    version: DERIVATION_VERSION,
-    entropy: bytesToBase64Url(secretBytes),
-  });
-}
-
-export function parseQrPayload(input) {
-  const raw = String(input || '')
-    .replace(/[\u201C\u201D]/g, '"')
-    .trim();
-
-  if (!raw) {
-    throw new Error('EMPTY PAIRING CODE');
-  }
-
-  if (/^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$/.test(raw)) {
-    throw new Error('CONFIRMATION CODE CANNOT PAIR. USE PAIRING CODE OR RECOVERY KEY');
-  }
-
-  let bytes;
-
-  try {
-    if (raw.startsWith('{')) {
-      const parsed = JSON.parse(raw);
-
-      if (parsed.version !== DERIVATION_VERSION) {
-        throw new Error('UNSUPPORTED PAIRING VERSION');
-      }
-
-      if (
-        typeof parsed.entropy !== 'string' ||
-        !/^[A-Za-z0-9_-]{22}$/.test(parsed.entropy)
-      ) {
-        throw new Error('MALFORMED PAIRING CODE');
-      }
-
-      bytes = base64UrlToBytes(parsed.entropy);
-    } else if (raw.split(/\s+/).length === 12) {
-      if (!isValidMnemonic(raw)) {
-        throw new Error('MALFORMED PAIRING CODE');
-      }
-
-      bytes = mnemonicToSecret(raw);
-    } else if (/^[A-Za-z0-9_-]{22}$/.test(raw)) {
-      bytes = base64UrlToBytes(raw);
-    } else {
-      throw new Error('MALFORMED PAIRING CODE');
-    }
-  } catch (err) {
-    if (/^[A-Z .]+$/.test(err?.message || '')) {
-      throw err;
-    }
-
-    throw new Error('MALFORMED PAIRING CODE');
-  }
-
-  if (bytes.length !== 16) {
-    throw new Error('MALFORMED PAIRING CODE');
-  }
-
-  return bytes;
+  return {
+    roomId: bytesToHex(
+      await hkdf(material, `nozima-pair-room-${DERIVATION_VERSION}`, 128)
+    ),
+    password: bytesToHex(
+      await hkdf(material, `nozima-pair-password-${DERIVATION_VERSION}`, 256)
+    ),
+  };
 }
