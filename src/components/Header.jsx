@@ -45,7 +45,7 @@ export default function Header({ sync }) {
           </span>
         </div>
 
-        <div className="hidden md:flex md:justify-between md:items-center gap-4 px-8 py-3 text-sm tracking-widest">
+        <div className="hidden md:flex md:justify-between md:items-center gap-4 px-6 lg:px-8 py-3 text-xs lg:text-sm tracking-widest">
           <div className="flex items-center justify-start">
             <span className="flex items-center whitespace-nowrap">
               <span
