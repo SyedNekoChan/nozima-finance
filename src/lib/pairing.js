@@ -254,3 +254,71 @@ export async function derivePairingRoom(normalizedCode) {
     ),
   };
 }
+
+/*
+ * ================================================================
+ * PAIRING SESSION CRYPTO (signaling-level handshake)
+ * ================================================================
+ *
+ * The pairing code only derives the rendezvous room. Everything
+ * sensitive inside it (confirmation attempt, released sync secret) is
+ * additionally encrypted with a per-session key from an ephemeral
+ * ECDH exchange between the generator and ONE joining session, so
+ * brokers and other holders of the pairing code never see it.
+ */
+
+export async function createPairingKeyPair() {
+  const pair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    ['deriveBits']
+  );
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+
+  return { privateKey: pair.privateKey, pub: bytesToBase64Url(raw) };
+}
+
+export async function derivePairingSessionKey(privateKey, peerPub, sessionId, normalizedCode) {
+  const peer = await crypto.subtle.importKey(
+    'raw',
+    base64UrlToBytes(peerPub),
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  );
+  const shared = new Uint8Array(
+    await crypto.subtle.deriveBits({ name: 'ECDH', public: peer }, privateKey, 256)
+  );
+  const keyBytes = await hkdf(
+    shared,
+    `nozima-pair-session-${DERIVATION_VERSION}:${sessionId}:${normalizedCode}`,
+    256
+  );
+
+  return crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+export async function encryptJson(key, value) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(JSON.stringify(value));
+  const cipher = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain)
+  );
+  const out = new Uint8Array(iv.length + cipher.length);
+
+  out.set(iv, 0);
+  out.set(cipher, iv.length);
+
+  return bytesToBase64Url(out);
+}
+
+export async function decryptJson(key, encoded) {
+  const bytes = base64UrlToBytes(String(encoded));
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: bytes.slice(0, 12) },
+    key,
+    bytes.slice(12)
+  );
+
+  return JSON.parse(new TextDecoder().decode(plain));
+}
