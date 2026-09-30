@@ -43,8 +43,20 @@ export const DEFAULT_EXCHANGE_RATES = {
   TRY: 390,
 };
 
-// Handshake-only WebRTC signaling hosts; devices need at least one in common.
-export const SIGNALING_URLS = [
-  'wss://y-webrtc-eu.fly.dev',
-  'wss://signaling.yjs.dev',
+// Public MQTT-over-WSS brokers used ONLY as an encrypted signaling relay
+// (WebRTC handshake). Topics are derived from secrets; payloads are AES-GCM.
+export const SIGNALING_BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081',
+  'wss://mqtt.eclipseprojects.io/mqtt',
 ];
+
+export const ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
+
+// Pairing session (generator side) limits
+export const PAIRING_TTL_MS = 24 * 60 * 60 * 1000;
+export const PAIRING_MAX_ATTEMPTS = 5;
