@@ -20,7 +20,14 @@ import {
   clearPendingJoin,
 } from '../lib/db.js';
 import { PAIRING_TTL_MS, PAIRING_MAX_ATTEMPTS, SYNC_STAGE } from '../lib/constants.js';
-import { PeerMesh, SignalChannel, MSG_SV, MSG_UPDATE, syncLog } from '../lib/p2p.js';
+import {
+  PeerMesh,
+  SignalChannel,
+  MSG_SV,
+  MSG_UPDATE,
+  syncLog,
+  resolveIceServers,
+} from '../lib/p2p.js';
 import {
   generateSecretBytes,
   secretToBase64Url,
@@ -47,6 +54,7 @@ const ERR_SIGNALING = 'SIGNALING UNAVAILABLE';
 const ERR_NO_PEER = 'NO PAIRED DEVICE ONLINE';
 const ERR_LINK = 'PEER LINK FAILED';
 const ERR_PROTOCOL = 'SIGNALING PROTOCOL ERROR';
+const ERR_RELAY = 'RELAY UNAVAILABLE';
 const JOIN_EVERY_MS = 3000;
 const HOST_STALE_MS = 25000;
 const AWAIT_IDLE_MS = 10 * 60 * 1000;
@@ -60,7 +68,11 @@ const FORCE_SYNC_MAX_MS = 60000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const isTransientError = (e) =>
-  e === ERR_SIGNALING || e === ERR_NO_PEER || e === ERR_LINK || e === ERR_PROTOCOL;
+  e === ERR_SIGNALING ||
+  e === ERR_NO_PEER ||
+  e === ERR_LINK ||
+  e === ERR_PROTOCOL ||
+  e === ERR_RELAY;
 
 export default function useSync() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
@@ -393,7 +405,7 @@ export default function useSync() {
       } else if (signaling === 'unavailable') {
         setTransient(failure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
       } else if (mesh.linkFailed) {
-        setTransient(ERR_LINK);
+        setTransient(mesh.relayUnavailable ? ERR_RELAY : ERR_LINK);
       } else if (stage === SYNC_STAGE.NO_PEER) {
         setTransient(ERR_NO_PEER);
       } else {
@@ -934,9 +946,11 @@ export default function useSync() {
         send();
 
         clearVerify();
+
+        // The relay is lossy: repeat the (idempotent, n-tagged) confirm
+        // until the generator's answer arrives, then give up cleanly.
         verifyTimers = [
-          setTimeout(send, 3500),
-          setTimeout(send, 7000),
+          ...[2000, 4000, 6000, 8000, 11000, 14000].map((ms) => setTimeout(send, ms)),
           setTimeout(() => {
             if (
               cancelled ||
@@ -948,7 +962,7 @@ export default function useSync() {
 
             setStage(SYNC_STAGE.CHALLENGE_SENT);
             setError('NO RESPONSE FROM GENERATING DEVICE');
-          }, 12000),
+          }, 18000),
         ];
 
         return true;
@@ -1661,6 +1675,10 @@ export default function useSync() {
     syncedRef.current = false;
     setPeerCount(0);
     setPaused(false);
+
+    // Fresh short-lived TURN credentials before the new transport starts.
+    await resolveIceServers({ force: true }).catch(() => {});
+
     setLinkEpoch((e) => e + 1);
 
     try {
@@ -1691,7 +1709,13 @@ export default function useSync() {
       if (mesh && (mesh.openPeers.length > 0 || mesh.connectingCount > 0)) return;
 
       if (mesh && mesh.signaling === 'ready') {
-        setError(mesh.linkFailed ? ERR_LINK : ERR_NO_PEER);
+        setError(
+          mesh.linkFailed
+            ? mesh.relayUnavailable
+              ? ERR_RELAY
+              : ERR_LINK
+            : ERR_NO_PEER
+        );
       } else if (mesh && mesh.signaling === 'connecting') {
         setError(null);
       } else {
