@@ -52,10 +52,38 @@ export const SIGNALING_BROKERS = [
   'wss://mqtt.eclipseprojects.io/mqtt',
 ];
 
+// STUN = direct path (preferred by ICE priority). TURN = relay fallback,
+// used by ICE only when no direct pair works.
 export const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
+
+// TURN relay configuration, injected at BUILD time (Vite only exposes
+// VITE_-prefixed variables; nothing is committed). Anything shipped to a
+// browser is public by nature, so prefer VITE_TURN_CREDENTIALS_URL, an
+// endpoint returning short-lived credentials ([{urls,username,credential}]
+// or { iceServers, ttl }), over long-lived static credentials.
+const viteEnv = import.meta.env || {};
+const csv = (v) =>
+  String(v || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+export const TURN_URLS = csv(viteEnv.VITE_TURN_URLS);
+export const TURN_USERNAME = String(viteEnv.VITE_TURN_USERNAME || '');
+export const TURN_CREDENTIAL = String(viteEnv.VITE_TURN_CREDENTIAL || '');
+export const TURN_CREDENTIALS_URL = String(viteEnv.VITE_TURN_CREDENTIALS_URL || '');
+
+// WebRTC link timing (real cross-network ICE needs far more than a LAN)
+export const LINK_CONNECT_TIMEOUT_MS = 45000; // whole attempt incl. restarts
+export const LINK_RESTART_AFTER_MS = 15000; // restart ICE if still not open
+export const LINK_DISCONNECT_GRACE_MS = 6000; // 'disconnected' may self-heal
+export const LINK_RECOVER_TIMEOUT_MS = 20000; // after a restart
+export const LINK_MAX_RESTARTS = 2;
+export const LINK_RETRY_BASE_MS = 5000; // backoff between failed attempts
+export const LINK_RETRY_MAX_MS = 60000;
 
 // Pairing session (generator side) limits
 export const PAIRING_TTL_MS = 24 * 60 * 60 * 1000;
