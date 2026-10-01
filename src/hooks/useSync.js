@@ -55,6 +55,7 @@ const PAIR_FIND_TIMEOUT_MS = 30000;
 const PAIR_SIGNALING_TIMEOUT_MS = 8000;
 const NO_PEER_AFTER_MS = 30000;
 const FORCE_SYNC_TIMEOUT_MS = 12000;
+const FORCE_SYNC_MAX_MS = 60000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -1665,10 +1666,17 @@ export default function useSync() {
     try {
       await reconcileAll();
 
-      const deadline = Date.now() + FORCE_SYNC_TIMEOUT_MS;
+      const startedAt = Date.now();
 
-      while (Date.now() < deadline) {
+      // Keep waiting while ICE/TURN negotiation is genuinely in progress.
+      for (;;) {
         if (peersRef.current > 0 && syncedRef.current) break;
+
+        const elapsed = Date.now() - startedAt;
+        const connecting = (meshRef.current?.connectingCount || 0) > 0;
+
+        if (elapsed > FORCE_SYNC_TIMEOUT_MS && !(connecting && elapsed < FORCE_SYNC_MAX_MS)) break;
+
         await sleep(250);
       }
 
@@ -1680,7 +1688,7 @@ export default function useSync() {
 
       const mesh = meshRef.current;
 
-      if (mesh && mesh.openPeers.length > 0) return;
+      if (mesh && (mesh.openPeers.length > 0 || mesh.connectingCount > 0)) return;
 
       if (mesh && mesh.signaling === 'ready') {
         setError(mesh.linkFailed ? ERR_LINK : ERR_NO_PEER);
