@@ -59,26 +59,15 @@ export const ICE_SERVERS = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
-// TURN relay configuration, injected at BUILD time (Vite only exposes
-// VITE_-prefixed variables; nothing is committed). Anything shipped to a
-// browser is public by nature, so prefer VITE_TURN_CREDENTIALS_URL, an
-// endpoint returning short-lived credentials ([{urls,username,credential}]
-// or { iceServers, ttl }), over long-lived static credentials.
-const viteEnv = import.meta.env || {};
-const csv = (v) =>
-  String(v || '')
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-export const TURN_URLS = csv(viteEnv.VITE_TURN_URLS);
-export const TURN_USERNAME = String(viteEnv.VITE_TURN_USERNAME || '');
-export const TURN_CREDENTIAL = String(viteEnv.VITE_TURN_CREDENTIAL || '');
-export const TURN_CREDENTIALS_URL = String(viteEnv.VITE_TURN_CREDENTIALS_URL || '');
+// TURN is NOT configured at build time (anything bundled by Vite is public).
+// The app fetches this non-secret runtime config, whose only field is the URL
+// of the credential-minting Worker (worker/). The Worker keeps the Cloudflare
+// TURN key server-side and returns short-lived ICE servers.
+export const SYNC_CONFIG_PATH = 'sync-config.json';
+export const ICE_FETCH_TIMEOUT_MS = 8000;
 
 // WebRTC link timing (real cross-network ICE needs far more than a LAN)
-export const LINK_CONNECT_TIMEOUT_MS = 45000; // whole attempt incl. restarts
-export const LINK_RESTART_AFTER_MS = 15000; // restart ICE if still not open
+export const LINK_CONNECT_TIMEOUT_MS = 60000; // whole attempt incl. restarts
 export const LINK_DISCONNECT_GRACE_MS = 6000; // 'disconnected' may self-heal
 export const LINK_RECOVER_TIMEOUT_MS = 20000; // after a restart
 export const LINK_MAX_RESTARTS = 2;
