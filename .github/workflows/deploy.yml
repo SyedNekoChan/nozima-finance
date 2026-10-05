@@ -14,17 +14,59 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+env:
+  CF_RTC_BASE: https://rtc.live.cloudflare.com
+
 jobs:
-  # Deploys the TURN credential Worker (worker/). The Cloudflare TURN key id
-  # and API token live only as Worker secrets; they never enter the Pages build.
+  # Deploys the TURN credential Worker (worker/). Required GitHub repository
+  # secrets, named identically to the Worker secrets they feed:
+  #   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (deploy the Worker)
+  #   TURN_KEY_ID, TURN_API_TOKEN                  (Cloudflare Realtime TURN key)
+  # They never enter the Pages build or any tracked file.
   worker:
     runs-on: ubuntu-latest
     outputs:
       url: ${{ steps.deploy.outputs.deployment-url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TURN_KEY_ID: ${{ secrets.TURN_KEY_ID }}
+      TURN_API_TOKEN: ${{ secrets.TURN_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+
+      # Fail first, loudly, naming exactly what is missing.
+      - name: Require deployment secrets
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID TURN_KEY_ID TURN_API_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing GitHub secret::Repository secret ${name} is not set (Settings > Secrets and variables > Actions)."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      # Prove the TURN key itself works before deploying anything.
+      - name: Verify Cloudflare TURN key
+        run: |
+          set -euo pipefail
+          CODE="$(curl -s -o /tmp/ice.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${TURN_API_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d '{"ttl": 600}' \
+            "${CF_RTC_BASE}/v1/turn/keys/${TURN_KEY_ID}/credentials/generate-ice-servers")"
+          if [ "$CODE" != "200" ]; then
+            echo "::error title=TURN key rejected::Cloudflare returned HTTP ${CODE} for TURN_KEY_ID / TURN_API_TOKEN."
+            exit 1
+          fi
+          jq -e '[.iceServers[].urls[]] | any(startswith("turn:")) and any(startswith("turns:"))' /tmp/ice.json >/dev/null \
+            || { echo "::error title=No TURN servers::Cloudflare response contained no TURN URLs."; exit 1; }
+          jq -e '[.iceServers[] | select(.credential != null and .username != null)] | length > 0' /tmp/ice.json >/dev/null \
+            || { echo "::error title=No TURN credentials::Cloudflare response contained no username/credential."; exit 1; }
+          rm -f /tmp/ice.json
+
       - id: deploy
-        continue-on-error: true
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -33,14 +75,10 @@ jobs:
           secrets: |
             TURN_KEY_ID
             TURN_API_TOKEN
-        env:
-          TURN_KEY_ID: ${{ secrets.CF_TURN_KEY_ID }}
-          TURN_API_TOKEN: ${{ secrets.CF_TURN_API_TOKEN }}
 
   build:
     runs-on: ubuntu-latest
     needs: worker
-    if: ${{ always() }}
     env:
       WORKER_URL: ${{ needs.worker.outputs.url }}
       PAGES_ORIGIN: https://${{ github.repository_owner }}.github.io
@@ -50,28 +88,32 @@ jobs:
         with:
           node-version: 20
 
-      # Runtime (non-secret) config: only the Worker URL, written as a static
-      # file. Nothing about TURN is inlined into the JavaScript bundle.
+      - name: Require deployed Worker URL
+        run: |
+          if [ -z "${WORKER_URL}" ]; then
+            echo "::error title=Worker URL missing::The Worker deployed but reported no URL; sync-config.json cannot be generated."
+            exit 1
+          fi
+
+      # Runtime (non-secret) config: only the Worker endpoint, as a static file.
       - name: Write sync-config.json
         run: |
-          printf '{ "turnCredentialsUrl": "%s" }\n' "${WORKER_URL:+${WORKER_URL%/}/ice}" > public/sync-config.json
+          printf '{ "turnCredentialsUrl": "%s/api/turn-credentials" }\n' "${WORKER_URL%/}" > public/sync-config.json
           cat public/sync-config.json
 
-      # Verify the deployed Worker really returns usable short-lived TURN
-      # (UDP + TCP + TLS/443) for the Pages origin, and leaks no secrets.
-      - name: Verify TURN credential endpoint
-        if: ${{ env.WORKER_URL != '' }}
+      # The deployed Worker must serve short-lived TURN (UDP + TCP + TLS) to
+      # the Pages origin only, and never leak secrets.
+      - name: Verify deployed TURN credential endpoint
         run: |
           set -euo pipefail
-          URL="${WORKER_URL%/}/ice"
+          URL="${WORKER_URL%/}/api/turn-credentials"
           BODY="$(curl -fsS -H "Origin: ${PAGES_ORIGIN}" "$URL")"
           echo "$BODY" | jq -e '[.iceServers[].urls[]] | any(startswith("turn:")) and any(startswith("turns:")) and any(test("transport=udp")) and any(test("transport=tcp"))' >/dev/null
-          echo "$BODY" | jq -e '[.iceServers[] | select(.credential != null)] | length > 0' >/dev/null
-          echo "$BODY" | jq -e '.ttl > 0' >/dev/null
-          if echo "$BODY" | grep -q "TURN_API_TOKEN"; then echo "secret leaked"; exit 1; fi
+          echo "$BODY" | jq -e '[.iceServers[] | select(.credential != null and .username != null)] | length > 0' >/dev/null
+          echo "$BODY" | jq -e '.ttl > 0 and (keys | sort) == ["expiresAt","iceServers","ttl"]' >/dev/null
           CODE="$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://example.invalid' "$URL")"
           test "$CODE" = "403"
-          echo "TURN endpoint OK: UDP/TCP/TLS present, credentials short-lived, foreign origin rejected"
+          echo "TURN endpoint OK"
 
       - run: npm install
       - run: npm run build
@@ -79,8 +121,8 @@ jobs:
       - name: Verify build output
         run: |
           test -f dist/sync-config.json
-          cat dist/sync-config.json
-          if grep -rIl "TURN_API_TOKEN\|CF_TURN" dist >/dev/null; then echo "secret reference in bundle"; exit 1; fi
+          grep -q "/api/turn-credentials" dist/sync-config.json
+          if grep -rIl "TURN_API_TOKEN\|TURN_KEY_ID" dist >/dev/null; then echo "secret reference in bundle"; exit 1; fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
