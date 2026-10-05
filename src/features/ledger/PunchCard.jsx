@@ -4,19 +4,15 @@ import {
   formatAmount,
   parseAmount,
 } from '../../lib/currency.js';
+import {
+  TRANSACTION_CATEGORIES,
+  DEFAULT_CATEGORY,
+} from '../../lib/constants.js';
 import { getTodayDateString } from '../../lib/date.js';
 import Modal from '../../components/Modal.jsx';
 import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 import Button from '../../components/Button.jsx';
 import SelectorField from '../../components/SelectorField.jsx';
-
-const CATEGORIES = [
-  'FOOD',
-  'CLOTHING',
-  'SOCIAL',
-  'BILLS',
-  'OTHER',
-];
 
 export default function PunchCard({
   isOpen,
@@ -68,7 +64,7 @@ export default function PunchCard({
     useState('');
 
   const [category, setCategory] =
-    useState('FOOD');
+    useState(DEFAULT_CATEGORY);
 
   const [note, setNote] =
     useState('');
@@ -110,7 +106,7 @@ export default function PunchCard({
       );
       setCategory(
         editingTx.category ||
-          'FOOD'
+          DEFAULT_CATEGORY
       );
       setNote(
         editingTx.note || ''
@@ -140,7 +136,7 @@ export default function PunchCard({
 
       setToAccountId(null);
       setAmountInput('');
-      setCategory('FOOD');
+      setCategory(DEFAULT_CATEGORY);
       setNote('');
       setImageData(null);
       setExchangeRateInput('');
@@ -623,7 +619,11 @@ export default function PunchCard({
 
           <SelectorField
             value={category}
-            options={CATEGORIES.map(
+            options={(category &&
+              !TRANSACTION_CATEGORIES.includes(category)
+                ? [category, ...TRANSACTION_CATEGORIES] // keep legacy values (e.g. FOOD) selectable
+                : TRANSACTION_CATEGORIES
+            ).map(
               (option) => ({
                 value: option,
                 label: option,
