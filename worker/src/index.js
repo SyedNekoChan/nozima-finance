@@ -7,6 +7,7 @@
  * and token are never part of any response.
  */
 
+const TURN_ROUTE = '/api/turn-credentials';
 const DEFAULT_TTL_S = 4 * 60 * 60;
 const RATE_LIMIT = 30; // requests per IP per minute (per isolate fallback)
 const RATE_WINDOW_MS = 60 * 1000;
@@ -135,7 +136,7 @@ export default {
       return json({ ok: true, configured: Boolean(env.TURN_KEY_ID && env.TURN_API_TOKEN) }, 200);
     }
 
-    if (url.pathname !== '/ice' || request.method !== 'GET') {
+    if (url.pathname !== TURN_ROUTE || request.method !== 'GET') {
       return json({ error: 'not found' }, 404);
     }
 
