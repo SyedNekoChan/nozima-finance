@@ -3,12 +3,10 @@ import { formatTime } from '../lib/date.js';
 import { getDistanceBetweenUs, formatDistance } from '../lib/distance.js';
 import { SYSTEM_MESSAGE } from '../lib/constants.js';
 import Modal from './Modal.jsx';
-import SyncModal from './SyncModal.jsx';
 
-export default function Header({ sync }) {
+export default function Header() {
   const [showSystemMessage, setShowSystemMessage] = useState(false);
   const [showDistance, setShowDistance] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -31,13 +29,6 @@ export default function Header({ sync }) {
 
           <span className="col-start-1 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-gray-500 whitespace-nowrap">
             [ DISTANCE: {distance} ]
-          </span>
-
-          <span
-            className="col-start-2 row-start-1 min-w-0 truncate px-3 pt-2 pb-1.5 text-right text-gray-500 cursor-pointer whitespace-nowrap"
-            onClick={() => setShowSyncModal(true)}
-          >
-            SYNC: {sync.status}
           </span>
 
           <span className="col-start-2 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-right text-white whitespace-nowrap">
@@ -64,18 +55,9 @@ export default function Header({ sync }) {
             </span>
           </div>
 
-          <div className="contents">
-            <span
-              className="text-gray-500 cursor-pointer whitespace-nowrap"
-              onClick={() => setShowSyncModal(true)}
-            >
-              [ SYNC: {sync.status} _ ]
-            </span>
-
-            <span className="text-white whitespace-nowrap">
-              [ {formatTime(now)} _ ]
-            </span>
-          </div>
+          <span className="text-white whitespace-nowrap">
+            [ {formatTime(now)} _ ]
+          </span>
         </div>
       </header>
 
@@ -89,12 +71,6 @@ export default function Header({ sync }) {
           {SYSTEM_MESSAGE}
         </pre>
       </Modal>
-
-      <SyncModal
-        isOpen={showSyncModal}
-        onClose={() => setShowSyncModal(false)}
-        sync={sync}
-      />
     </>
   );
 }
