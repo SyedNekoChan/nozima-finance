@@ -14,27 +14,6 @@ export const SPECIAL_CURRENCY_SYMBOLS = {
   TRY: '₺',
 };
 
-// Single source of truth for transaction categories (PunchCard options + default)
-export const TRANSACTION_CATEGORIES = [
-  'GROCERIES',
-  'RESTAURANT',
-  'SALARY',
-  'SHOPPING',
-  'TRANSPORT',
-  'BILLS',
-  'RENT',
-  'UTILITIES',
-  'ENTERTAINMENT',
-  'HEALTH',
-  'EDUCATION',
-  'TRAVEL',
-  'SUBSCRIPTIONS',
-  'PERSONAL',
-  'GIFT',
-  'OTHER',
-];
-export const DEFAULT_CATEGORY = 'GROCERIES';
-
 // MM-DD format — triggers the heart morph on the anomaly
 export const SPECIAL_DATES = ['11-24'];
 
@@ -73,22 +52,26 @@ export const SIGNALING_BROKERS = [
   'wss://mqtt.eclipseprojects.io/mqtt',
 ];
 
-// STUN = direct path (preferred by ICE priority). TURN = relay fallback,
-// used by ICE only when no direct pair works.
+// Direct-connection helpers (no account needed). Symmetric / carrier NATs
+// cannot be traversed with STUN alone, so the encrypted relay below takes over.
 export const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
-// TURN is NOT configured at build time (anything bundled by Vite is public).
-// The app fetches this non-secret runtime config, whose only field is the URL
-// of the credential-minting Worker (worker/). The Worker keeps the Cloudflare
-// TURN key server-side and returns short-lived ICE servers.
-export const SYNC_CONFIG_PATH = 'sync-config.json';
-export const ICE_FETCH_TIMEOUT_MS = 8000;
+// Encrypted relay fallback: when no WebRTC link opens, Yjs updates travel
+// as AES-GCM ciphertext over the same signaling channel (key derived from the
+// sync secret, so brokers only ever see opaque bytes).
+export const RELAY_AFTER_MS = 12000; // grace for ICE before relaying
+export const RELAY_PRESENCE_MS = 20000; // peer considered online if heard from
+export const RELAY_CHUNK_CHARS = 30000; // base64 chars per signaling message
+export const RELAY_PACE_MS = 15; // spacing between chunks
+export const RELAY_ACK_TIMEOUT_MS = 4000;
+export const RELAY_MAX_TRIES = 40;
+export const RELAY_NACK_MS = 2500; // receiver asks for missing chunks
 
 // WebRTC link timing (real cross-network ICE needs far more than a LAN)
-export const LINK_CONNECT_TIMEOUT_MS = 60000; // whole attempt incl. restarts
+export const LINK_CONNECT_TIMEOUT_MS = 45000; // whole attempt incl. restarts
 export const LINK_DISCONNECT_GRACE_MS = 6000; // 'disconnected' may self-heal
 export const LINK_RECOVER_TIMEOUT_MS = 20000; // after a restart
 export const LINK_MAX_RESTARTS = 2;
@@ -105,12 +88,13 @@ export const SYNC_STAGE = {
   SIGNALING_READY: 'SIGNALING READY',
   PEER_DISCOVERY: 'PEER DISCOVERY',
   CHALLENGE_SENT: 'PAIRING CHALLENGE SENT',
-  CONFIRM_ACCEPTED: 'CONFIRMATION ACCEPTED',
   CONFIRM_VERIFYING: 'CONFIRMATION VERIFYING',
+  CONFIRM_ACCEPTED: 'CONFIRMATION ACCEPTED',
   SECRET_RELEASED: 'SECRET RELEASED',
   WEBRTC_CONNECTING: 'WEBRTC CONNECTING',
   WEBRTC_CONNECTED: 'WEBRTC CONNECTED',
   SYNC_COMPLETE: 'SYNC COMPLETE',
+  RELAY_SYNC: 'RELAY SYNC',
   NO_PEER: 'NO PEER',
   SIGNALING_FAILURE: 'SIGNALING FAILURE',
 };
