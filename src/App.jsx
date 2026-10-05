@@ -4,6 +4,7 @@ import useSync from './hooks/useSync.js';
 import useExchangeRates from './hooks/useExchangeRates.js';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
+import Snow from './components/Snow.jsx';
 import Anomaly from './components/Anomaly.jsx';
 import Dashboard from './features/dashboard/Dashboard.jsx';
 import Ledger from './features/ledger/Ledger.jsx';
@@ -33,6 +34,7 @@ export default function App() {
 
   return (
     <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
+      <Snow />
       <Header sync={sync} />
       <main className="relative flex-1 min-h-0 overflow-hidden">
         <Anomaly />
