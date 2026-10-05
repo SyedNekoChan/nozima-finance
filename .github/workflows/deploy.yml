@@ -25,6 +25,7 @@ jobs:
   # They never enter the Pages build or any tracked file.
   worker:
     runs-on: ubuntu-latest
+    environment: github-pages
     outputs:
       url: ${{ steps.deploy.outputs.deployment-url }}
     env:
