@@ -138,7 +138,7 @@ export default function Ledger() {
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      <div className="flex-shrink-0 w-full bg-black border-b border-gray-800 px-4 py-3 sm:p-3 md:p-6">
+      <div className="flex-shrink-0 w-full bg-transparent border-b border-gray-800 px-4 py-3 sm:p-3 md:p-6">
         <div className="flex justify-between items-center gap-2 mb-2 md:mb-3 min-w-0">
           <h1 className="font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0">
             [ &gt; LEDGER.LOG ]
@@ -177,7 +177,7 @@ export default function Ledger() {
 
       <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
 
-      <div className="flex-1 overflow-y-auto px-4 py-2 sm:p-4 md:p-6 bg-black">
+      <div className="flex-1 overflow-y-auto px-4 py-2 sm:p-4 md:p-6">
         <div className="pb-4 sm:pb-24">
           {sortedTransactions.length === 0 ? (
             <div className="text-gray-500 font-mono text-sm">[ NO ENTRIES YET ]</div>
