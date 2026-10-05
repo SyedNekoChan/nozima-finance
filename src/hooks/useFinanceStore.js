@@ -9,6 +9,7 @@ import {
   getAllAccounts,
   getSetting,
   setSetting,
+  purgeLegacySyncData,
 } from '../lib/db.js';
 import { DEFAULT_EXCHANGE_RATES } from '../lib/constants.js';
 import { convertToBase } from '../lib/currency.js';
@@ -100,12 +101,6 @@ const useFinanceStore = create((set, get) => ({
 
   isLoaded: false,
 
-  /*
-   * Synchronization tombstones.
-   */
-  deletedAccountIds: [],
-  deletedTransactionIds: [],
-
   pendingLedgerDate: null,
   pendingEditTx: null,
 
@@ -116,6 +111,8 @@ const useFinanceStore = create((set, get) => ({
    */
 
   loadInitialData: async () => {
+    purgeLegacySyncData();
+
     const [
       transactions,
       accounts,
@@ -377,8 +374,7 @@ const useFinanceStore = create((set, get) => ({
     };
 
     await get().addTransaction(
-      tx,
-      true
+      tx
     );
 
     return tx;
@@ -589,18 +585,10 @@ const useFinanceStore = create((set, get) => ({
    * ================================================================
    * ADD TRANSACTION
    * ================================================================
-   *
-   * updateBalance=true:
-   *   Local transaction. Update account balance.
-   *
-   * updateBalance=false:
-   *   Remote synchronized transaction. Do NOT touch account balance,
-   *   because the account itself is synchronized separately.
    */
 
   addTransaction: async (
-    tx,
-    updateBalance = true
+    tx
   ) => {
     const record = {
       ...tx,
@@ -676,49 +664,43 @@ const useFinanceStore = create((set, get) => ({
      * deleteTransaction, so there is exactly one implementation of
      * "what a transfer does to balances" regardless of which UI
      * surface (PunchCard or TransferModal) created it.
-     *
-     * Remote/synced transactions (updateBalance=false) never touch
-     * balances here — the account's own balance is synchronized
-     * independently via its own Yjs map.
      */
-    if (updateBalance) {
-      if (
-        record.type === 'INCOME' ||
-        record.type === 'EXPENSE'
-      ) {
-        const account =
-          useFinanceStore
-            .getState()
-            .accounts
-            .find(
-              (a) =>
-                a.id ===
-                record.accountId
-            );
+    if (
+      record.type === 'INCOME' ||
+      record.type === 'EXPENSE'
+    ) {
+      const account =
+        useFinanceStore
+          .getState()
+          .accounts
+          .find(
+            (a) =>
+              a.id ===
+              record.accountId
+          );
 
-        if (account) {
-          const delta =
-            getTransactionBalanceDelta(
-              record
-            );
+      if (account) {
+        const delta =
+          getTransactionBalanceDelta(
+            record
+          );
 
-          if (delta !== 0) {
-            await get().updateAccount({
-              ...account,
-              balance:
-                account.balance +
-                delta,
-            });
-          }
+        if (delta !== 0) {
+          await get().updateAccount({
+            ...account,
+            balance:
+              account.balance +
+              delta,
+          });
         }
-      } else if (
-        record.type === 'TRANSFER'
-      ) {
-        await get().applyTransferBalanceEffect(
-          record,
-          1
-        );
       }
+    } else if (
+      record.type === 'TRANSFER'
+    ) {
+      await get().applyTransferBalanceEffect(
+        record,
+        1
+      );
     }
 
     /*
@@ -810,8 +792,7 @@ const useFinanceStore = create((set, get) => ({
    */
 
   updateTransaction: async (
-    tx,
-    updateBalance = true
+    tx
   ) => {
     const oldTransaction =
       useFinanceStore
@@ -848,9 +829,7 @@ const useFinanceStore = create((set, get) => ({
     }));
 
     /*
-     * Local edits modify balances.
-     *
-     * Remote edits do not.
+     * Edits modify balances.
      *
      * TRANSFER transactions are handled via the same centralized
      * applyTransferBalanceEffect() helper used by createTransfer,
@@ -866,7 +845,6 @@ const useFinanceStore = create((set, get) => ({
      * delta path unchanged.
      */
     if (
-      updateBalance &&
       oldTransaction
     ) {
       const oldIsTransfer =
@@ -1128,8 +1106,7 @@ const useFinanceStore = create((set, get) => ({
    */
 
   deleteTransaction: async (
-    id,
-    updateBalance = true
+    id
   ) => {
     const transaction =
       useFinanceStore
@@ -1152,70 +1129,56 @@ const useFinanceStore = create((set, get) => ({
           (t) =>
             t.id !== id
         ),
-
-      deletedTransactionIds:
-        state.deletedTransactionIds.includes(
-          id
-        )
-          ? state.deletedTransactionIds
-          : [
-              ...state.deletedTransactionIds,
-              id,
-            ],
     }));
 
     /*
-     * Reverse the balance effect only for local deletion.
+     * Reverse the transaction's balance effect.
      */
     if (
-      updateBalance
+      transaction.type ===
+      'TRANSFER'
     ) {
-      if (
-        transaction.type ===
-        'TRANSFER'
-      ) {
-        /*
-         * TRANSFER has a zero delta in getTransactionBalanceDelta()
-         * because it moves two accounts, not one. Its balance
-         * movement (creation, editing, and this deletion reversal
-         * alike) is handled by the single centralized
-         * applyTransferBalanceEffect() helper — sign -1 reverses
-         * exactly what sign +1 originally applied:
-         *
-         * source += original source amount
-         * destination -= original received amount
-         *   (received = amount * exchangeRate for cross-currency,
-         *    otherwise received = amount)
-         */
-        await get().applyTransferBalanceEffect(
-          transaction,
-          -1
+      /*
+       * TRANSFER has a zero delta in getTransactionBalanceDelta()
+       * because it moves two accounts, not one. Its balance
+       * movement (creation, editing, and this deletion reversal
+       * alike) is handled by the single centralized
+       * applyTransferBalanceEffect() helper — sign -1 reverses
+       * exactly what sign +1 originally applied:
+       *
+       * source += original source amount
+       * destination -= original received amount
+       *   (received = amount * exchangeRate for cross-currency,
+       *    otherwise received = amount)
+       */
+      await get().applyTransferBalanceEffect(
+        transaction,
+        -1
+      );
+    } else {
+      const delta =
+        getTransactionBalanceDelta(
+          transaction
         );
-      } else {
-        const delta =
-          getTransactionBalanceDelta(
-            transaction
-          );
 
-        if (delta !== 0) {
-          const account =
-            useFinanceStore
-              .getState()
-              .accounts
-              .find(
-                (a) =>
-                  a.id ===
-                  transaction.accountId
-              );
+      if (delta !== 0) {
+        const account =
+          useFinanceStore
+            .getState()
+            .accounts
+            .find(
+              (a) =>
+                a.id ===
+                transaction.accountId
+            );
 
-          if (account) {
-            await get().updateAccount({
-              ...account,
-              balance:
-                account.balance -
-                delta,
-            });
-          }
+        if (account) {
+          await get().updateAccount({
+            ...account,
+            balance:
+              account.balance -
+              delta,
+          });
         }
       }
     }
@@ -1304,8 +1267,7 @@ const useFinanceStore = create((set, get) => ({
 
   deleteAccount:
     async (
-      id,
-      updateBalance = true
+      id
     ) => {
       /*
        * Cascade-delete every transaction that references this
@@ -1317,23 +1279,11 @@ const useFinanceStore = create((set, get) => ({
        * getSpentThisMonthInUZS, Calendar's monthly heatmap), and
        * render as broken/undefined-account rows in Ledger/DailyLog.
        *
-       * updateBalance mirrors the same parameter on deleteTransaction
-       * and addTransaction/updateTransaction: local account deletion
-       * (Accounts.jsx) passes true so the OTHER side of any TRANSFER
-       * (a still-existing account) gets correctly balance-reversed.
-       * A REMOTE account deletion arriving via sync
-       * (onAccountsDeletedChanged in useSync.js) passes false,
-       * because that other account's balance is synced/reconciled
-       * independently via its own Yjs map — applying a local reversal
-       * on top of that would double-count exactly like remote
-       * transaction deletions already avoid via their own
-       * updateBalance=false.
-       *
        * Each cascade delete goes through the existing
        * deleteTransaction(), reusing its already-correct,
        * already-guarded reversal logic: it safely no-ops for the
        * account being removed (its own balance update is moot, the
-       * account is about to disappear) regardless of updateBalance.
+       * account is about to disappear).
        *
        * This must happen BEFORE the account is removed from state,
        * so any transaction whose *other* side is a different,
@@ -1358,8 +1308,7 @@ const useFinanceStore = create((set, get) => ({
         const transactionId of dependentTransactionIds
       ) {
         await get().deleteTransaction(
-          transactionId,
-          updateBalance
+          transactionId
         );
       }
 
@@ -1371,38 +1320,8 @@ const useFinanceStore = create((set, get) => ({
             (a) =>
               a.id !== id
           ),
-
-        deletedAccountIds:
-          state.deletedAccountIds.includes(
-            id
-          )
-            ? state.deletedAccountIds
-            : [
-                ...state.deletedAccountIds,
-                id,
-              ],
       }));
     },
-
-  clearDeletedAccountId:
-    (id) =>
-      set((state) => ({
-        deletedAccountIds:
-          state.deletedAccountIds.filter(
-            (existingId) =>
-              existingId !== id
-          ),
-      })),
-
-  clearDeletedTransactionId:
-    (id) =>
-      set((state) => ({
-        deletedTransactionIds:
-          state.deletedTransactionIds.filter(
-            (existingId) =>
-              existingId !== id
-          ),
-      })),
 
   /*
    * ================================================================
