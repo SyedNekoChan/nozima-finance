@@ -20,14 +20,7 @@ import {
   clearPendingJoin,
 } from '../lib/db.js';
 import { PAIRING_TTL_MS, PAIRING_MAX_ATTEMPTS, SYNC_STAGE } from '../lib/constants.js';
-import {
-  PeerMesh,
-  SignalChannel,
-  MSG_SV,
-  MSG_UPDATE,
-  syncLog,
-  resolveIceServers,
-} from '../lib/p2p.js';
+import { PeerMesh, SignalChannel, MSG_SV, MSG_UPDATE, syncLog } from '../lib/p2p.js';
 import {
   generateSecretBytes,
   secretToBase64Url,
@@ -54,16 +47,6 @@ const ERR_SIGNALING = 'SIGNALING UNAVAILABLE';
 const ERR_NO_PEER = 'NO PAIRED DEVICE ONLINE';
 const ERR_LINK = 'PEER LINK FAILED';
 const ERR_PROTOCOL = 'SIGNALING PROTOCOL ERROR';
-const ERR_RELAY = 'RELAY UNAVAILABLE';
-const ERR_TURN = 'TURN CREDENTIAL FAILURE';
-const ERR_ICE = 'ICE FAILURE';
-const failureError = (mesh) =>
-  ({
-    'turn-credentials': ERR_TURN,
-    relay: ERR_RELAY,
-    ice: ERR_ICE,
-    link: ERR_LINK,
-  })[mesh.failureKind] || ERR_LINK;
 const JOIN_EVERY_MS = 3000;
 const HOST_STALE_MS = 25000;
 const AWAIT_IDLE_MS = 10 * 60 * 1000;
@@ -80,10 +63,7 @@ const isTransientError = (e) =>
   e === ERR_SIGNALING ||
   e === ERR_NO_PEER ||
   e === ERR_LINK ||
-  e === ERR_PROTOCOL ||
-  e === ERR_RELAY ||
-  e === ERR_TURN ||
-  e === ERR_ICE;
+  e === ERR_PROTOCOL;
 
 export default function useSync() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
@@ -348,7 +328,8 @@ export default function useSync() {
 
   /*
    * ---------------------------------------------------------------
-   * TRANSPORT — encrypted signaling + WebRTC mesh + Yjs sync
+   * TRANSPORT — encrypted signaling + WebRTC mesh (+ encrypted relay
+   * fallback) + Yjs sync
    * ---------------------------------------------------------------
    */
 
@@ -399,7 +380,8 @@ export default function useSync() {
       if (signaling === 'connecting') stage = SYNC_STAGE.SIGNALING_CONNECTING;
       else if (signaling === 'unavailable') stage = SYNC_STAGE.SIGNALING_FAILURE;
       else if (open > 0) {
-        stage = syncedPeers.size > 0 ? SYNC_STAGE.SYNC_COMPLETE : SYNC_STAGE.WEBRTC_CONNECTED;
+        if (mesh.webrtcPeers.length === 0) stage = SYNC_STAGE.RELAY_SYNC;
+        else stage = syncedPeers.size > 0 ? SYNC_STAGE.SYNC_COMPLETE : SYNC_STAGE.WEBRTC_CONNECTED;
       } else if (mesh.connectingCount > 0) stage = SYNC_STAGE.WEBRTC_CONNECTING;
       else if (Date.now() - startedAt > NO_PEER_AFTER_MS) stage = SYNC_STAGE.NO_PEER;
       else stage = SYNC_STAGE.PEER_DISCOVERY;
@@ -416,7 +398,7 @@ export default function useSync() {
       } else if (signaling === 'unavailable') {
         setTransient(failure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
       } else if (mesh.linkFailed) {
-        setTransient(failureError(mesh));
+        setTransient(ERR_LINK);
       } else if (stage === SYNC_STAGE.NO_PEER) {
         setTransient(ERR_NO_PEER);
       } else {
@@ -1687,9 +1669,6 @@ export default function useSync() {
     setPeerCount(0);
     setPaused(false);
 
-    // Fresh short-lived TURN credentials before the new transport starts.
-    await resolveIceServers({ force: true }).catch(() => {});
-
     setLinkEpoch((e) => e + 1);
 
     try {
@@ -1697,7 +1676,7 @@ export default function useSync() {
 
       const startedAt = Date.now();
 
-      // Keep waiting while ICE/TURN negotiation is genuinely in progress.
+      // Keep waiting while ICE negotiation is genuinely in progress.
       for (;;) {
         if (peersRef.current > 0 && syncedRef.current) break;
 
@@ -1720,7 +1699,7 @@ export default function useSync() {
       if (mesh && (mesh.openPeers.length > 0 || mesh.connectingCount > 0)) return;
 
       if (mesh && mesh.signaling === 'ready') {
-        setError(mesh.linkFailed ? failureError(mesh) : ERR_NO_PEER);
+        setError(mesh.linkFailed ? ERR_LINK : ERR_NO_PEER);
       } else if (mesh && mesh.signaling === 'connecting') {
         setError(null);
       } else {
