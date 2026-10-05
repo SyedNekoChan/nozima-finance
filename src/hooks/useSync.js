@@ -55,6 +55,15 @@ const ERR_NO_PEER = 'NO PAIRED DEVICE ONLINE';
 const ERR_LINK = 'PEER LINK FAILED';
 const ERR_PROTOCOL = 'SIGNALING PROTOCOL ERROR';
 const ERR_RELAY = 'RELAY UNAVAILABLE';
+const ERR_TURN = 'TURN CREDENTIAL FAILURE';
+const ERR_ICE = 'ICE FAILURE';
+const failureError = (mesh) =>
+  ({
+    'turn-credentials': ERR_TURN,
+    relay: ERR_RELAY,
+    ice: ERR_ICE,
+    link: ERR_LINK,
+  })[mesh.failureKind] || ERR_LINK;
 const JOIN_EVERY_MS = 3000;
 const HOST_STALE_MS = 25000;
 const AWAIT_IDLE_MS = 10 * 60 * 1000;
@@ -72,7 +81,9 @@ const isTransientError = (e) =>
   e === ERR_NO_PEER ||
   e === ERR_LINK ||
   e === ERR_PROTOCOL ||
-  e === ERR_RELAY;
+  e === ERR_RELAY ||
+  e === ERR_TURN ||
+  e === ERR_ICE;
 
 export default function useSync() {
   const isLoaded = useFinanceStore((s) => s.isLoaded);
@@ -405,7 +416,7 @@ export default function useSync() {
       } else if (signaling === 'unavailable') {
         setTransient(failure === 'protocol' ? ERR_PROTOCOL : ERR_SIGNALING);
       } else if (mesh.linkFailed) {
-        setTransient(mesh.relayUnavailable ? ERR_RELAY : ERR_LINK);
+        setTransient(failureError(mesh));
       } else if (stage === SYNC_STAGE.NO_PEER) {
         setTransient(ERR_NO_PEER);
       } else {
@@ -1709,13 +1720,7 @@ export default function useSync() {
       if (mesh && (mesh.openPeers.length > 0 || mesh.connectingCount > 0)) return;
 
       if (mesh && mesh.signaling === 'ready') {
-        setError(
-          mesh.linkFailed
-            ? mesh.relayUnavailable
-              ? ERR_RELAY
-              : ERR_LINK
-            : ERR_NO_PEER
-        );
+        setError(mesh.linkFailed ? failureError(mesh) : ERR_NO_PEER);
       } else if (mesh && mesh.signaling === 'connecting') {
         setError(null);
       } else {
