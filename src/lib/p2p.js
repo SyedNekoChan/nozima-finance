@@ -1,14 +1,19 @@
 import {
   SIGNALING_BROKERS,
   ICE_SERVERS,
-  SYNC_CONFIG_PATH,
-  ICE_FETCH_TIMEOUT_MS,
   LINK_CONNECT_TIMEOUT_MS,
   LINK_DISCONNECT_GRACE_MS,
   LINK_RECOVER_TIMEOUT_MS,
   LINK_MAX_RESTARTS,
   LINK_RETRY_BASE_MS,
   LINK_RETRY_MAX_MS,
+  RELAY_AFTER_MS,
+  RELAY_PRESENCE_MS,
+  RELAY_CHUNK_CHARS,
+  RELAY_PACE_MS,
+  RELAY_ACK_TIMEOUT_MS,
+  RELAY_MAX_TRIES,
+  RELAY_NACK_MS,
 } from './constants.js';
 
 /*
@@ -543,57 +548,8 @@ export class SignalChannel {
 }
 
 /*
- * ================================================================
- * ICE SERVER RESOLUTION (STUN + short-lived TURN from the Worker)
- * ================================================================
- *
- * The only configuration shipped with the static app is the non-secret
- * Worker URL in sync-config.json. Credentials are minted per session by
- * the Worker and never logged.
+ * Log-safe description of an RTCPeerConnection configuration.
  */
-
-const ICE_URL_OK = /^(stun|stuns|turn|turns):/i;
-let iceCache = null;
-let iceInflight = null;
-
-const isTurnUrl = (u) => /^turns?:/i.test(u);
-
-function sanitizeServers(list) {
-  if (!Array.isArray(list)) return [];
-
-  return list
-    .map((server) => {
-      const urls = (Array.isArray(server?.urls) ? server.urls : [server?.urls]).filter(
-        (u) => typeof u === 'string' && ICE_URL_OK.test(u)
-      );
-
-      if (!urls.length) return null;
-
-      const out = { urls };
-
-      if (typeof server.username === 'string') out.username = server.username;
-      if (typeof server.credential === 'string') out.credential = server.credential;
-
-      return out;
-    })
-    .filter(Boolean);
-}
-
-// Log-safe description: scheme/host/port/transport + whether auth exists.
-export function describeServers(servers) {
-  return servers.flatMap((s) =>
-    (Array.isArray(s.urls) ? s.urls : [s.urls]).map((u) => {
-      const [scheme, rest = ''] = String(u).split(':');
-      const transport = /transport=(\w+)/i.exec(u);
-
-      return `${scheme}:${rest.split('?')[0]}${transport ? ` [${transport[1]}]` : ''}${
-        s.credential ? ' (auth)' : ''
-      }`;
-    })
-  );
-}
-
-// Safe summary of what an RTCPeerConnection was REALLY configured with.
 export function iceConfigSummary(config) {
   const servers = config?.iceServers || [];
   const urls = servers.flatMap((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]));
@@ -601,252 +557,28 @@ export function iceConfigSummary(config) {
   return {
     policy: config?.iceTransportPolicy || 'all',
     stun: urls.filter((u) => /^stuns?:/i.test(u)).length,
-    turn: urls.filter((u) => /^turn:/i.test(u)).length,
-    turns: urls.filter((u) => /^turns:/i.test(u)).length,
-    authenticated: servers.filter((s) => s.credential).length,
-    urls: describeServers(servers),
+    turn: urls.filter((u) => /^turns?:/i.test(u)).length,
+    urls: urls.map((u) => String(u).split('?')[0]),
   };
 }
 
-function allowedConfigUrl(raw) {
-  try {
-    const u = new URL(raw);
+function bytesToB64(bytes) {
+  let out = '';
 
-    return (
-      u.protocol === 'https:' ||
-      (u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname))
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function fetchJson(url, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// True while the cached (short-lived) credentials are still valid.
-export function iceFresh() {
-  return Boolean(iceCache && Date.now() < iceCache.expires);
-}
-
-export function iceStatus() {
-  return {
-    configured: Boolean(iceCache?.configured),
-    hasTurn: Boolean(iceCache?.hasTurn),
-    error: iceCache?.error || null,
-    expiresInS: iceCache ? Math.max(0, Math.round((iceCache.expires - Date.now()) / 1000)) : 0,
-  };
-}
-
-export async function resolveIceServers({ force = false } = {}) {
-  if (!force && iceCache && Date.now() < iceCache.expires) return iceCache.servers;
-  if (iceInflight) return iceInflight;
-
-  iceInflight = (async () => {
-    const servers = [...ICE_SERVERS];
-    let ttlMs = 30 * 60 * 1000;
-    let configured = false;
-    let error = null;
-
-    try {
-      const base = String(import.meta.env.BASE_URL || '/');
-      const config = await fetchJson(`${base}${SYNC_CONFIG_PATH}`, ICE_FETCH_TIMEOUT_MS);
-      const endpoint = typeof config?.turnCredentialsUrl === 'string' ? config.turnCredentialsUrl : '';
-
-      if (!endpoint) {
-        error = 'TURN ENDPOINT NOT CONFIGURED';
-      } else if (!allowedConfigUrl(endpoint)) {
-        error = 'TURN ENDPOINT URL REJECTED';
-      } else {
-        configured = true;
-
-        const json = await fetchJson(endpoint, ICE_FETCH_TIMEOUT_MS);
-        const fetched = sanitizeServers(Array.isArray(json) ? json : json?.iceServers);
-
-        if (!fetched.some((s) => s.urls.some(isTurnUrl))) throw new Error('no TURN servers returned');
-
-        servers.push(...fetched);
-
-        // Refresh at half-life of the short-lived credentials.
-        if (Number(json?.ttl) > 0) ttlMs = Math.min(ttlMs, Number(json.ttl) * 500);
-      }
-    } catch (e) {
-      error = `TURN CREDENTIALS FAILED (${e?.name === 'AbortError' ? 'timeout' : e?.message || 'error'})`;
-      ttlMs = 20000; // retry soon
-    }
-
-    const hasTurn = servers.some((s) =>
-      (Array.isArray(s.urls) ? s.urls : [s.urls]).some(isTurnUrl)
-    );
-
-    syncLog('ICE servers', describeServers(servers), hasTurn ? 'TURN available' : `NO TURN: ${error}`);
-
-    iceCache = { servers, expires: Date.now() + ttlMs, hasTurn, configured, error };
-
-    return servers;
-  })().finally(() => {
-    iceInflight = null;
-  });
-
-  return iceInflight;
-}
-
-/*
- * ================================================================
- * RELAY-ONLY DIAGNOSTIC (iceTransportPolicy: 'relay')
- * ================================================================
- *
- * Two connections inside this page, forced to use TURN only, wired to
- * each other directly. Separates "TURN does not work" from "app
- * negotiation is broken". Never returns or logs credentials.
- */
-
-export async function runRelayDiagnostics({ tlsOnly = false, timeoutMs = 20000 } = {}) {
-  const started = Date.now();
-  const servers = await resolveIceServers({ force: true });
-  let turnServers = servers
-    .map((s) => ({
-      ...s,
-      urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter(
-        (u) => isTurnUrl(u) && (!tlsOnly || /^turns:/i.test(u))
-      ),
-    }))
-    .filter((s) => s.urls.length && s.credential);
-
-  const result = {
-    ok: false,
-    stage: 'no-turn-servers',
-    tlsOnly,
-    config: null,
-    relayCandidates: { a: 0, b: 0 },
-    errors: [],
-    selected: null,
-    ms: 0,
-  };
-
-  if (!turnServers.length) {
-    result.ms = Date.now() - started;
-    syncLog('relay test', result);
-    return result;
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   }
 
-  const config = { iceServers: turnServers, iceTransportPolicy: 'relay' };
-  const a = new RTCPeerConnection(config);
-  const b = new RTCPeerConnection(config);
-
-  result.config = iceConfigSummary(a.getConfiguration ? a.getConfiguration() : config);
-  result.stage = 'gathering';
-
-  const track = (pc, side) => {
-    pc.onicecandidate = (e) => {
-      if (!e.candidate) return;
-
-      if (candidateType(e.candidate) === 'relay') result.relayCandidates[side] += 1;
-
-      const peer = side === 'a' ? b : a;
-
-      peer.addIceCandidate(e.candidate).catch(() => {});
-    };
-
-    pc.onicecandidateerror = (e) => {
-      result.errors.push({
-        side,
-        code: e.errorCode,
-        text: e.errorText,
-        server: String(e.url || '').split('?')[0],
-      });
-    };
-  };
-
-  track(a, 'a');
-  track(b, 'b');
-
-  const open = new Promise((resolve) => {
-    let count = 0;
-    const done = () => {
-      count += 1;
-      if (count === 2) resolve(true);
-    };
-
-    a.createDataChannel('t', { negotiated: true, id: 0 }).onopen = done;
-    b.createDataChannel('t', { negotiated: true, id: 0 }).onopen = done;
-  });
-
-  try {
-    const offer = await a.createOffer();
-    await a.setLocalDescription(offer);
-    await b.setRemoteDescription(offer);
-
-    const answer = await b.createAnswer();
-    await b.setLocalDescription(answer);
-    await a.setRemoteDescription(answer);
-
-    const opened = await Promise.race([
-      open,
-      new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs)),
-    ]);
-
-    if (opened) {
-      result.ok = true;
-      result.stage = 'channel-open';
-    } else if (result.relayCandidates.a + result.relayCandidates.b === 0) {
-      result.stage = 'no-relay-candidate';
-    } else {
-      result.stage = 'ice-or-channel-failed';
-    }
-
-    const stats = await a.getStats();
-    const byId = new Map();
-
-    stats.forEach((r) => byId.set(r.id, r));
-
-    stats.forEach((r) => {
-      if (r.type === 'transport' && r.selectedCandidatePairId) {
-        const pair = byId.get(r.selectedCandidatePairId);
-        const local = byId.get(pair?.localCandidateId);
-        const remote = byId.get(pair?.remoteCandidateId);
-
-        result.selected = {
-          local: local?.candidateType,
-          remote: remote?.candidateType,
-          protocol: local?.protocol,
-          relayProtocol: local?.relayProtocol,
-        };
-      }
-    });
-  } catch (e) {
-    result.stage = `error:${e?.name || 'unknown'}`;
-  } finally {
-    a.close();
-    b.close();
-  }
-
-  result.ms = Date.now() - started;
-  syncLog('relay test', result);
-
-  return result;
+  return btoa(out);
 }
 
-if (typeof window !== 'undefined') {
-  // Diagnostics only: no secrets in or out. Usage from the console:
-  //   await nozimaSyncDiag.relayTest()   /   nozimaSyncDiag.relayTest({ tlsOnly: true })
-  window.nozimaSyncDiag = {
-    relayTest: runRelayDiagnostics,
-    iceStatus,
-    resolve: (opts) => resolveIceServers(opts).then((s) => describeServers(s)),
-  };
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+
+  return out;
 }
 
 /*
@@ -1079,18 +811,6 @@ class Link {
       this.restarts += 1;
       syncLog('ice restart', this.tag(), reason, `#${this.restarts}`);
 
-      // Fresh short-lived credentials for the new gathering.
-      try {
-        if (this.pc.setConfiguration && this.pc.getConfiguration) {
-          this.pc.setConfiguration({
-            ...this.pc.getConfiguration(),
-            iceServers: this.mesh.iceServers,
-          });
-        }
-      } catch (e) {
-        syncLog('setConfiguration failed', this.tag(), e?.name || '');
-      }
-
       this.negotiate(true).catch((e) =>
         syncLog('restart offer failed', this.tag(), e?.message || e)
       );
@@ -1159,7 +879,7 @@ class Link {
     clearTimeout(this.recoverTimer);
 
     if (this.restart(reason)) {
-      // Give the restarted ICE (direct or TURN) time before giving up.
+      // Give the restarted ICE time before giving up.
       this.recoverTimer = setTimeout(() => {
         if (!this.closed && this.currentState() !== 'connected') {
           this.mesh.linkDown(this, true, `${reason}-unrecovered`);
@@ -1229,9 +949,8 @@ class Link {
   classify() {
     if (this.everOpen) return 'E'; // opened, then closed by app/peer
     if (this.pairSucceeded) return 'D'; // ICE worked, channel never opened
-    if (this.maxLocalRelay === 0) return 'A'; // no relay candidate gathered
-    if (this.remoteTotalEver === 0 || this.maxRemoteRelay === 0) return 'B'; // not received
-    return 'C'; // both have relay, no pair succeeded
+    if (this.remoteTotalEver === 0) return 'B'; // no candidates received from peer
+    return 'C'; // candidates exchanged, no pair succeeded (NAT)
   }
 
   async checkpoint(ms) {
@@ -1265,16 +984,10 @@ class Link {
   }
 
   failureReport(reason) {
-    const status = iceStatus();
-
     syncLog('link failed', this.tag(), reason, {
       class: this.classify(),
-      relayConfigured: status.hasTurn,
-      relayError: status.error,
       local: this.cands,
       remote: this.remoteCands,
-      maxLocalRelay: this.maxLocalRelay,
-      maxRemoteRelay: this.maxRemoteRelay,
       restarts: this.restarts,
       addErrors: this.addErrors,
       staleDropped: this.staleDropped,
@@ -1575,6 +1288,9 @@ export class PeerMesh {
    * options: { roomId, password, onPeerOpen(id), onPeerClose(id),
    *            onMessage(id, type, bytes), onChange(),
    *            brokers?, iceServers? }
+   *
+   * A peer is "open" when either a WebRTC data channel is open or the
+   * encrypted relay fallback is active for it. WebRTC always wins.
    */
   constructor(options) {
     this.o = options;
@@ -1583,12 +1299,16 @@ export class PeerMesh {
     this.stopped = false;
     this.linkFailed = false;
     this.failureClass = null;
-    this.iceReady = Boolean(options.iceServers);
-    this.refreshing = false;
-    this.deferred = [];
     this.iceServers = options.iceServers || ICE_SERVERS;
-    this.lastForcedIce = 0;
     this.tick = 0;
+
+    // Relay fallback state.
+    this.peers = new Map(); // peerId -> { last, unlinkedSince }
+    this.relayActive = new Set();
+    this.relayOut = new Map();
+    this.relayIn = new Map();
+    this.relayDone = [];
+    this.relaySeq = 0;
 
     this.sig = new SignalChannel({
       roomId: options.roomId,
@@ -1605,10 +1325,24 @@ export class PeerMesh {
     this.id = this.sig.id;
   }
 
-  get openPeers() {
+  isLinked(peerId) {
+    const link = this.links.get(peerId);
+
+    return Boolean(link && link.open && !link.closed);
+  }
+
+  get webrtcPeers() {
     return Array.from(this.links.values())
       .filter((l) => l.open && !l.closed)
       .map((l) => l.peerId);
+  }
+
+  get relayPeers() {
+    return Array.from(this.relayActive).filter((p) => !this.isLinked(p));
+  }
+
+  get openPeers() {
+    return Array.from(new Set([...this.webrtcPeers, ...this.relayActive]));
   }
 
   get connectingCount() {
@@ -1623,46 +1357,10 @@ export class PeerMesh {
     return this.sig.state.failure;
   }
 
-  /*
-   * Why the last exhausted link failed (null while healthy):
-   *   'turn-credentials' no TURN servers: credential endpoint failed or
-   *                      is not configured (signaling may be perfectly healthy)
-   *   'relay'            TURN credentials fine, yet no relay candidate
-   *                      was gathered (TURN unreachable/blocked)
-   *   'ice'              candidates exchanged/gathered, no pair succeeded
-   *   'link'             ICE worked but the data channel failed/closed
-   */
-  get failureKind() {
-    if (!this.linkFailed) return null;
-    if (!iceStatus().hasTurn) return 'turn-credentials';
-
-    switch (this.failureClass) {
-      case 'A':
-        return 'relay';
-      case 'B':
-      case 'C':
-        return 'ice';
-      default:
-        return 'link';
-    }
-  }
-
   async start() {
-    // Signaling and ICE-server resolution run concurrently; links wait
-    // for the ICE servers so TURN is present from the first connection.
-    const ice = options_iceServers(this.o) ? Promise.resolve(null) : resolveIceServers();
-
     await this.sig.start();
 
-    const servers = await ice;
-
-    if (servers) this.iceServers = servers;
-
-    this.iceReady = true;
-
     if (this.stopped) return;
-
-    this.deferred.splice(0).forEach((msg) => this.onSignalMessage(msg));
 
     this.timer = setInterval(() => this.heartbeat(), ANNOUNCE_MS);
 
@@ -1695,6 +1393,11 @@ export class PeerMesh {
       document.removeEventListener('visibilitychange', this.onVisible);
     }
 
+    this.relayOut.forEach((e) => clearTimeout(e.timer));
+    this.relayOut.clear();
+    this.relayIn.clear();
+    this.relayActive.clear();
+
     this.sig.stop();
     Array.from(this.links.values()).forEach((l) => l.close());
     this.links.clear();
@@ -1725,19 +1428,6 @@ export class PeerMesh {
 
     this.tick += 1;
 
-    // Refresh (short-lived) TURN credentials for links created later; if
-    // the last failure was "no relay", retry fetching them sooner.
-    const force =
-      this.failureClass === 'A' && Date.now() - this.lastForcedIce > 30000;
-
-    if (force) this.lastForcedIce = Date.now();
-
-    resolveIceServers({ force })
-      .then((servers) => {
-        if (!this.stopped && !this.o.iceServers) this.iceServers = servers;
-      })
-      .catch(() => {});
-
     const now = Date.now();
 
     // Safety net only: each Link enforces its own timeouts.
@@ -1747,8 +1437,10 @@ export class PeerMesh {
       }
     });
 
-    // Fast discovery while alone; slow keep-alive discovery otherwise.
-    if (this.openPeers.length === 0 || this.tick % 5 === 0) this.announce();
+    this.evaluateRelay();
+
+    // Fast discovery/presence while any peer lacks a WebRTC link.
+    if (this.webrtcPeers.length === 0 || this.tick % 5 === 0) this.announce();
 
     this.o.onChange?.();
   }
@@ -1761,32 +1453,254 @@ export class PeerMesh {
     return this.sig.publish(message);
   }
 
-  onSignalMessage(msg) {
-    // ICE servers (short-lived credentials) must be current before any
-    // RTCPeerConnection is created: hold signals while refreshing.
-    if (!this.iceReady || !iceFresh()) {
-      this.deferred.push(msg);
+  /*
+   * ----------------------------------------------------------------
+   * ENCRYPTED RELAY FALLBACK (no account, no server of our own)
+   * ----------------------------------------------------------------
+   */
 
-      if (this.iceReady && !this.refreshing) {
-        this.refreshing = true;
+  touch(peerId) {
+    const now = Date.now();
+    const info = this.peers.get(peerId);
 
-        resolveIceServers()
-          .then((servers) => {
-            if (this.stopped) return;
-            if (!this.o.iceServers) this.iceServers = servers;
-          })
-          .catch(() => {})
-          .finally(() => {
-            this.refreshing = false;
-            this.deferred.splice(0).forEach((m) => this.onSignalMessage(m));
-          });
+    if (info) info.last = now;
+    else this.peers.set(peerId, { last: now, unlinkedSince: now });
+  }
+
+  evaluateRelay() {
+    const now = Date.now();
+
+    Array.from(this.peers).forEach(([peerId, info]) => {
+      if (now - info.last > RELAY_PRESENCE_MS) {
+        this.peers.delete(peerId);
+        this.relayStop(peerId, true);
+        return;
       }
 
+      if (this.isLinked(peerId)) {
+        info.unlinkedSince = null;
+        if (this.relayActive.has(peerId)) this.relayStop(peerId, false);
+        return;
+      }
+
+      if (info.unlinkedSince == null) info.unlinkedSince = now;
+
+      if (!this.relayActive.has(peerId) && now - info.unlinkedSince > RELAY_AFTER_MS) {
+        this.relayStart(peerId, 'no direct link');
+      }
+    });
+  }
+
+  relayStart(peerId, reason) {
+    if (this.stopped || this.relayActive.has(peerId) || this.isLinked(peerId)) return;
+
+    this.relayActive.add(peerId);
+    syncLog('relay active', peerId.slice(0, 6), reason);
+    this.o.onPeerOpen?.(peerId);
+    this.o.onChange?.();
+  }
+
+  relayStop(peerId, notifyClose) {
+    if (!this.relayActive.has(peerId)) return;
+
+    this.relayActive.delete(peerId);
+
+    Array.from(this.relayOut).forEach(([id, e]) => {
+      if (e.peer === peerId) {
+        clearTimeout(e.timer);
+        this.relayOut.delete(id);
+      }
+    });
+
+    syncLog('relay stopped', peerId.slice(0, 6), notifyClose ? '(peer gone)' : '(webrtc took over)');
+
+    if (notifyClose) this.o.onPeerClose?.(peerId);
+
+    this.o.onChange?.();
+  }
+
+  relaySend(peerId, type, bytes) {
+    const b64 = bytesToB64(bytes);
+    const chunks = [];
+
+    for (let i = 0; i < b64.length; i += RELAY_CHUNK_CHARS) {
+      chunks.push(b64.slice(i, i + RELAY_CHUNK_CHARS));
+    }
+
+    if (!chunks.length) chunks.push('');
+
+    this.relaySeq += 1;
+
+    const id = `${this.relaySeq.toString(36)}${hex(rand(2))}`;
+
+    this.relayOut.set(id, { peer: peerId, type, chunks, tries: 0, timer: null, heard: false });
+    this.relayTransmit(id);
+
+    return Promise.resolve();
+  }
+
+  relayTransmit(id) {
+    const entry = this.relayOut.get(id);
+
+    if (!entry || this.stopped) return;
+
+    if (!this.relayActive.has(entry.peer) || entry.tries >= RELAY_MAX_TRIES) {
+      if (entry.tries >= RELAY_MAX_TRIES) syncLog('relay message dropped (no ack)', id);
+      this.relayOut.delete(id);
       return;
     }
 
+    entry.tries += 1;
+
+    // Paced to stay friendly to public brokers. Until the receiver answers
+    // at all, everything is re-sent; once it reports gaps (nack), only the
+    // missing chunks are re-sent.
+    const indexes = entry.heard ? [0] : entry.chunks.map((_, n) => n);
+
+    this.relayPublishChunks(id, indexes);
+
+    entry.timer = setTimeout(
+      () => this.relayTransmit(id),
+      RELAY_ACK_TIMEOUT_MS + indexes.length * RELAY_PACE_MS
+    );
+  }
+
+  relayPublishChunks(id, indexes) {
+    const entry = this.relayOut.get(id);
+
+    if (!entry) return;
+
+    indexes.forEach((n, k) => {
+      const chunk = entry.chunks[n];
+
+      if (chunk === undefined) return;
+
+      setTimeout(() => {
+        if (this.stopped || !this.relayOut.has(id)) return;
+
+        this.publish({
+          k: 'ry',
+          t: entry.peer,
+          y: entry.type,
+          i: id,
+          n,
+          c: entry.chunks.length,
+          d: chunk,
+        });
+      }, k * RELAY_PACE_MS);
+    });
+  }
+
+  onRelayNack(m) {
+    const entry = this.relayOut.get(m.i);
+
+    if (!entry || !Array.isArray(m.m)) return;
+
+    entry.heard = true;
+    this.relayPublishChunks(
+      m.i,
+      m.m.filter((n) => Number.isInteger(n) && n >= 0 && n < entry.chunks.length).slice(0, 200)
+    );
+  }
+
+  onRelayData(from, m) {
+    if (typeof m.i !== 'string' || !Number.isInteger(m.n) || !Number.isInteger(m.c) || m.c < 1) return;
+
+    // The sender already relays to us: do the same immediately.
+    if (!this.isLinked(from) && !this.relayActive.has(from)) this.relayStart(from, 'peer is relaying');
+
+    const key = `${from}:${m.i}`;
+
+    if (this.relayDone.includes(key)) {
+      this.publish({ k: 'rack', t: from, i: m.i });
+      return;
+    }
+
+    let entry = this.relayIn.get(key);
+
+    if (!entry) {
+      entry = { parts: new Array(m.c), got: 0, type: m.y };
+      this.relayIn.set(key, entry);
+
+      if (this.relayIn.size > 200) this.relayIn.delete(this.relayIn.keys().next().value);
+    }
+
+    if (entry.parts[m.n] === undefined && m.n >= 0 && m.n < entry.parts.length) {
+      entry.parts[m.n] = String(m.d || '');
+      entry.got += 1;
+    }
+
+    if (entry.got !== entry.parts.length) {
+      this.scheduleNack(from, m.i, key);
+      return;
+    }
+
+    clearTimeout(entry.nackTimer);
+    this.relayIn.delete(key);
+    this.relayDone.push(key);
+    if (this.relayDone.length > 400) this.relayDone.splice(0, 200);
+
+    this.publish({ k: 'rack', t: from, i: m.i });
+
+    try {
+      this.o.onMessage?.(from, entry.type, b64ToBytes(entry.parts.join('')));
+    } catch (e) {
+      syncLog('relay message rejected', e?.message || e);
+    }
+  }
+
+  // Tell the sender exactly which chunks are still missing.
+  scheduleNack(from, id, key) {
+    const entry = this.relayIn.get(key);
+
+    if (!entry || entry.nackTimer || this.stopped) return;
+
+    entry.nackTimer = setTimeout(() => {
+      entry.nackTimer = null;
+
+      if (this.stopped || this.relayIn.get(key) !== entry) return;
+
+      entry.nacks = (entry.nacks || 0) + 1;
+
+      if (entry.nacks > RELAY_MAX_TRIES) {
+        this.relayIn.delete(key);
+        return;
+      }
+
+      const missing = [];
+
+      entry.parts.forEach((p, n) => {
+        if (p === undefined && missing.length < 200) missing.push(n);
+      });
+
+      this.publish({ k: 'rnack', t: from, i: id, m: missing });
+      this.scheduleNack(from, id, key);
+    }, RELAY_NACK_MS);
+  }
+
+  onRelayAck(m) {
+    const entry = this.relayOut.get(m.i);
+
+    if (!entry) return;
+
+    clearTimeout(entry.timer);
+    this.relayOut.delete(m.i);
+  }
+
+  /*
+   * ----------------------------------------------------------------
+   * WEBRTC
+   * ----------------------------------------------------------------
+   */
+
+  onSignalMessage(msg) {
+    if (msg.f) this.touch(msg.f);
+
     if (msg.k === 'hello') this.onHello(msg.f);
     else if (msg.k === 'sig' && msg.d) this.onSignal(msg.f, msg.d);
+    else if (msg.k === 'ry') this.onRelayData(msg.f, msg);
+    else if (msg.k === 'rack') this.onRelayAck(msg);
+    else if (msg.k === 'rnack') this.onRelayNack(msg);
   }
 
   createLink(peerId, initiator) {
@@ -1797,7 +1711,7 @@ export class PeerMesh {
     } catch (e) {
       syncLog('WebRTC unavailable', e?.message || e);
       this.linkFailed = true;
-      this.failureClass = 'A';
+      this.failureClass = 'C';
       this.o.onChange?.();
       return null;
     }
@@ -1879,6 +1793,14 @@ export class PeerMesh {
     this.linkFailed = false;
     this.failureClass = null;
     this.backoff.delete(link.peerId);
+
+    // WebRTC takes over from the relay for this peer.
+    if (this.relayActive.has(link.peerId)) this.relayStop(link.peerId, false);
+
+    const info = this.peers.get(link.peerId);
+
+    if (info) info.unlinkedSince = null;
+
     this.o.onPeerOpen?.(link.peerId);
     this.o.onChange?.();
   }
@@ -1909,7 +1831,14 @@ export class PeerMesh {
       this.backoff.set(link.peerId, { n, until: Date.now() + delay });
     }
 
-    if (wasOpen) this.o.onPeerClose?.(link.peerId);
+    if (wasOpen) {
+      // Lost an open direct link: let the relay pick the peer up quickly.
+      const info = this.peers.get(link.peerId);
+
+      if (info) info.unlinkedSince = Date.now() - RELAY_AFTER_MS + 3000;
+
+      this.o.onPeerClose?.(link.peerId);
+    }
 
     if (failed && this.openPeers.length === 0) this.linkFailed = true;
 
@@ -1922,16 +1851,15 @@ export class PeerMesh {
 
   send(peerId, type, bytes) {
     const link = this.links.get(peerId);
-    return link && link.open ? link.send(type, bytes) : Promise.resolve();
+
+    if (link && link.open) return link.send(type, bytes);
+
+    if (this.relayActive.has(peerId)) return this.relaySend(peerId, type, bytes);
+
+    return Promise.resolve();
   }
 
   broadcast(type, bytes) {
-    return Promise.all(
-      this.openPeers.map((peerId) => this.send(peerId, type, bytes))
-    );
+    return Promise.all(this.openPeers.map((peerId) => this.send(peerId, type, bytes)));
   }
-}
-
-function options_iceServers(o) {
-  return Boolean(o && o.iceServers);
 }
