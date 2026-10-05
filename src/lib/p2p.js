@@ -636,6 +636,11 @@ async function fetchJson(url, timeoutMs) {
   }
 }
 
+// True while the cached (short-lived) credentials are still valid.
+export function iceFresh() {
+  return Boolean(iceCache && Date.now() < iceCache.expires);
+}
+
 export function iceStatus() {
   return {
     configured: Boolean(iceCache?.configured),
@@ -1579,6 +1584,7 @@ export class PeerMesh {
     this.linkFailed = false;
     this.failureClass = null;
     this.iceReady = Boolean(options.iceServers);
+    this.refreshing = false;
     this.deferred = [];
     this.iceServers = options.iceServers || ICE_SERVERS;
     this.lastForcedIce = 0;
@@ -1617,9 +1623,28 @@ export class PeerMesh {
     return this.sig.state.failure;
   }
 
-  // true when the last exhausted link never even gathered a relay candidate
-  get relayUnavailable() {
-    return this.linkFailed && (this.failureClass === 'A' || !iceStatus().hasTurn);
+  /*
+   * Why the last exhausted link failed (null while healthy):
+   *   'turn-credentials' no TURN servers: credential endpoint failed or
+   *                      is not configured (signaling may be perfectly healthy)
+   *   'relay'            TURN credentials fine, yet no relay candidate
+   *                      was gathered (TURN unreachable/blocked)
+   *   'ice'              candidates exchanged/gathered, no pair succeeded
+   *   'link'             ICE worked but the data channel failed/closed
+   */
+  get failureKind() {
+    if (!this.linkFailed) return null;
+    if (!iceStatus().hasTurn) return 'turn-credentials';
+
+    switch (this.failureClass) {
+      case 'A':
+        return 'relay';
+      case 'B':
+      case 'C':
+        return 'ice';
+      default:
+        return 'link';
+    }
   }
 
   async start() {
@@ -1637,9 +1662,7 @@ export class PeerMesh {
 
     if (this.stopped) return;
 
-    const queued = this.deferred.splice(0);
-
-    queued.forEach((msg) => this.onSignalMessage(msg));
+    this.deferred.splice(0).forEach((msg) => this.onSignalMessage(msg));
 
     this.timer = setInterval(() => this.heartbeat(), ANNOUNCE_MS);
 
@@ -1739,8 +1762,26 @@ export class PeerMesh {
   }
 
   onSignalMessage(msg) {
-    if (!this.iceReady) {
+    // ICE servers (short-lived credentials) must be current before any
+    // RTCPeerConnection is created: hold signals while refreshing.
+    if (!this.iceReady || !iceFresh()) {
       this.deferred.push(msg);
+
+      if (this.iceReady && !this.refreshing) {
+        this.refreshing = true;
+
+        resolveIceServers()
+          .then((servers) => {
+            if (this.stopped) return;
+            if (!this.o.iceServers) this.iceServers = servers;
+          })
+          .catch(() => {})
+          .finally(() => {
+            this.refreshing = false;
+            this.deferred.splice(0).forEach((m) => this.onSignalMessage(m));
+          });
+      }
+
       return;
     }
 
