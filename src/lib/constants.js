@@ -14,6 +14,27 @@ export const SPECIAL_CURRENCY_SYMBOLS = {
   TRY: '₺',
 };
 
+// Single source of truth for transaction categories (PunchCard options + default)
+export const TRANSACTION_CATEGORIES = [
+  'GROCERIES',
+  'RESTAURANT',
+  'SALARY',
+  'SHOPPING',
+  'TRANSPORT',
+  'BILLS',
+  'RENT',
+  'UTILITIES',
+  'ENTERTAINMENT',
+  'HEALTH',
+  'EDUCATION',
+  'TRAVEL',
+  'SUBSCRIPTIONS',
+  'PERSONAL',
+  'GIFT',
+  'OTHER',
+];
+export const DEFAULT_CATEGORY = 'GROCERIES';
+
 // MM-DD format — triggers the heart morph on the anomaly
 export const SPECIAL_DATES = ['11-24'];
 
@@ -41,60 +62,4 @@ export const DEFAULT_EXCHANGE_RATES = {
   RUB: 140,
   KZT: 25,
   TRY: 390,
-};
-
-// Public MQTT-over-WSS brokers used ONLY as an encrypted signaling relay
-// (WebRTC handshake). Topics are derived from secrets; payloads are AES-GCM.
-export const SIGNALING_BROKERS = [
-  'wss://broker.emqx.io:8084/mqtt',
-  'wss://broker.hivemq.com:8884/mqtt',
-  'wss://test.mosquitto.org:8081',
-  'wss://mqtt.eclipseprojects.io/mqtt',
-];
-
-// Direct-connection helpers (no account needed). Symmetric / carrier NATs
-// cannot be traversed with STUN alone, so the encrypted relay below takes over.
-export const ICE_SERVERS = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-];
-
-// Encrypted relay fallback: when no WebRTC link opens, Yjs updates travel
-// as AES-GCM ciphertext over the same signaling channel (key derived from the
-// sync secret, so brokers only ever see opaque bytes).
-export const RELAY_AFTER_MS = 12000; // grace for ICE before relaying
-export const RELAY_PRESENCE_MS = 20000; // peer considered online if heard from
-export const RELAY_CHUNK_CHARS = 30000; // base64 chars per signaling message
-export const RELAY_PACE_MS = 15; // spacing between chunks
-export const RELAY_ACK_TIMEOUT_MS = 4000;
-export const RELAY_MAX_TRIES = 40;
-export const RELAY_NACK_MS = 2500; // receiver asks for missing chunks
-
-// WebRTC link timing (real cross-network ICE needs far more than a LAN)
-export const LINK_CONNECT_TIMEOUT_MS = 45000; // whole attempt incl. restarts
-export const LINK_DISCONNECT_GRACE_MS = 6000; // 'disconnected' may self-heal
-export const LINK_RECOVER_TIMEOUT_MS = 20000; // after a restart
-export const LINK_MAX_RESTARTS = 2;
-export const LINK_RETRY_BASE_MS = 5000; // backoff between failed attempts
-export const LINK_RETRY_MAX_MS = 60000;
-
-// Pairing session (generator side) limits
-export const PAIRING_TTL_MS = 24 * 60 * 60 * 1000;
-export const PAIRING_MAX_ATTEMPTS = 5;
-
-// Sync progress stages (diagnostics + pending-pairing UI)
-export const SYNC_STAGE = {
-  SIGNALING_CONNECTING: 'SIGNALING CONNECTING',
-  SIGNALING_READY: 'SIGNALING READY',
-  PEER_DISCOVERY: 'PEER DISCOVERY',
-  CHALLENGE_SENT: 'PAIRING CHALLENGE SENT',
-  CONFIRM_VERIFYING: 'CONFIRMATION VERIFYING',
-  CONFIRM_ACCEPTED: 'CONFIRMATION ACCEPTED',
-  SECRET_RELEASED: 'SECRET RELEASED',
-  WEBRTC_CONNECTING: 'WEBRTC CONNECTING',
-  WEBRTC_CONNECTED: 'WEBRTC CONNECTED',
-  SYNC_COMPLETE: 'SYNC COMPLETE',
-  RELAY_SYNC: 'RELAY SYNC',
-  NO_PEER: 'NO PEER',
-  SIGNALING_FAILURE: 'SIGNALING FAILURE',
 };
