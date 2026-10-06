@@ -1474,12 +1474,14 @@ const useFinanceStore = create((set, get) => ({
    * account is a real payment and counts as TOTAL OUT.
    */
   getLedgerTotalsInUZS:
-    () => {
+    (txList) => {
       const {
         accounts,
-        transactions,
         exchangeRates,
       } = get();
+
+      const transactions =
+        txList || get().transactions;
 
       const debtIds = new Set(
         accounts
