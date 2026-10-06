@@ -35,6 +35,8 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
 
   if (!account) return null;
 
+  const isDebt = account.type === 'DEBT';
+
   const handleClose = () => {
     resetState();
     onClose();
@@ -115,9 +117,11 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
     };
     await addTransaction(adjTx);
 
-    const newBalance = adjustmentMode === '+ ADD'
-      ? updatedAccount.balance + adjAmount
-      : updatedAccount.balance - adjAmount;
+    // DEBT: add = more debt (negative), remove = payment toward zero
+    const signedAdj = adjustmentMode === '+ ADD' ? adjAmount : -adjAmount;
+    const newBalance = isDebt
+      ? Math.min(0, updatedAccount.balance - signedAdj)
+      : updatedAccount.balance + signedAdj;
     await updateAccount({ ...updatedAccount, balance: newBalance });
 
     onClose();
@@ -147,14 +151,25 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
 
         <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">AMOUNT</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
-            placeholder="0"
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-2xl"
-          />
+          <div className="flex items-center w-full min-w-0 bg-black border-b-2 border-gray-800 focus-within:border-white">
+            {isDebt && (
+              <span className="shrink-0 select-none font-mono text-2xl text-white pl-1 pr-1">-</span>
+            )}
+            <input
+              type="text"
+              inputMode={isDebt ? 'decimal' : 'numeric'}
+              value={amountInput}
+              onChange={(e) =>
+                setAmountInput(
+                  isDebt
+                    ? e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
+                    : e.target.value
+                )
+              }
+              placeholder="0"
+              className="w-full min-w-0 bg-black text-white font-mono focus:outline-none px-1 py-2 text-2xl"
+            />
+          </div>
           <span className="font-mono text-xs text-gray-500 mt-1 block">{account.currency}</span>
         </div>
 
