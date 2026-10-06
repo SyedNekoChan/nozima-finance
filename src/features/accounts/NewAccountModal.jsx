@@ -56,6 +56,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
       type,
       currency: finalCurrency,
       balance: 0,
+      ...(type === 'DEBT' ? { liabilityV2: true } : {}),
       createdAt: new Date().toISOString(),
     };
 
