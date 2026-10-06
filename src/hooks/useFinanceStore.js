@@ -1419,7 +1419,57 @@ const useFinanceStore = create((set, get) => ({
    * ================================================================
    */
 
+  /*
+   * Owned / available money: every non-liability account balance, minus
+   * money actually paid out against DEBT accounts (EXPENSE transactions
+   * on a DEBT account). Creating debt never reduces it.
+   */
   getTotalBalanceInUZS:
+    () => {
+      const {
+        accounts,
+        transactions,
+        exchangeRates,
+      } = get();
+
+      const debtIds = new Set(
+        accounts
+          .filter((a) => a.type === 'DEBT')
+          .map((a) => a.id)
+      );
+
+      const assets = accounts.reduce(
+        (sum, acc) =>
+          acc.type === 'DEBT'
+            ? sum
+            : sum +
+              convertToBase(
+                acc.balance,
+                acc.currency,
+                exchangeRates
+              ),
+        0
+      );
+
+      const debtPayments = transactions.reduce(
+        (sum, tx) =>
+          tx.type === 'EXPENSE' &&
+          debtIds.has(tx.accountId)
+            ? sum +
+              convertToBase(
+                Number(tx.amount) || 0,
+                tx.currency,
+                exchangeRates
+              )
+            : sum,
+        0
+      );
+
+      return assets - debtPayments;
+    },
+
+  // Outstanding liability (positive amount owed) across all DEBT accounts.
+  getTotalLiabilityInUZS:
     () => {
       const {
         accounts,
@@ -1427,16 +1477,15 @@ const useFinanceStore = create((set, get) => ({
       } = get();
 
       return accounts.reduce(
-        (
-          sum,
-          acc
-        ) =>
-          sum +
-          convertToBase(
-            acc.balance,
-            acc.currency,
-            exchangeRates
-          ),
+        (sum, acc) =>
+          acc.type === 'DEBT'
+            ? sum +
+              convertToBase(
+                Math.max(0, -(Number(acc.balance) || 0)),
+                acc.currency,
+                exchangeRates
+              )
+            : sum,
         0
       );
     },
