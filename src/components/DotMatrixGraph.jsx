@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const BRIGHT = '#ffffff';
 const DIM = '#444444';
@@ -27,15 +27,15 @@ function getCeiling(data) {
 }
 
 function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, className }) {
-  const { W, padX, padR, rows, pitch, top, labelH } = cfg;
+  const { W, padX, padR, rows, pitch, top, labelH, fontSize = 11, H: fixedH } = cfg;
   const n = data.length;
   const plotW = W - padX - padR;
   const cols = Math.floor(plotW / pitch);
-  const H = top + rows * pitch + labelH;
+  const H = fixedH || top + rows * pitch + labelH;
   const rBright = pitch * 0.38;
   const rDim = Math.max(0.8, pitch * 0.14);
 
-  const rowY = (r) => top + (rows - 1 - r + 0.5) * pitch;
+  const rowY = (r) => H - labelH - (r + 0.5) * pitch;
   const colX = (c) => padX + (c / (cols - 1)) * (plotW - pitch) + pitch / 2;
   const bucketX = (i) => (n > 1 ? padX + pitch / 2 + (i / (n - 1)) * (plotW - pitch) : padX + pitch / 2);
 
@@ -48,7 +48,7 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
   };
 
   const maxLen = Math.max(...labels.map((l) => l.length));
-  const step = Math.max(1, Math.ceil((maxLen * 6.6 + 10) / ((plotW - pitch) / Math.max(1, n - 1))));
+  const step = Math.max(1, Math.ceil((maxLen * fontSize * 0.6 + 10) / ((plotW - pitch) / Math.max(1, n - 1))));
   const yTicks = [rows - 1, Math.floor((rows - 1) / 2), 0];
 
   const shown = Math.min(cols, Math.ceil(frac * cols));
@@ -82,7 +82,7 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
         </filter>
       </defs>
       {yTicks.map((r) => (
-        <text key={`y-${r}`} x={0} y={rowY(r) + 4} fill="#666" fontSize="11" fontFamily="monospace">
+        <text key={`y-${r}`} x={0} y={rowY(r) + fontSize * 0.36} fill="#666" fontSize={fontSize} fontFamily="monospace">
           {formatCompact((ceiling * r) / (rows - 1))}
           {r === rows - 1 && clipped ? '+' : ''}
         </text>
@@ -91,7 +91,7 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
       <g fill={BRIGHT} filter={`url(#glow-${id})`}>{lit}</g>
       {labels.map((label, i) =>
         (n - 1 - i) % step === 0 ? (
-          <text key={`x-${i}`} x={bucketX(i)} y={H - 4} textAnchor="middle" fill="#666" fontSize="11" fontFamily="monospace">
+          <text key={`x-${i}`} x={bucketX(i)} y={H - 3} textAnchor="middle" fill="#666" fontSize={fontSize} fontFamily="monospace">
             {label}
           </text>
         ) : null
@@ -100,7 +100,20 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
   );
 }
 
-const MOBILE = { W: 360, padX: 34, padR: 18, rows: 14, pitch: 6.4, top: 4, labelH: 20 };
+const MOBILE = { W: 360, padX: 30, padR: 16, rows: 14, pitch: 6.4, top: 4, labelH: 18, fontSize: 10 };
+
+// Mobile: 1 viewBox unit = 1 CSS px. Pitch and row count adapt to the measured box
+// so the matrix fills the available height with round, evenly spaced dots.
+function mobileCfg({ w, h }) {
+  if (!w || !h) return MOBILE;
+  const padX = 30;
+  const padR = 16;
+  const top = 2;
+  const labelH = 18;
+  const pitch = Math.min(8, Math.max(5, (w - padX - padR) / 46));
+  const rows = Math.max(8, Math.min(30, Math.floor((h - top - labelH) / pitch)));
+  return { W: w, H: h, padX, padR, rows, pitch, top, labelH, fontSize: 10 };
+}
 const DESKTOP = { W: 1000, padX: 60, padR: 20, rows: 20, pitch: 8.4, top: 4, labelH: 22 };
 const TICKS = 36;
 
@@ -108,6 +121,19 @@ export default function DotMatrixGraph({ data, labels }) {
   const valid = data && data.length > 0 && labels && labels.length === data.length;
   const n = valid ? data.length : 0;
   const dataKey = valid ? `${n}|${data.map((v) => Math.round(v)).join(',')}` : '';
+
+  const boxRef = useRef(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setBox((b) => (Math.round(b.w) === Math.round(width) && Math.round(b.h) === Math.round(height) ? b : { w: Math.round(width), h: Math.round(height) }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [valid]);
 
   const [frac, setFrac] = useState(0);
   const [wavePos, setWavePos] = useState(null);
@@ -152,7 +178,9 @@ export default function DotMatrixGraph({ data, labels }) {
 
   return (
     <>
-      <Matrix id="m" {...shared} cfg={MOBILE} className="block sm:hidden w-full flex-1 min-h-0 text-white overflow-visible" />
+      <div ref={boxRef} className="sm:hidden w-full flex-1 min-h-0 relative">
+        <Matrix id="m" {...shared} cfg={mobileCfg(box)} className="absolute inset-0 w-full h-full text-white overflow-visible" />
+      </div>
       <Matrix id="d" {...shared} cfg={DESKTOP} className="hidden sm:block w-full h-auto text-white overflow-visible" />
     </>
   );
