@@ -11,6 +11,7 @@ export default function Ledger() {
   const transactions = useFinanceStore((s) => s.transactions);
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
+  const totalLiability = useFinanceStore((s) => s.getTotalLiabilityInUZS());
   const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
   const pendingLedgerDate = useFinanceStore((s) => s.pendingLedgerDate);
   const clearPendingLedgerDate = useFinanceStore((s) => s.clearPendingLedgerDate);
@@ -171,7 +172,13 @@ export default function Ledger() {
             <span>NET</span>
             <span className="text-white text-xs md:text-sm">{formatAmount(totals.net, 'UZS')}</span>
           </div>
-          <div className="hidden md:block">[ {transactions.length} ENTRIES ]</div>
+          <div className="flex items-baseline gap-1 whitespace-nowrap">
+            <span>LIABILITY</span>
+            <span className="text-white text-xs md:text-sm">
+              {totalLiability > 0 ? '-' : ''}{formatAmount(totalLiability, 'UZS')}
+            </span>
+          </div>
+          <div className="hidden md:block md:col-span-4">[ {transactions.length} ENTRIES ]</div>
         </div>
       </div>
 
