@@ -56,15 +56,21 @@ function getTransactionBalanceDelta(tx) {
     return 0;
   }
 
+  let delta = 0;
+
   if (tx.type === 'INCOME') {
-    return Number(tx.amount) || 0;
+    delta = Number(tx.amount) || 0;
+  } else if (tx.type === 'EXPENSE') {
+    delta = -(Number(tx.amount) || 0);
   }
 
-  if (tx.type === 'EXPENSE') {
-    return -(Number(tx.amount) || 0);
-  }
+  // DEBT is a liability stored as a negative balance: income adds debt
+  // (more negative), an expense is a payment (toward zero)
+  const account = useFinanceStore
+    .getState()
+    .accounts.find((a) => a.id === tx.accountId);
 
-  return 0;
+  return account?.type === 'DEBT' ? -delta : delta;
 }
 
 /*
@@ -125,9 +131,24 @@ const useFinanceStore = create((set, get) => ({
       getSetting('exchangeRates'),
     ]);
 
+    // one-time liability normalization: legacy DEBT balances become negative
+    const normalizedAccounts = uniqueById(accounts);
+    for (let i = 0; i < normalizedAccounts.length; i++) {
+      const a = normalizedAccounts[i];
+      if (a.type === 'DEBT' && !a.liabilityV2) {
+        const fixed = {
+          ...a,
+          balance: -Math.abs(Number(a.balance) || 0),
+          liabilityV2: true,
+        };
+        normalizedAccounts[i] = fixed;
+        await saveAccount(fixed);
+      }
+    }
+
     set({
       transactions: uniqueById(transactions),
-      accounts: uniqueById(accounts),
+      accounts: normalizedAccounts,
       budgets: budgets || {},
       exchangeRates:
         exchangeRates ||
@@ -1242,7 +1263,17 @@ const useFinanceStore = create((set, get) => ({
    */
 
   updateAccount:
-    async (account) => {
+    async (incoming) => {
+      // liability invariant: a DEBT balance is never positive
+      const account =
+        incoming.type === 'DEBT'
+          ? {
+              ...incoming,
+              liabilityV2: true,
+              balance: Math.min(0, Number(incoming.balance) || 0),
+            }
+          : incoming;
+
       await saveAccount(
         account
       );
