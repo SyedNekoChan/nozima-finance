@@ -5,20 +5,15 @@ import LedgerRow from '../ledger/LedgerRow.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 
-const FALLBACK_ALLOWANCE = 100000;
-
 export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const transactions = useFinanceStore((s) => s.transactions);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
-  const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
   const setActiveTab = useFinanceStore((s) => s.setActiveTab);
   const setPendingLedgerDate = useFinanceStore((s) => s.setPendingLedgerDate);
   const setPendingEditTx = useFinanceStore((s) => s.setPendingEditTx);
   const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
 
   const [deletingTx, setDeletingTx] = useState(null);
-
-  const dailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
   const dayTransactions = useMemo(() => {
     if (!selectedDate) return [];
@@ -36,8 +31,6 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
     }
     return sum;
   }, [dayTransactions, exchangeRates]);
-
-  const status = spentToday > dailyAllowance ? 'OVER' : 'UNDER';
 
   if (!isOpen || !selectedDate) return null;
 
@@ -65,21 +58,9 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`DAILY LOG: ${selectedDate?.dateString || ''}`} size="md">
       <div className="border-b border-gray-800 pb-3 mb-3 sm:pb-4 sm:mb-4">
-        <div className="grid grid-cols-3 gap-2 md:gap-4 font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
-          <div className="min-w-0">
-            <div>DAILY ALLOWANCE</div>
-            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dailyAllowance, 'UZS')}</div>
-          </div>
-          <div className="min-w-0">
-            <div>SPENT TODAY</div>
-            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(spentToday, 'UZS')}</div>
-          </div>
-          <div className="min-w-0">
-            <div>STATUS</div>
-            <div className={`text-white text-xs sm:text-sm mt-1 font-bold ${status === 'OVER' ? 'underline' : ''}`}>
-              [ {status} ]
-            </div>
-          </div>
+        <div className="font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
+          <div>SPENT TODAY</div>
+          <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(spentToday, 'UZS')}</div>
         </div>
       </div>
 
