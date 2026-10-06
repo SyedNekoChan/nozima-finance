@@ -1468,6 +1468,54 @@ const useFinanceStore = create((set, get) => ({
       return assets - debtPayments;
     },
 
+  /*
+   * Ledger summary. Borrowing (INCOME recorded on a DEBT account) is
+   * liability only: never counted as TOTAL IN. EXPENSE on a DEBT
+   * account is a real payment and counts as TOTAL OUT.
+   */
+  getLedgerTotalsInUZS:
+    () => {
+      const {
+        accounts,
+        transactions,
+        exchangeRates,
+      } = get();
+
+      const debtIds = new Set(
+        accounts
+          .filter((a) => a.type === 'DEBT')
+          .map((a) => a.id)
+      );
+
+      let totalIn = 0;
+      let totalOut = 0;
+
+      transactions.forEach((tx) => {
+        const base = convertToBase(
+          Number(tx.amount) || 0,
+          tx.currency,
+          exchangeRates
+        );
+
+        if (
+          tx.type === 'INCOME' &&
+          !debtIds.has(tx.accountId)
+        ) {
+          totalIn += base;
+        }
+
+        if (tx.type === 'EXPENSE') {
+          totalOut += base;
+        }
+      });
+
+      return {
+        totalIn,
+        totalOut,
+        net: totalIn - totalOut,
+      };
+    },
+
   // Outstanding liability (positive amount owed) across all DEBT accounts.
   getTotalLiabilityInUZS:
     () => {
