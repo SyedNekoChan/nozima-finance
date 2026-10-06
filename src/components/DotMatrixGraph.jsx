@@ -27,7 +27,7 @@ function getCeiling(data) {
 }
 
 function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, className }) {
-  const { W, padX, padR, rows, pitch, top, labelH, fontSize = 11, H: fixedH } = cfg;
+  const { W, padX, padR, rows, pitch, top, labelH, fontSize = 11, labelGap = 10, H: fixedH } = cfg;
   const n = data.length;
   const plotW = W - padX - padR;
   const cols = Math.floor(plotW / pitch);
@@ -48,7 +48,7 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
   };
 
   const maxLen = Math.max(...labels.map((l) => l.length));
-  const step = Math.max(1, Math.ceil((maxLen * fontSize * 0.6 + 10) / ((plotW - pitch) / Math.max(1, n - 1))));
+  const step = Math.max(1, Math.ceil((maxLen * fontSize * 0.6 + labelGap) / ((plotW - pitch) / Math.max(1, n - 1))));
   const yTicks = [rows - 1, Math.floor((rows - 1) / 2), 0];
 
   const shown = Math.min(cols, Math.ceil(frac * cols));
@@ -100,19 +100,19 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
   );
 }
 
-const MOBILE = { W: 360, padX: 30, padR: 16, rows: 14, pitch: 6.4, top: 4, labelH: 18, fontSize: 10 };
+const MOBILE = { W: 360, padX: 26, padR: 16, rows: 14, pitch: 6.4, top: 4, labelH: 18, fontSize: 9, labelGap: 4 };
 
 // Mobile: 1 viewBox unit = 1 CSS px. Pitch and row count adapt to the measured box
 // so the matrix fills the available height with round, evenly spaced dots.
 function mobileCfg({ w, h }) {
   if (!w || !h) return MOBILE;
-  const padX = 30;
+  const padX = 26;
   const padR = 16;
   const top = 2;
   const labelH = 18;
   const pitch = Math.min(8, Math.max(5, (w - padX - padR) / 46));
-  const rows = Math.max(8, Math.min(30, Math.floor((h - top - labelH) / pitch)));
-  return { W: w, H: h, padX, padR, rows, pitch, top, labelH, fontSize: 10 };
+  const rows = Math.max(8, Math.min(60, Math.floor((h - top - labelH) / pitch)));
+  return { W: w, H: h, padX, padR, rows, pitch, top, labelH, fontSize: 9, labelGap: 4 };
 }
 const DESKTOP = { W: 1000, padX: 60, padR: 20, rows: 20, pitch: 8.4, top: 4, labelH: 22 };
 const TICKS = 36;
