@@ -100,22 +100,25 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
       return;
     }
 
-    const adjType = adjustmentMode === '+ ADD' ? 'INCOME' : 'EXPENSE';
-    const adjTx = {
-      id: crypto.randomUUID(),
-      date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      type: adjType,
-      amount: adjAmount,
-      currency: currencyInput,
-      accountId: account.id,
-      toAccountId: null,
-      category: 'OTHER',
-      note: note.trim() || (adjustmentMode === '+ ADD' ? 'Manual add' : 'Manual remove'),
-      imageData: null,
-      createdAt: new Date().toISOString(),
-      exchangeRate: null,
-    };
-    await addTransaction(adjTx);
+    // manual DEBT adjustments change the liability only: no transaction, no cash movement
+    if (!isDebt) {
+      const adjType = adjustmentMode === '+ ADD' ? 'INCOME' : 'EXPENSE';
+      const adjTx = {
+        id: crypto.randomUUID(),
+        date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+        type: adjType,
+        amount: adjAmount,
+        currency: currencyInput,
+        accountId: account.id,
+        toAccountId: null,
+        category: 'OTHER',
+        note: note.trim() || (adjustmentMode === '+ ADD' ? 'Manual add' : 'Manual remove'),
+        imageData: null,
+        createdAt: new Date().toISOString(),
+        exchangeRate: null,
+      };
+      await addTransaction(adjTx);
+    }
 
     // DEBT: add = more debt (negative), remove = payment toward zero
     const signedAdj = adjustmentMode === '+ ADD' ? adjAmount : -adjAmount;
