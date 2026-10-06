@@ -18,7 +18,6 @@ const parseTxDate = (dateStr) => {
 export default function Calendar() {
   const transactions = useFinanceStore((s) => s.transactions);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
-  const getMonthlyBudgetUZS = useFinanceStore((s) => s.getMonthlyBudgetUZS);
   const getDailyAllowanceUZS = useFinanceStore((s) => s.getDailyAllowanceUZS);
 
   const [viewDate, setViewDate] = useState(new Date());
@@ -40,16 +39,6 @@ export default function Calendar() {
       return d.getFullYear() === year && d.getMonth() === month;
     });
   }, [transactions, year, month]);
-
-  const { totalIn, totalOut } = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    for (const tx of monthTx) {
-      if (tx.type === 'INCOME') income += toUZS(tx);
-      if (tx.type === 'EXPENSE') expense += toUZS(tx);
-    }
-    return { totalIn: income, totalOut: expense };
-  }, [monthTx, exchangeRates]);
 
   const getDaySpending = (day) => {
     let sum = 0;
@@ -98,9 +87,6 @@ export default function Calendar() {
     setShowDailyLog(false);
     setSelectedDate(null);
   };
-
-  const monthBudget = getMonthlyBudgetUZS() || 0;
-  const monthStatus = monthBudget > 0 && totalOut > monthBudget ? 'OVER' : 'UNDER';
 
   // newest first, for the compact mobile feed under the grid
   const monthFeed = useMemo(
@@ -192,34 +178,6 @@ export default function Calendar() {
           })}
         </div>
 
-        <div className="flex-shrink-0 border-t border-gray-800 mt-2 pt-2 font-mono leading-none">
-          <div className="flex justify-between items-baseline gap-2 min-w-0">
-            <div className="min-w-0">
-              <div className="text-[10px] tracking-widest text-gray-500 mb-1">TOTAL IN:</div>
-              <div className="text-xs text-white truncate">{formatAmount(totalIn, 'UZS')}</div>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <div className="text-[10px] tracking-widest text-gray-500 mb-1">STATUS</div>
-              <div className={`text-xs text-white font-bold ${monthStatus === 'OVER' ? 'underline' : ''}`}>
-                [ {monthStatus} ]
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-between items-baseline gap-2 min-w-0 mt-2">
-            <div className="min-w-0">
-              <div className="text-[10px] tracking-widest text-gray-500 mb-1">TOTAL OUT:</div>
-              <div className="text-xs text-white truncate">{formatAmount(totalOut, 'UZS')}</div>
-            </div>
-            <div className="text-right min-w-0">
-              <div className="text-[10px] tracking-widest text-gray-500 mb-1">BUDGET</div>
-              <div className="text-xs text-white truncate">{formatAmount(monthBudget, 'UZS')}</div>
-            </div>
-          </div>
-          <div className="text-[10px] tracking-widest text-gray-500 mt-2 truncate">
-            DAILY ALLOWANCE: {formatAmount(computedDailyAllowance, 'UZS')}
-          </div>
-        </div>
-
         <div className="flex-1 min-h-0 overflow-y-auto mt-2 border-t border-gray-800">
           {monthFeed.length === 0 ? (
             <div className="font-mono text-xs text-gray-500 py-3">[ NO ENTRIES THIS MONTH ]</div>
@@ -258,15 +216,8 @@ export default function Calendar() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 font-mono text-xs tracking-widest text-gray-500 mb-6">
-          <div>MONTH: {getMonthName(month + 1)} {year}</div>
-          <div>TOTAL IN: {formatAmount(totalIn, 'UZS')}</div>
-          <div>TOTAL OUT: {formatAmount(totalOut, 'UZS')}</div>
-          <div>BUDGET: {formatAmount(getMonthlyBudgetUZS() || 0, 'UZS')}</div>
-        </div>
-
-        <div className="font-mono text-xs tracking-widest text-gray-500 mb-2">
-          DAILY ALLOWANCE: {formatAmount(computedDailyAllowance, 'UZS')}
+        <div className="font-mono text-xs tracking-widest text-gray-500 mb-6">
+          MONTH: {getMonthName(month + 1)} {year}
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
