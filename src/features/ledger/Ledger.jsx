@@ -43,16 +43,11 @@ export default function Ledger() {
     }
   }, [pendingEditTx, clearPendingEditTx]);
 
-  const totals = useMemo(() => {
-    let totalIn = 0;
-    let totalOut = 0;
-    transactions.forEach((tx) => {
-      const uzs = convertToBase(tx.amount, tx.currency, exchangeRates);
-      if (tx.type === 'INCOME') totalIn += uzs;
-      if (tx.type === 'EXPENSE') totalOut += uzs;
-    });
-    return { totalIn, totalOut, net: totalIn - totalOut };
-  }, [transactions, exchangeRates]);
+  const totals = useMemo(
+    () => useFinanceStore.getState().getLedgerTotalsInUZS(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [transactions, accounts, exchangeRates]
+  );
 
   const parseDate = (dateStr) => {
     const [d, m, y] = dateStr.split('-').map(Number);
