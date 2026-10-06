@@ -8,11 +8,6 @@ import DotMatrixGraph from '../../components/DotMatrixGraph.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 
-const parseTxDate = (dateStr) => {
-  const [d, m, y] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
 export default function Dashboard() {
   const spentThisMonth = useFinanceStore((s) => s.getSpentThisMonthInUZS());
   const monthlyBudget = useFinanceStore((s) => s.getMonthlyBudgetUZS());
@@ -22,30 +17,43 @@ export default function Dashboard() {
 
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
+  const [granularity, setGranularity] = useState('MONTH');
 
   const now = new Date();
 
   const { graphData, graphLabels } = useMemo(() => {
-    const months = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+    const today = new Date();
+    const buckets = [];
+    if (granularity === 'DAY') {
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, label: `${dd}.${mm}` });
+      }
+    } else if (granularity === 'YEAR') {
+      for (let i = 5; i >= 0; i--) {
+        const y = today.getFullYear() - i;
+        buckets.push({ key: `${y}`, label: `${y}` });
+      }
+    } else {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}`, label: getMonthName(d.getMonth() + 1) });
+      }
     }
 
-    const data = months.map(({ year, month }) => {
-      return transactions
-        .filter((tx) => {
-          if (tx.type !== 'EXPENSE') return false;
-          const txDate = parseTxDate(tx.date);
-          return txDate.getFullYear() === year && txDate.getMonth() + 1 === month;
-        })
-        .reduce((sum, tx) => sum + convertToBase(tx.amount, tx.currency, exchangeRates), 0);
-    });
+    const totals = new Map(buckets.map((b) => [b.key, 0]));
+    for (const tx of transactions) {
+      if (tx.type !== 'EXPENSE') continue;
+      const [d, m, y] = tx.date.split('-').map(Number);
+      const key = granularity === 'DAY' ? `${y}-${m}-${d}` : granularity === 'YEAR' ? `${y}` : `${y}-${m}`;
+      if (!totals.has(key)) continue;
+      totals.set(key, totals.get(key) + convertToBase(tx.amount, tx.currency, exchangeRates));
+    }
 
-    const labels = months.map(({ month }) => getMonthName(month));
-
-    return { graphData: data, graphLabels: labels };
-  }, [transactions, exchangeRates, now]);
+    return { graphData: buckets.map((b) => totals.get(b.key)), graphLabels: buckets.map((b) => b.label) };
+  }, [transactions, exchangeRates, granularity]);
 
   function openBudgetModal() {
     setBudgetInput(monthlyBudget ? String(monthlyBudget) : '');
@@ -124,9 +132,27 @@ export default function Dashboard() {
       </div>
 
       <div className="order-2 sm:order-none flex-1 flex flex-col justify-end mt-0 sm:mt-6 min-h-[7rem] sm:min-h-0">
-        <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500 mb-1 sm:mb-2">
-          SPENDING GRAPH (UZS)
-        </span>
+        <div className="flex items-center justify-between gap-2 mb-1 sm:mb-2 min-w-0">
+          <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500 whitespace-nowrap truncate">
+            SPENDING<span className="hidden sm:inline"> GRAPH</span> (UZS)
+          </span>
+          <div className="flex flex-shrink-0">
+            {['DAY', 'MONTH', 'YEAR'].map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGranularity(g)}
+                className={`font-mono uppercase tracking-wider sm:tracking-widest text-[10px] sm:text-xs px-1.5 py-0.5 border-2 whitespace-nowrap transition-none select-none cursor-pointer ${
+                  granularity === g
+                    ? 'bg-white text-black border-white font-bold'
+                    : 'bg-black text-white border-transparent hover:border-white'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </div>
         <DotMatrixGraph data={graphData} labels={graphLabels} currencyCode="UZS" />
       </div>
 
