@@ -112,9 +112,9 @@ export default function Calendar() {
     <>
       {/* MOBILE: mockup composition */}
       <div className="sm:hidden flex flex-col h-full w-full overflow-hidden px-4 pt-2 pb-2">
-        <div className="flex-shrink-0 font-mono uppercase tracking-tighter text-xs text-gray-500 leading-none mb-1">
+        <h1 className="flex-shrink-0 font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0 mb-1">
           [ &gt; CALENDAR.LOG ]
-        </div>
+        </h1>
 
         <div className="flex-shrink-0 grid grid-cols-[2.25rem_1fr_2.25rem] items-center mb-1">
           <button
@@ -207,7 +207,7 @@ export default function Calendar() {
       {/* SM+: original desktop/tablet layout, untouched */}
       <div className="hidden sm:flex flex-col h-full w-full overflow-hidden p-4 md:p-8 pb-24">
         <div className="flex justify-between items-center mb-4 gap-2">
-          <h1 className="font-mono uppercase tracking-tighter text-2xl md:text-4xl text-white whitespace-nowrap leading-none">
+          <h1 className="font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0">
             [ &gt; CALENDAR.LOG ]
           </h1>
           <div className="flex gap-2 flex-shrink-0">
