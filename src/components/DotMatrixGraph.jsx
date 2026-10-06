@@ -26,53 +26,72 @@ function getCeiling(data) {
   return Math.min(max, nz[Math.floor(nz.length / 2)] * 6);
 }
 
-function Matrix({ data, labels, ceiling, clipped, revealed, wavePos, cfg, className }) {
-  const { W, padX, padR, rows, pitchY, top, labelH } = cfg;
+function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, className }) {
+  const { W, padX, padR, rows, pitch, top, labelH } = cfg;
   const n = data.length;
-  const H = top + rows * pitchY + labelH;
-  const pitchX = (W - padX - padR) / n;
-  const rBright = Math.min(pitchX, pitchY) * 0.36;
-  const rDim = Math.max(0.9, rBright * 0.28);
+  const plotW = W - padX - padR;
+  const cols = Math.floor(plotW / pitch);
+  const H = top + rows * pitch + labelH;
+  const rBright = pitch * 0.38;
+  const rDim = Math.max(0.8, pitch * 0.14);
 
-  const rowY = (r) => top + (rows - 1 - r + 0.5) * pitchY;
-  const colX = (i) => padX + (i + 0.5) * pitchX;
+  const rowY = (r) => top + (rows - 1 - r + 0.5) * pitch;
+  const colX = (c) => padX + (c / (cols - 1)) * (plotW - pitch) + pitch / 2;
+  const bucketX = (i) => (n > 1 ? padX + pitch / 2 + (i / (n - 1)) * (plotW - pitch) : padX + pitch / 2);
+
+  // Each matrix column samples the series by linear interpolation between buckets.
+  const valueAt = (c) => {
+    if (n === 1) return data[0];
+    const t = (c / (cols - 1)) * (n - 1);
+    const i = Math.min(n - 2, Math.floor(t));
+    return data[i] + (data[i + 1] - data[i]) * (t - i);
+  };
 
   const maxLen = Math.max(...labels.map((l) => l.length));
-  const step = Math.max(1, Math.ceil((maxLen * 6.6 + 10) / pitchX));
-
+  const step = Math.max(1, Math.ceil((maxLen * 6.6 + 10) / ((plotW - pitch) / Math.max(1, n - 1))));
   const yTicks = [rows - 1, Math.floor((rows - 1) / 2), 0];
 
-  const cells = [];
-  for (let i = 0; i < n; i++) {
-    if (i >= revealed) break;
-    const level = ceiling > 0 ? Math.min(rows - 1, Math.round((data[i] / ceiling) * (rows - 1))) : 0;
-    const waving = wavePos !== null && (i === wavePos || i === wavePos - 1);
+  const shown = Math.min(cols, Math.ceil(frac * cols));
+  const waveCol = wavePos === null ? null : Math.round(wavePos * cols);
+
+  const lit = [];
+  const dim = [];
+  for (let c = 0; c < shown; c++) {
+    const level = ceiling > 0 ? Math.min(rows - 1, Math.round((valueAt(c) / ceiling) * (rows - 1))) : 0;
+    const waving = waveCol !== null && c >= waveCol - 2 && c <= waveCol;
     for (let r = 0; r < rows; r++) {
-      const lit = r <= level;
-      cells.push(
-        <circle
-          key={`${i}-${r}`}
-          cx={colX(i)}
-          cy={rowY(r)}
-          r={lit ? rBright : waving ? rBright * 0.6 : rDim}
-          fill={lit ? BRIGHT : waving ? WAVE : DIM}
-        />
-      );
+      if (r <= level) {
+        lit.push(<circle key={`${c}-${r}`} cx={colX(c)} cy={rowY(r)} r={rBright} />);
+      } else {
+        dim.push(
+          <circle key={`${c}-${r}`} cx={colX(c)} cy={rowY(r)} r={waving ? rBright * 0.6 : rDim} fill={waving ? WAVE : DIM} />
+        );
+      }
     }
   }
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className={className} role="img" aria-label="Spending dot matrix chart">
+      <defs>
+        <filter id={`glow-${id}`} x="-5%" y="-5%" width="110%" height="110%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation={pitch * 0.35} result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       {yTicks.map((r) => (
         <text key={`y-${r}`} x={0} y={rowY(r) + 4} fill="#666" fontSize="11" fontFamily="monospace">
           {formatCompact((ceiling * r) / (rows - 1))}
           {r === rows - 1 && clipped ? '+' : ''}
         </text>
       ))}
-      {cells}
+      <g>{dim}</g>
+      <g fill={BRIGHT} filter={`url(#glow-${id})`}>{lit}</g>
       {labels.map((label, i) =>
         (n - 1 - i) % step === 0 ? (
-          <text key={`x-${i}`} x={colX(i)} y={H - 4} textAnchor="middle" fill="#666" fontSize="11" fontFamily="monospace">
+          <text key={`x-${i}`} x={bucketX(i)} y={H - 4} textAnchor="middle" fill="#666" fontSize="11" fontFamily="monospace">
             {label}
           </text>
         ) : null
@@ -81,15 +100,16 @@ function Matrix({ data, labels, ceiling, clipped, revealed, wavePos, cfg, classN
   );
 }
 
-const MOBILE = { W: 360, padX: 34, padR: 6, rows: 10, pitchY: 16, top: 4, labelH: 20 };
-const DESKTOP = { W: 1000, padX: 60, padR: 10, rows: 12, pitchY: 14, top: 4, labelH: 22 };
+const MOBILE = { W: 360, padX: 34, padR: 18, rows: 14, pitch: 6.4, top: 4, labelH: 20 };
+const DESKTOP = { W: 1000, padX: 60, padR: 20, rows: 20, pitch: 8.4, top: 4, labelH: 22 };
+const TICKS = 36;
 
 export default function DotMatrixGraph({ data, labels }) {
   const valid = data && data.length > 0 && labels && labels.length === data.length;
   const n = valid ? data.length : 0;
   const dataKey = valid ? `${n}|${data.map((v) => Math.round(v)).join(',')}` : '';
 
-  const [revealed, setRevealed] = useState(0);
+  const [frac, setFrac] = useState(0);
   const [wavePos, setWavePos] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -97,20 +117,20 @@ export default function DotMatrixGraph({ data, labels }) {
   useEffect(() => {
     if (!valid) return undefined;
     if (prefersReducedMotion()) {
-      setRevealed(n);
+      setFrac(1);
       setWavePos(null);
       setLoaded(true);
       return undefined;
     }
-    let pos = 0;
+    let tick = 0;
     const printing = !loaded;
-    if (printing) setRevealed(0);
-    else setRevealed(n);
+    setFrac(printing ? 0 : 1);
     const id = setInterval(() => {
-      pos += 1;
-      if (printing) setRevealed(Math.min(pos, n));
-      else setWavePos(pos <= n ? pos : null);
-      if (pos > n) {
+      tick += 1;
+      const f = Math.min(1, tick / TICKS);
+      if (printing) setFrac(f);
+      else setWavePos(tick <= TICKS ? f : null);
+      if (tick > TICKS) {
         clearInterval(id);
         setWavePos(null);
         setLoaded(true);
@@ -128,12 +148,12 @@ export default function DotMatrixGraph({ data, labels }) {
 
   if (!valid) return <div className="text-gray-500 text-sm">[ NO DATA ]</div>;
 
-  const shared = { data, labels, ceiling, clipped, revealed: loaded && wavePos === null ? n : revealed, wavePos };
+  const shared = { data, labels, ceiling, clipped, frac: loaded ? 1 : frac, wavePos };
 
   return (
     <>
-      <Matrix {...shared} cfg={MOBILE} className="block sm:hidden w-full flex-1 min-h-0 text-white overflow-visible" />
-      <Matrix {...shared} cfg={DESKTOP} className="hidden sm:block w-full h-auto text-white overflow-visible" />
+      <Matrix id="m" {...shared} cfg={MOBILE} className="block sm:hidden w-full flex-1 min-h-0 text-white overflow-visible" />
+      <Matrix id="d" {...shared} cfg={DESKTOP} className="hidden sm:block w-full h-auto text-white overflow-visible" />
     </>
   );
 }
