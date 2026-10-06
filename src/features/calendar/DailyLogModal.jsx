@@ -3,10 +3,11 @@ import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import LedgerRow from '../ledger/LedgerRow.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, convertToBase } from '../../lib/currency.js';
+import { formatAmount } from '../../lib/currency.js';
 
 export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const transactions = useFinanceStore((s) => s.transactions);
+  const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const setActiveTab = useFinanceStore((s) => s.setActiveTab);
   const setPendingLedgerDate = useFinanceStore((s) => s.setPendingLedgerDate);
@@ -20,17 +21,12 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
     return transactions.filter((tx) => tx.date === selectedDate.dateString);
   }, [transactions, selectedDate]);
 
-  const spentToday = useMemo(() => {
-    let sum = 0;
-    for (const tx of dayTransactions) {
-      if (tx.type !== 'EXPENSE') continue;
-      // uses tx.currency (the historical snapshot), not the current
-      // account's currency, so an account currency change afterward
-      // cannot retroactively reinterpret this transaction's amount
-      sum += convertToBase(tx.amount, tx.currency, exchangeRates);
-    }
-    return sum;
-  }, [dayTransactions, exchangeRates]);
+  // same accounting source as the Ledger summary, scoped to this exact date
+  const dayTotals = useMemo(
+    () => useFinanceStore.getState().getLedgerTotalsInUZS(dayTransactions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayTransactions, accounts, exchangeRates]
+  );
 
   if (!isOpen || !selectedDate) return null;
 
@@ -58,9 +54,15 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`DAILY LOG: ${selectedDate?.dateString || ''}`} size="md">
       <div className="border-b border-gray-800 pb-3 mb-3 sm:pb-4 sm:mb-4">
-        <div className="font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
-          <div>SPENT TODAY</div>
-          <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(spentToday, 'UZS')}</div>
+        <div className="grid grid-cols-2 gap-2 md:gap-4 font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
+          <div className="min-w-0">
+            <div>IN</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dayTotals.totalIn, 'UZS')}</div>
+          </div>
+          <div className="min-w-0">
+            <div>OUT</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dayTotals.totalOut, 'UZS')}</div>
+          </div>
         </div>
       </div>
 
