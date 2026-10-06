@@ -154,15 +154,7 @@ export default function Ledger() {
           <Button className="hidden sm:inline-block whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:flex-nowrap sm:gap-3 md:grid md:grid-cols-4 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
-          <div className="flex items-baseline gap-1 whitespace-nowrap">
-            <span>IN</span>
-            <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalIn, 'UZS')}</span>
-          </div>
-          <div className="flex items-baseline gap-1 whitespace-nowrap">
-            <span>OUT</span>
-            <span className="text-white text-xs md:text-sm">{formatAmount(totals.totalOut, 'UZS')}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:flex-nowrap sm:gap-3 md:grid md:grid-cols-3 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
           <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>NET</span>
             <span className="text-white text-xs md:text-sm">{formatAmount(totals.net, 'UZS')}</span>
@@ -173,7 +165,7 @@ export default function Ledger() {
               {totalLiability > 0 ? '-' : ''}{formatAmount(totalLiability, 'UZS')}
             </span>
           </div>
-          <div className="hidden md:block md:col-span-4">[ {transactions.length} ENTRIES ]</div>
+          <div className="hidden md:block">[ {transactions.length} ENTRIES ]</div>
         </div>
       </div>
 
