@@ -15,6 +15,12 @@ import { STEPS_PER_SPRITE } from './nomoz.js';
  *
  *   z > 0 : closer  (larger, a little stronger)
  *   z < 0 : farther (smaller, a little fainter)
+ *
+ * Apparent size = perspective scale x a foreground boost. The boost is
+ * exactly 1 from the far end through mid depth, so those sizes are plain
+ * perspective, and only eases in over the nearer half of the range up to
+ * +NEAR_BOOST at the closest depth. It is a function of z alone, so it
+ * interpolates smoothly with the existing depth movement.
  */
 
 export const PERSPECTIVE = 900;
@@ -26,6 +32,19 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 export const getZRange = (compact) => Z_RANGE[compact ? 'compact' : 'wide'];
 
 export const scaleAt = (z) => PERSPECTIVE / (PERSPECTIVE - z);
+
+// Extra scale at the very closest depth (+28%), eased in from mid depth.
+const NEAR_BOOST = 0.28;
+
+export function foregroundBoost(z, compact) {
+  const [a, b] = getZRange(compact);
+  const t = clamp((z - a) / (b - a), 0, 1);
+  const u = clamp((t - 0.5) / 0.5, 0, 1);
+  return 1 + NEAR_BOOST * (u * u * (3 - 2 * u)); // smoothstep: no jump, no kink
+}
+
+// What the user actually sees: perspective x foreground boost.
+export const depthScale = (z, compact) => scaleAt(z) * foregroundBoost(z, compact);
 
 // 0.7 (far) .. 1 (near): depth dims but never hides.
 export function alphaAt(z, compact) {
@@ -60,8 +79,10 @@ export function makeGeo(metrics, compact) {
     cell: spriteW / STEPS_PER_SPRITE,
     zRange: getZRange(compact),
 
+    // half-size of the sprite as drawn at depth z (boost included), so the
+    // bounds keep the larger foreground sprite inside the layer
     half(z) {
-      const s = scaleAt(z);
+      const s = depthScale(z, compact);
       return [(spriteW * s) / 2, (spriteH * s) / 2];
     },
 
@@ -96,7 +117,9 @@ export function toTransform({ sx, sy, z }, geo) {
   const oy = geo.height / 2;
   const x = ox + (sx - ox) / s - geo.spriteW / 2;
   const y = oy + (sy - oy) / s - geo.spriteH / 2;
-  return `translate3d(${x}px, ${y}px, ${z}px)`;
+  // the foreground boost scales about the sprite's own centre, so the
+  // projected centre (sx, sy) does not move
+  return `translate3d(${x}px, ${y}px, ${z}px) scale(${foregroundBoost(z, geo.compact)})`;
 }
 
 /* ------------------------------------------------------------------ */
