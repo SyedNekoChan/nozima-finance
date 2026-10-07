@@ -8,6 +8,7 @@
   --motion-state: 180ms;
   --motion-content: 220ms;
   --motion-data: 320ms;
+  --motion-ambient: 700ms;
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -123,6 +124,30 @@ html, body, #root {
     transition-timing-function: var(--motion-ease);
   }
 
+  /* NOMOZ.EXE: bottom-anchored actor in the backdrop layer. Width is
+     11 character cells, so the sprite box never changes size. */
+  .nomoz-actor {
+    position: absolute;
+    left: 0;
+    bottom: 0.5rem;
+    width: 11ch;
+    font-family: 'JetBrains Mono', 'Space Mono', monospace;
+    font-size: clamp(11px, 1vw + 7px, 22px);
+    line-height: 1;
+    color: #ffffff;
+    transform-origin: 50% 100%;
+    will-change: transform, opacity;
+    pointer-events: none;
+  }
+
+  .nomoz-sprite {
+    font: inherit;
+    line-height: inherit;
+    white-space: pre;
+    font-variant-ligatures: none;
+    pointer-events: none;
+  }
+
   /* touch devices have no hover: give a short pressed dim instead */
   @media (hover: none) {
     .motion-btn:active {
@@ -137,6 +162,7 @@ html, body, #root {
     --motion-state: 0ms;
     --motion-content: 0ms;
     --motion-data: 0ms;
+    --motion-ambient: 0ms;
   }
 
   .motion-btn:active {
