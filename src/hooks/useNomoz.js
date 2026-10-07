@@ -1,17 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AMBIENT_MS,
-  REACTIONS,
-  createRng,
-  getRange,
-  hashString,
-  moodBaseDepth,
-  planBehavior,
-} from '../lib/nomoz.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AMBIENT_MS, REACTIONS, createRng, runtimeSeed } from '../lib/nomoz.js';
+import { NomozScheduler } from '../lib/nomozBehaviors.js';
+import { overlapAt, pickSpot } from '../lib/nomozSpace.js';
 
 const INITIAL_VIEW = {
-  x: null,
-  depth: 0,
+  sx: null,
+  sy: null,
+  z: 0,
+  facing: 1,
   pose: 'stand',
   gaze: 'c',
   eyes: 'open',
@@ -19,136 +15,146 @@ const INITIAL_VIEW = {
   legs: 0,
   lean: 0,
   cue: null,
+  item: null,
+  book: null,
+  crown: 0,
+  glitch: 0,
   fade: 1,
-  peeking: false,
+  offscreen: false,
   transitionMs: 0,
+  ease: 'out',
+};
+
+// Posture reset when the financial mood (or breakpoint) changes.
+const RESET = {
+  pose: 'stand',
+  gaze: 'c',
+  eyes: 'open',
+  mouth: 'idle',
+  legs: 0,
+  lean: 0,
+  cue: null,
+  item: null,
+  book: null,
+  crown: 0,
+  glitch: 0,
+  fade: 1,
 };
 
 const FRAME_MS = 900;
 const FAST_FRAME_MS = 300;
 
+const rnd = (r, a, b) => a + r() * (b - a);
+const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
 /*
- * Schedules NOMOZ.EXE's behavior. The planners in lib/nomoz.js decide
- * what happens; this hook only runs their timed patches against a
- * single `view` object, restarting cleanly when the financial mood,
- * breakpoint or reduced-motion preference changes. Timers are all
- * cleared on cleanup, so repeated tab/modal cycles leave nothing behind.
+ * Owns NOMOZ.EXE's state. A runtime seed (new every page load) drives
+ * the initial placement, orientation, pose and the first behavior, so
+ * startup is never scripted. After that a single NomozScheduler picks
+ * behaviors dynamically; this hook only mirrors its patches into React
+ * state and restarts it when mood / breakpoint / reduced-motion change.
+ * Everything is torn down on unmount.
  *
- * metrics: { width, spriteW } in CSS px, or null until measured.
+ *   geo      : makeGeo(...) once the layer is measured, else null
+ *   getBusy  : () => foreground rectangles (see nomozSpace.scanBusy)
+ *   layoutKey: changes when the layout under the backdrop changes
  */
-export default function useNomoz({ mood, compact, reduced, metrics }) {
+export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutKey }) {
   const [view, setView] = useState(INITIAL_VIEW);
   const [reaction, setReaction] = useState(null);
   const [frame, setFrame] = useState(0);
 
-  const metricsRef = useRef(metrics);
-  const xRef = useRef(null);
-  const depthRef = useRef(0);
-  const peekingRef = useRef(false);
+  const rngRef = useRef(null);
+  if (rngRef.current === null) rngRef.current = createRng(runtimeSeed());
+
+  // curRef is the source of truth; `view` mirrors it for rendering.
+  const curRef = useRef(INITIAL_VIEW);
+  const geoRef = useRef(geo);
+  const schedRef = useRef(null);
+  const firstRun = useRef(true);
   const reactionTimers = useRef([]);
 
-  // Same sequence for the whole day: varied, but not chaotic run to run.
-  const rng = useMemo(() => createRng(hashString(new Date().toDateString())), []);
+  geoRef.current = geo;
 
+  const commit = useCallback((patch) => {
+    curRef.current = { ...curRef.current, ...patch };
+    setView(curRef.current);
+  }, []);
+
+  const ready = geo !== null;
+  const placed = view.sx !== null;
+
+  // Random first placement: where, how deep, which way, what pose.
   useEffect(() => {
-    metricsRef.current = metrics;
-  }, [metrics]);
+    if (!ready || curRef.current.sx !== null) return;
+    const rng = rngRef.current;
+    const spot = pickSpot(geoRef.current, getBusy(), rng, {});
 
-  useEffect(() => {
-    xRef.current = view.x;
-    depthRef.current = view.depth;
-    peekingRef.current = view.peeking;
-  }, [view.x, view.depth, view.peeking]);
-
-  // First placement (instant, while still faded in under the mood fade),
-  // and keeping the pet inside the range after a resize.
-  const ready = metrics !== null;
-  const width = metrics ? metrics.width : 0;
-  const spriteW = metrics ? metrics.spriteW : 0;
-
-  useEffect(() => {
-    if (!ready) return;
-    const { minX, maxX } = getRange({ width, spriteW }, compact);
-
-    setView((v) => {
-      if (v.x === null) {
-        return { ...v, x: Math.round(minX + (maxX - minX) * 0.7), transitionMs: 0 };
-      }
-      if (v.peeking || (v.x >= minX && v.x <= maxX)) return v;
-      return {
-        ...v,
-        x: Math.min(maxX, Math.max(minX, v.x)),
-        transitionMs: AMBIENT_MS,
-      };
+    commit({
+      ...spot,
+      facing: rng() < 0.5 ? -1 : 1,
+      pose: pick(rng, ['stand', 'stand', 'sit']),
+      gaze: pick(rng, ['c', 'l', 'r']),
+      transitionMs: 0,
     });
-  }, [ready, width, spriteW, compact]);
+  }, [ready, getBusy, commit]);
 
-  // Behavior runner.
+  // Keep the entity inside the usable range after a resize.
   useEffect(() => {
-    let alive = true;
-    const timers = new Set();
-    let last = null;
+    if (!geo) return;
+    const cur = curRef.current;
+    if (cur.sx === null || cur.offscreen) return;
 
-    const at = (ms, fn) => {
-      const id = setTimeout(() => {
-        timers.delete(id);
-        if (alive) fn();
-      }, ms);
-      timers.add(id);
-    };
+    const c = geo.clamp(cur);
+    if (c.sx !== cur.sx || c.sy !== cur.sy) {
+      commit({ ...c, transitionMs: reduced ? 0 : AMBIENT_MS, ease: 'out' });
+    }
+  }, [geo, reduced, commit]);
 
-    const apply = (patch) => setView((v) => ({ ...v, ...patch }));
+  // The one behavior scheduler for this entity.
+  useEffect(() => {
+    if (!placed) return undefined;
 
-    const next = () => {
-      const m = metricsRef.current;
-      if (!m || xRef.current === null) {
-        at(150, next);
-        return;
-      }
+    const rng = rngRef.current;
 
-      const { minX, maxX } = getRange(m, compact);
-      const plan = planBehavior({
+    const getCtx = () => {
+      const g = geoRef.current;
+      if (!g) return null;
+      const busy = getBusy();
+      return {
+        rng,
         mood,
         compact,
         reduced,
-        rng,
-        last,
-        x: xRef.current,
-        depth: depthRef.current,
-        minX,
-        maxX,
-        width: m.width,
-        spriteW: m.spriteW,
-        cell: m.spriteW / 11,
-      });
-
-      last = plan.name;
-      plan.beats.forEach(({ t, patch }) => at(t, () => apply(patch)));
-      at(plan.end, next);
+        cur: curRef.current,
+        geo: g,
+        busy,
+        pickSpot: (o) => pickSpot(g, busy, rng, o),
+        overlap: (p) => overlapAt(g, busy, p.sx, p.sy, p.z),
+      };
     };
 
-    // Entering a mood resets posture; position is kept.
-    apply({
-      depth: reduced ? 0 : moodBaseDepth(mood, compact),
-      pose: 'stand',
-      gaze: 'c',
-      eyes: 'open',
-      mouth: 'idle',
-      legs: 0,
-      lean: 0,
-      cue: null,
-      fade: 1,
-      transitionMs: reduced ? 0 : AMBIENT_MS,
-    });
-    next();
+    const sch = new NomozScheduler({ rng, mood, reduced, getCtx, apply: commit });
+    schedRef.current = sch;
+
+    if (!firstRun.current) commit(RESET);
+    sch.start(firstRun.current ? rnd(rng, 200, 3200) : rnd(rng, 300, 1100));
+    firstRun.current = false;
 
     return () => {
-      alive = false;
-      timers.forEach(clearTimeout);
+      sch.stop();
+      if (schedRef.current === sch) schedRef.current = null;
     };
-  }, [mood, compact, reduced, rng]);
+  }, [mood, compact, reduced, placed, getBusy, commit]);
 
-  // Stressed fragments flip between two frames; content/idle are static.
+  // Tab switch / resize: if the new layout covers it, move to open space.
+  useEffect(() => {
+    if (!placed) return undefined;
+    const id = setTimeout(() => schedRef.current?.recheck(), 450);
+    return () => clearTimeout(id);
+  }, [layoutKey, placed]);
+
+  // Stressed fragments flip between two frames; other states are static.
   const fast = reaction && REACTIONS[reaction.kind]?.fast;
 
   useEffect(() => {
@@ -179,10 +185,7 @@ export default function useNomoz({ mood, compact, reduced, metrics }) {
     reactionTimers.current.push(setTimeout(() => setReaction(null), cfg.ms));
   }, []);
 
-  useEffect(
-    () => () => reactionTimers.current.forEach(clearTimeout),
-    []
-  );
+  useEffect(() => () => reactionTimers.current.forEach(clearTimeout), []);
 
   const cfg = reaction ? REACTIONS[reaction.kind] : null;
 
@@ -191,8 +194,8 @@ export default function useNomoz({ mood, compact, reduced, metrics }) {
     eyes: cfg?.eyes ?? view.eyes,
     cue: cfg?.cue ?? view.cue,
     gaze: reaction?.gaze ?? view.gaze,
-    pose: cfg ? 'stand' : view.pose,
+    pose: cfg && view.pose === 'sit' ? 'stand' : view.pose,
   };
 
-  return { view: merged, frame, react };
+  return { view: merged, frame, react, placed };
 }

@@ -35,7 +35,7 @@ export const TRANSACTION_CATEGORIES = [
 ];
 export const DEFAULT_CATEGORY = 'GROCERIES';
 
-// MM-DD format — triggers the heart morph on the anomaly
+// MM-DD format — shows a heart cue on NOMOZ.EXE
 export const SPECIAL_DATES = ['11-24'];
 
 export const SYSTEM_MESSAGE = `> Hey. I built this for you. Every number, every dot, every line.
