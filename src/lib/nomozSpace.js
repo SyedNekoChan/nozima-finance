@@ -6,7 +6,7 @@ import { STEPS_PER_SPRITE } from './nomoz.js';
  * The backdrop layer carries a CSS `perspective`; the entity is one
  * element moved with translate3d. Positions are kept in SCREEN space
  * (sx, sy = where the sprite's centre appears, z = depth), so walking,
- * bounds and overlap tests all work in the pixels the user sees, and
+ * and bounds all work in the pixels the user sees, and
  * toTransform() converts back into the pre-perspective offset.
  *
  * The coordinates belong to the global backdrop, not to any tab: the
@@ -31,6 +31,13 @@ export const scaleAt = (z) => PERSPECTIVE / (PERSPECTIVE - z);
 export function alphaAt(z, compact) {
   const [a, b] = getZRange(compact);
   return 0.7 + 0.3 * clamp((z - a) / (b - a), 0, 1);
+}
+
+// 0 (far) / 1 / 2 (near): how strongly the rim light reads at this depth.
+export function depthLevel(z, compact) {
+  const [a, b] = getZRange(compact);
+  const t = clamp((z - a) / (b - a), 0, 1);
+  return t < 0.34 ? 0 : t < 0.67 ? 1 : 2;
 }
 
 /*

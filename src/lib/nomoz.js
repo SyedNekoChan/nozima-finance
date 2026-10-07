@@ -1,7 +1,7 @@
 import { DUR } from './motion.js';
 
 /*
- * NOMOZ.EXE — the pixel-art backdrop entity (a cat-like 32-bit sprite).
+ * NOMOZ.EXE — the pixel-art backdrop entity (the solid-black tabby).
  *
  * Shared definitions live here: the runtime randomness, the
  * financial-mood derivation (a pure read of existing store selectors),
@@ -108,4 +108,4 @@ export const REACTIONS = {
 };
 
 // Base opacity per state; depth then dims distant placements slightly.
-export const MOOD_ALPHA = { idle: 0.72, content: 0.82, stressed: 0.9 };
+export const MOOD_ALPHA = { idle: 0.95, content: 1, stressed: 1 };

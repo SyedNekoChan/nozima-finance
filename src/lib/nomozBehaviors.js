@@ -21,8 +21,8 @@ const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-// Where an item sits in the 32px sprite space decides where the eyes go.
-const gazeForX = (x) => (x < 12 ? 'l' : x > 19 ? 'r' : 'c');
+// Where an item sits in the 56px-wide sprite space decides where the eyes go.
+const gazeForX = (x) => (x < 20 ? 'l' : x > 36 ? 'r' : 'c');
 
 function makeScript() {
   const beats = [];
@@ -81,7 +81,7 @@ function travel(S, c, from, dest, t0, stepMs = STEP_MS) {
   }
 
   const end = t0 + n * stepMs;
-  S.at(end, { legs: 0, gaze: 'c' });
+  S.at(end, { legs: 0, gaze: 'c', pose: 'sit' });
   return end;
 }
 
@@ -124,7 +124,7 @@ def('observe', { w: [8, 8, 0], cd: 8000 }, (c, S) => {
 });
 
 def('look', { w: [10, 8, 0], cd: 5000 }, (c, S) => {
-  S.at(0, { pose: 'stand', legs: 0 });
+  S.at(0, { pose: 'sit', legs: 0 });
   let t = rnd(c.rng, 200, 500);
   const dirs = c.rng() < 0.5 ? ['l', 'r', 'c'] : ['r', 'l', 'c'];
   for (const g of dirs.slice(0, int(c.rng, 2, 3))) {
@@ -136,8 +136,8 @@ def('look', { w: [10, 8, 0], cd: 5000 }, (c, S) => {
 });
 
 def('lookUp', { w: [6, 4, 0], cd: 15000 }, (c, S) => {
-  const x = int(c.rng, 12, 20);
-  S.at(0, { gaze: 'u', pose: 'stand', legs: 0 });
+  const x = int(c.rng, 44, 50);
+  S.at(0, { gaze: 'u', pose: 'sit', legs: 0 });
   S.at(rnd(c.rng, 300, 800), {
     item: { kind: 'text', text: pick(c.rng, ['*', '+', 'o']), x, y: 0 },
   });
@@ -149,7 +149,7 @@ def('lookUp', { w: [6, 4, 0], cd: 15000 }, (c, S) => {
 });
 
 def('ponder', { w: [6, 0, 0], cd: 12000 }, (c, S) => {
-  S.at(0, { pose: 'stand', gaze: pick(c.rng, ['l', 'r', 'u']), mouth: 'think', cue: '.o?' });
+  S.at(0, { pose: 'sit', gaze: pick(c.rng, ['l', 'r', 'u']), mouth: 'think', cue: '.o?' });
   S.at(rnd(c.rng, 1200, 1800), { cue: '?' });
   const hold = rnd(c.rng, 3000, 4800);
   S.at(hold, { cue: null, mouth: 'idle', gaze: 'c' });
@@ -159,10 +159,10 @@ def('ponder', { w: [6, 0, 0], cd: 12000 }, (c, S) => {
 def('ponderSymbol', { w: [5, 5, 0], cd: 20000 }, (c, S) => {
   const text = pick(c.rng, ['$?', '%?', '+1', '-5', '12%', '=?', '$$']);
   S.at(0, {
-    pose: 'stand',
+    pose: 'sit',
     gaze: 'u',
     mouth: 'think',
-    item: { kind: 'text', text, x: 31 - textWidth(text), y: 0 },
+    item: { kind: 'text', text, x: 55 - textWidth(text), y: 0 },
   });
   const hold = rnd(c.rng, 2800, 5000);
   S.blink(hold * 0.55);
@@ -184,7 +184,7 @@ def('sleep', { w: [4, 0, 0], cd: 90000 }, (c, S) => {
   S.at(0, { pose: 'sit', eyes: 'closed', mouth: 'rest', gaze: 'c', legs: 0, cue: 'z' });
   for (let t = 1600, i = 0; t < dur; t += 1600, i++) S.at(t, { cue: i % 2 ? 'z' : 'zZ' });
   S.at(dur, { cue: null, eyes: 'blink' });
-  S.at(dur + 250, { eyes: 'open', mouth: 'idle', pose: 'stand' });
+  S.at(dur + 250, { eyes: 'open', mouth: 'idle', pose: 'sit' });
   return dur + 1200;
 });
 
@@ -193,14 +193,14 @@ def('tired', { w: [5, 2, 0], cd: 40000 }, (c, S) => {
   S.at(0, { pose: 'sit', eyes: 'closed', mouth: 'rest', legs: 0, cue: 'z' });
   S.at(dur * 0.5, { cue: null });
   S.at(dur, { eyes: 'blink' });
-  S.at(dur + 200, { eyes: 'open', mouth: 'idle', pose: 'stand' });
+  S.at(dur + 200, { eyes: 'open', mouth: 'idle', pose: 'sit' });
   return dur + 800;
 });
 
 def('stretch', { w: [5, 6, 0], cd: 30000 }, (c, S) => {
   const hold = rnd(c.rng, 1800, 3000);
   S.at(0, { pose: 'stretch', eyes: 'closed', mouth: 'rest', legs: 0 });
-  S.at(hold, { pose: 'stand', mouth: 'idle' });
+  S.at(hold, { pose: 'sit', mouth: 'idle' });
   S.blink(hold + 100);
   return hold + 700;
 });
@@ -243,11 +243,11 @@ def('read', { w: [5, 4, 0], cd: 70000 }, (c, S) => {
 def('inspect', { w: [6, 0, 0], cd: 40000 }, (c, S) => {
   const right = c.cur.facing > 0;
   const name = pick(c.rng, ['box', 'gem', 'disk']);
-  const x = right ? 25 : 2;
+  const x = right ? 47 : 2;
   const side = right ? 'r' : 'l';
-  S.at(0, { pose: 'stand', legs: 0, eyes: 'open' });
+  S.at(0, { pose: 'sit', legs: 0, eyes: 'open' });
   const t1 = rnd(c.rng, 400, 900);
-  S.at(t1, { item: { kind: 'obj', name, x, y: 24 }, gaze: side, eyes: 'wide' });
+  S.at(t1, { item: { kind: 'obj', name, x, y: 49 }, gaze: side, eyes: 'wide' });
   const t2 = t1 + 900;
   S.at(t2, { eyes: 'down', lean: right ? 1 : -1 });
   const t3 = t2 + rnd(c.rng, 1800, 3500);
@@ -258,13 +258,17 @@ def('inspect', { w: [6, 0, 0], cd: 40000 }, (c, S) => {
 
 def('floatSymbol', { w: [5, 3, 0], cd: 30000, moves: true }, (c, S) => {
   const text = pick(c.rng, ['@', '#', '&', '%', '+', '~']);
-  let x = int(c.rng, 4, 26);
-  S.at(0, { item: { kind: 'text', text, x, y: 0 }, gaze: gazeForX(x), pose: 'stand', legs: 0 });
+  // floats in the open corner above one shoulder
+  const left = c.rng() < 0.5;
+  const [x0, x1] = left ? [1, 12] : [43, 51];
+  const g = left ? 'l' : 'r';
+  let x = int(c.rng, x0, x1);
+  S.at(0, { item: { kind: 'text', text, x, y: 0 }, gaze: g, pose: 'sit', legs: 0 });
   let t = 0;
   for (let i = int(c.rng, 5, 8); i > 0; i--) {
     t += rnd(c.rng, 450, 900);
-    x = clamp(x + pick(c.rng, [-6, -3, 3, 6]), 1, 27);
-    S.at(t, { item: { kind: 'text', text, x, y: c.rng() < 0.3 ? 1 : 0 }, gaze: gazeForX(x) });
+    x = clamp(x + pick(c.rng, [-3, -2, 2, 3]), x0, x1);
+    S.at(t, { item: { kind: 'text', text, x, y: c.rng() < 0.3 ? 1 : 0 }, gaze: c.rng() < 0.2 ? 'u' : g });
   }
   t += 500;
   S.at(t, { item: { kind: 'text', text: '*', x, y: 0 }, eyes: 'happy' });
@@ -275,11 +279,11 @@ def('floatSymbol', { w: [5, 3, 0], cd: 30000, moves: true }, (c, S) => {
 
 def('followPixel', { w: [5, 3, 0], cd: 30000, moves: true }, (c, S) => {
   const ltr = c.rng() < 0.5;
-  S.at(0, { pose: 'stand', legs: 0 });
+  S.at(0, { pose: 'sit', legs: 0 });
   let t = rnd(c.rng, 300, 800);
-  for (let i = 0; i < 16; i++) {
-    const x = ltr ? i * 2 : 30 - i * 2;
-    S.at(t, { item: { kind: 'block', x, y: 2 }, gaze: gazeForX(x) });
+  for (let i = 0; i < 19; i++) {
+    const x = ltr ? i * 3 : 54 - i * 3;
+    S.at(t, { item: { kind: 'block', x, y: 0 }, gaze: gazeForX(x) });
     t += rnd(c.rng, 300, 430);
   }
   S.at(t, { item: null, gaze: 'c' });
@@ -290,16 +294,16 @@ def('coinPolish', { w: [4, 10, 0], cd: 25000 }, (c, S) => {
   const content = c.mood === 'content';
   const hold = rnd(c.rng, 4000, 7000);
   S.at(0, {
-    pose: 'stand',
+    pose: 'sit',
     legs: 0,
-    ...(content ? {} : { eyes: 'down', item: { kind: 'coin', x: 13, y: 22, spark: false } }),
+    ...(content ? {} : { eyes: 'down', item: { kind: 'coin', x: 24, y: 46, spark: false } }),
   });
   for (let t = 400, i = 0; t < hold; t += 500, i++) {
     S.at(
       t,
       content
-        ? { item: { kind: 'sparkle', x: i % 2 ? 21 : 9, y: i % 2 ? 17 : 19 } }
-        : { item: { kind: 'coin', x: 13, y: 22, spark: i % 2 === 0 } }
+        ? { item: { kind: 'sparkle', x: i % 2 ? 35 : 16, y: i % 2 ? 31 : 34 } }
+        : { item: { kind: 'coin', x: 24, y: 46, spark: i % 2 === 0 } }
     );
   }
   S.at(hold, { cue: null, item: null, eyes: 'open' });
@@ -315,7 +319,7 @@ def('crown', { w: [3, 10, 0], cd: 25000 }, (c, S) => {
     }
     S.at(hold, { crown: 0, gaze: 'c' });
   } else {
-    S.at(0, { gaze: 'u', eyes: 'wide', item: { kind: 'crown', x: 13, y: 1 } });
+    S.at(0, { gaze: 'u', eyes: 'wide', item: { kind: 'crown', x: 24, y: 0 } });
     S.blink(hold * 0.6, 'wide');
     S.at(hold, { item: null, eyes: 'open', gaze: 'c' });
   }
@@ -349,7 +353,7 @@ def('glitch', { w: [3, 0, 8], cd: 40000, moves: true }, (c, S) => {
 def('curious', { w: [5, 2, 6], cd: 20000, moves: true }, (c, S) => {
   const side = c.cur.sx < c.geo.width / 2 ? -1 : 1;
   const g = side < 0 ? 'l' : 'r';
-  S.at(0, { gaze: g, eyes: 'wide', cue: '?', lean: side, pose: 'stand', legs: 0 });
+  S.at(0, { gaze: g, eyes: 'wide', cue: '?', lean: side, pose: 'sit', legs: 0 });
   let t = rnd(c.rng, 1500, 3200);
 
   if (!c.reduced && c.rng() < 0.4) {
@@ -420,7 +424,7 @@ def('approach', { w: [6, 3, 6], cd: 20000, moves: true }, (c, S) => {
 
 def('relocate', { w: [4, 3, 4], cd: 45000, moves: true }, (c, S) => {
   const dest = c.pickSpot({});
-  S.at(0, { fade: 0, pose: 'stand', legs: 0 });
+  S.at(0, { fade: 0, pose: 'sit', legs: 0 });
   S.at(AMBIENT_MS + 80, {
     sx: dest.sx,
     sy: dest.sy,
@@ -446,7 +450,7 @@ def('edgeExit', { w: [3, 1, 0], cd: 90000, moves: true }, (c, S) => {
     sx: left ? -hw * 1.4 : W + hw * 1.4,
     facing: left ? -1 : 1,
     gaze: left ? 'l' : 'r',
-    pose: 'stand',
+    pose: 'sit',
     transitionMs: out,
     ease: 'out',
     offscreen: true,
@@ -493,7 +497,7 @@ def('peek', { w: [4, 0, 0], cd: 60000, moves: true }, (c, S) => {
     facing: left ? -1 : 1,
     gaze: left ? 'r' : 'l',
     legs: 0,
-    pose: 'stand',
+    pose: 'sit',
   });
   S.at(AMBIENT_MS + 160, { fade: 1 });
 
@@ -552,7 +556,7 @@ def('nervousLook', { w: [0, 0, 14], cd: 8000, moves: true }, (c, S) => {
 });
 
 def('still', { w: [0, 0, 14], cd: 0 }, (c, S) => {
-  S.at(0, { lean: 0, legs: 0, pose: 'stand' });
+  S.at(0, { lean: 0, legs: 0, pose: 'sit' });
   return rnd(c.rng, 2500, 5000);
 });
 
