@@ -26,7 +26,7 @@ function getCeiling(data) {
   return Math.min(max, nz[Math.floor(nz.length / 2)] * 6);
 }
 
-function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, className }) {
+function Matrix({ id, data, labels, dayMode, ceiling, clipped, frac, wavePos, cfg, className }) {
   const { W, padX, padR, rows, pitch, top, labelH, fontSize = 11, labelGap = 10, H: fixedH } = cfg;
   const n = data.length;
   const plotW = W - padX - padR;
@@ -47,12 +47,24 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
     return data[i] + (data[i + 1] - data[i]) * (t - i);
   };
 
-  const maxLen = Math.max(...labels.map((l) => l.length));
+  // DAY labels are "DD MMM"; tick spacing is still measured against the former 5-char "DD.MM" width.
+  const maxLen = dayMode ? 5 : Math.max(...labels.map((l) => l.length));
   const step = Math.max(1, Math.ceil((maxLen * fontSize * 0.6 + labelGap) / ((plotW - pitch) / Math.max(1, n - 1))));
   const yTicks = [rows - 1, Math.floor((rows - 1) / 2), 0];
 
   const shown = Math.min(cols, Math.ceil(frac * cols));
   const waveCol = wavePos === null ? null : Math.round(wavePos * cols);
+
+  const twoLevel = dayMode && cfg.isMobile;
+  const monthMarks = [];
+  if (twoLevel) {
+    labels.forEach((l, i) => {
+      if (i === 0 || l.slice(3) !== labels[i - 1].slice(3)) monthMarks.push({ m: l.slice(3), x: bucketX(i) });
+    });
+    for (let k = monthMarks.length - 2; k >= 0; k--) {
+      if (monthMarks[k + 1].x - monthMarks[k].x < 20) monthMarks.splice(k, 1);
+    }
+  }
 
   const lit = [];
   const dim = [];
@@ -91,16 +103,21 @@ function Matrix({ id, data, labels, ceiling, clipped, frac, wavePos, cfg, classN
       <g fill={BRIGHT} filter={`url(#glow-${id})`}>{lit}</g>
       {labels.map((label, i) =>
         (n - 1 - i) % step === 0 ? (
-          <text key={`x-${i}`} x={bucketX(i)} y={H - 3} textAnchor="middle" fill="#666" fontSize={fontSize} fontFamily="monospace">
-            {label}
+          <text key={`x-${i}`} x={bucketX(i)} y={twoLevel ? H - 9 : H - 3} textAnchor="middle" fill="#666" fontSize={fontSize} fontFamily="monospace">
+            {twoLevel ? label.slice(0, 2) : label}
           </text>
         ) : null
       )}
+      {monthMarks.map((mk) => (
+        <text key={`m-${mk.m}`} x={Math.min(mk.x - 5, W - 14)} y={H - 1.5} fill="#555" fontSize="7" fontFamily="monospace" letterSpacing="0.5">
+          {mk.m}
+        </text>
+      ))}
     </svg>
   );
 }
 
-const MOBILE = { W: 360, padX: 26, padR: 16, rows: 14, pitch: 6.4, top: 4, labelH: 18, fontSize: 9, labelGap: 4 };
+const MOBILE = { W: 360, padX: 26, padR: 16, rows: 14, pitch: 6.4, top: 4, labelH: 18, fontSize: 9, labelGap: 4, isMobile: true };
 
 // Mobile: 1 viewBox unit = 1 CSS px. Pitch and row count adapt to the measured box
 // so the matrix fills the available height with round, evenly spaced dots.
@@ -112,12 +129,12 @@ function mobileCfg({ w, h }) {
   const labelH = 18;
   const pitch = Math.min(8, Math.max(5, (w - padX - padR) / 46));
   const rows = Math.max(8, Math.min(60, Math.floor((h - top - labelH) / pitch)));
-  return { W: w, H: h, padX, padR, rows, pitch, top, labelH, fontSize: 9, labelGap: 4 };
+  return { W: w, H: h, padX, padR, rows, pitch, top, labelH, fontSize: 9, labelGap: 4, isMobile: true };
 }
 const DESKTOP = { W: 1000, padX: 60, padR: 20, rows: 20, pitch: 8.4, top: 4, labelH: 22 };
 const TICKS = 36;
 
-export default function DotMatrixGraph({ data, labels }) {
+export default function DotMatrixGraph({ data, labels, granularity }) {
   const valid = data && data.length > 0 && labels && labels.length === data.length;
   const n = valid ? data.length : 0;
   const dataKey = valid ? `${n}|${data.map((v) => Math.round(v)).join(',')}` : '';
@@ -174,7 +191,7 @@ export default function DotMatrixGraph({ data, labels }) {
 
   if (!valid) return <div className="text-gray-500 text-sm">[ NO DATA ]</div>;
 
-  const shared = { data, labels, ceiling, clipped, frac: loaded ? 1 : frac, wavePos };
+  const shared = { data, labels, dayMode: granularity === 'DAY', ceiling, clipped, frac: loaded ? 1 : frac, wavePos };
 
   return (
     <>
