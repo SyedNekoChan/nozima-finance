@@ -7,6 +7,7 @@
  *   state   ~180ms  UI state changes (tab fill, field reveal, popovers)
  *   content ~220ms  content swaps (tabs, modals, calendar months, lists)
  *   data    ~320ms  financial figures and progress values
+ *   ambient ~700ms  slow backdrop drift (NOMOZ.EXE depth / fade)
  *
  * One ease-out curve everywhere: no springs, no bounce.
  */
@@ -15,6 +16,7 @@ export const DUR = {
   state: 0.18,
   content: 0.22,
   data: 0.32,
+  ambient: 0.7,
   exit: 0.14,
 };
 
