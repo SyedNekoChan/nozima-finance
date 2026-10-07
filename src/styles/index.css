@@ -124,19 +124,21 @@ html, body, #root {
     transition-timing-function: var(--motion-ease);
   }
 
-  /* NOMOZ.EXE: bottom-anchored actor in the backdrop layer. Width is
-     11 character cells, so the sprite box never changes size. */
+  /* NOMOZ.EXE: one absolutely positioned actor inside the perspective
+     backdrop layer. Its box is exactly 15 character cells by 11 rows
+     (line-height 1), so no state or pose ever changes its size. The
+     minimum font size is the deliberate minimum readable size on the
+     narrowest phones; it grows with the viewport up to desktop. */
   .nomoz-actor {
     position: absolute;
+    top: 0;
     left: 0;
-    bottom: 0.5rem;
-    width: 11ch;
+    width: 15ch;
+    height: 11em;
     font-family: 'JetBrains Mono', 'Space Mono', monospace;
-    font-size: clamp(11px, 1vw + 7px, 22px);
+    font-size: clamp(14px, 1.2vw + 10px, 28px);
     line-height: 1;
     color: #ffffff;
-    transform-origin: 50% 100%;
-    will-change: transform, opacity;
     pointer-events: none;
   }
 

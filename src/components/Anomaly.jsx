@@ -1,30 +1,36 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
 import useNomoz from '../hooks/useNomoz.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
+import { MOOD_ALPHA, buildSprite, deriveNomozMood } from '../lib/nomoz.js';
 import {
-  MOOD_ALPHA,
-  buildSprite,
-  deriveNomozMood,
-  getDepth,
-} from '../lib/nomoz.js';
+  PERSPECTIVE,
+  alphaAt,
+  makeGeo,
+  scanBusy,
+  toTransform,
+} from '../lib/nomozSpace.js';
 
 // Below this layer width NOMOZ.EXE uses the constrained mobile range.
 const COMPACT_MAX_WIDTH = 640;
 
 /*
  * NOMOZ.EXE — ASCII backdrop entity (see design.md). Rendered as plain
- * monospace text in a non-interactive layer behind every tab. The
- * sprite grid is a fixed size, so no state or pose ever changes layout,
- * and all movement is a transform/opacity change on an absolutely
- * positioned actor inside an overflow-hidden layer.
+ * monospace text in a non-interactive layer behind every tab. The layer
+ * carries a CSS perspective and the entity is a single translate3d
+ * child, so moving in depth simply scales it. The sprite grid is a
+ * fixed size, so no state or pose ever changes layout, and nothing
+ * here can scroll the page: the layer is overflow-hidden and sits
+ * beneath the z-10 tab content, header, footer and modals.
  */
 function Nomoz() {
   const mood = useFinanceStore(deriveNomozMood);
   const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
   const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
+  const isLoaded = useFinanceStore((s) => s.isLoaded);
+  const activeTab = useFinanceStore((s) => s.activeTab);
   const reduced = useReducedMotion() ?? false;
 
   const layerRef = useRef(null);
@@ -37,10 +43,20 @@ function Nomoz() {
     if (!layer || !actor) return undefined;
 
     const measure = () => {
-      const width = layer.clientWidth;
-      const spriteW = actor.offsetWidth;
+      const next = {
+        width: layer.clientWidth,
+        height: layer.clientHeight,
+        spriteW: actor.offsetWidth,
+        spriteH: actor.offsetHeight,
+      };
       setMetrics((m) =>
-        m && m.width === width && m.spriteW === spriteW ? m : { width, spriteW }
+        m &&
+        m.width === next.width &&
+        m.height === next.height &&
+        m.spriteW === next.spriteW &&
+        m.spriteH === next.spriteH
+          ? m
+          : next
       );
     };
 
@@ -53,7 +69,24 @@ function Nomoz() {
 
   const compact = metrics !== null && metrics.width < COMPACT_MAX_WIDTH;
 
-  const { view, frame, react } = useNomoz({ mood, compact, reduced, metrics });
+  // Placement waits for the app content so it can pick open backdrop.
+  const geo = useMemo(
+    () => (metrics && metrics.spriteW > 0 && isLoaded ? makeGeo(metrics, compact) : null),
+    [metrics, compact, isLoaded]
+  );
+
+  const getBusy = useCallback(() => scanBusy(layerRef.current), []);
+
+  const layoutKey = `${activeTab}|${metrics ? `${metrics.width}x${metrics.height}` : ''}`;
+
+  const { view, frame, react, placed } = useNomoz({
+    mood,
+    compact,
+    reduced,
+    geo,
+    getBusy,
+    layoutKey,
+  });
 
   // One-shot reactions keep the existing event semantics: the store
   // raises the event, the pet reacts briefly, the event is cleared.
@@ -88,7 +121,12 @@ function Nomoz() {
         legs: view.legs,
         pose: view.pose,
         lean: view.lean,
+        facing: view.facing,
         cue: view.cue,
+        item: view.item,
+        book: view.book,
+        crown: view.crown,
+        glitch: view.glitch,
         frame,
       }),
     [
@@ -99,35 +137,43 @@ function Nomoz() {
       view.legs,
       view.pose,
       view.lean,
+      view.facing,
       view.cue,
+      view.item,
+      view.book,
+      view.crown,
+      view.glitch,
       frame,
     ]
   );
 
-  const placed = view.x !== null;
-  const depth = getDepth(compact, view.depth);
-  const opacity = Math.min(0.85, MOOD_ALPHA[mood] * depth.alpha) * view.fade;
+  const visible = placed && geo !== null;
   const moveMs = reduced ? 0 : view.transitionMs;
+  const ease = view.ease === 'linear' ? 'linear' : 'var(--motion-ease)';
+  const opacity = visible
+    ? Math.min(0.9, MOOD_ALPHA[mood] * alphaAt(view.z, compact)) * view.fade
+    : 0;
 
   return (
     <div
       ref={layerRef}
       aria-hidden="true"
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
+      style={{ perspective: `${PERSPECTIVE}px`, perspectiveOrigin: '50% 50%' }}
     >
       <div
         ref={actorRef}
         className="nomoz-actor"
         style={{
-          transform: `translate3d(${placed ? view.x : 0}px, ${depth.y}px, 0) scale(${depth.scale})`,
-          opacity: placed ? opacity : 0,
-          transition: placed
-            ? `transform ${moveMs}ms var(--motion-ease), opacity var(--motion-ambient) var(--motion-ease)`
+          transform: visible ? toTransform(view, geo) : 'translate3d(0, 0, 0)',
+          opacity,
+          transition: visible
+            ? `transform ${moveMs}ms ${ease}, opacity var(--motion-ambient) var(--motion-ease)`
             : 'none',
         }}
       >
         <AnimatePresence mode="wait" initial>
-          {placed && (
+          {visible && (
             <motion.pre
               key={mood}
               className="nomoz-sprite"
@@ -205,7 +251,8 @@ export default function Anomaly() {
     <>
       {/*
         NOMOZ.EXE stays at z-0 (behind every tab's z-10 content), a
-        background presence, not a foreground one.
+        background presence that picks open backdrop space rather than
+        sitting on top of anything.
       */}
       <Nomoz />
 
