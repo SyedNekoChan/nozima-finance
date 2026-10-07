@@ -174,8 +174,15 @@ Shown when spending exceeds the monthly budget, or has reached it.
   pre-perspective offset, so walking steps and bounds are in visible
   pixels.
 - Closer (higher z) means larger, more opaque and with a stronger rim; farther
-  means smaller, slightly more subdued and with a weaker rim. Depth range
-  is about 0.74x–1.25x on desktop and 0.8x–1.15x on mobile.
+  means smaller, slightly more subdued and with a weaker rim. Apparent size
+  is perspective scale times a foreground boost: the boost is exactly 1 from
+  the far end through mid depth, so far and mid depth are plain perspective,
+  and it eases in (smoothstep) over the nearer half of the range to +28% at
+  the closest depth. The result is about 0.74x–1.6x on desktop and
+  0.8x–1.5x on mobile, with no jump anywhere along Z. The boost scales
+  about the sprite's own centre, so it never moves the cat's X/Y, and the
+  placement bounds use the boosted size so the foreground cat cannot clip
+  an edge or the footer.
 - Depth interpolates continuously while walking, or glides over the ambient
   tier. The floor pool and contact shadow scale with the sprite, so the
   shadow responds to depth. There is no camera movement or parallax.
