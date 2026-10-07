@@ -4,6 +4,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { DUR, EASE, SHIFT } from '../lib/motion.js';
 
 /*
  * Compact single-value selector: shows only the current value as a
@@ -136,7 +138,7 @@ export default function SelectorField({
         disabled={
           options.length === 0
         }
-        className="w-full flex items-center justify-between gap-2 bg-black text-white font-mono text-sm border-2 border-gray-800 hover:border-white focus:border-white focus:outline-none px-3 py-2 leading-none disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-between gap-2 bg-black text-white font-mono text-sm border-2 border-gray-800 hover:border-white motion-btn focus:border-white focus:outline-none px-3 py-2 leading-none disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <span className="truncate leading-none">
           {selected
@@ -150,8 +152,15 @@ export default function SelectorField({
         </span>
       </button>
 
+      <AnimatePresence>
       {isOpen && (
-        <div className="absolute left-0 right-0 mt-1 z-10 bg-black border-2 border-white max-h-64 flex flex-col">
+        <motion.div
+          key="options"
+          className="absolute left-0 right-0 mt-1 z-10 bg-black border-2 border-white max-h-64 flex flex-col"
+          initial={{ opacity: 0, y: -SHIFT.popover }}
+          animate={{ opacity: 1, y: 0, transition: { duration: DUR.state, ease: EASE } }}
+          exit={{ opacity: 0, y: -SHIFT.popover, transition: { duration: DUR.micro, ease: EASE } }}
+        >
           {shouldSearch && (
             <input
               ref={searchInputRef}
@@ -186,7 +195,7 @@ export default function SelectorField({
                         option.value
                       )
                     }
-                    className={`w-full text-left font-mono text-sm px-3 py-2 leading-none border-b border-gray-900 last:border-b-0 ${
+                    className={`w-full text-left font-mono text-sm px-3 py-2 leading-none border-b border-gray-900 last:border-b-0 motion-btn ${
                       option.value ===
                       value
                         ? 'bg-white text-black font-bold'
@@ -199,8 +208,9 @@ export default function SelectorField({
               )
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

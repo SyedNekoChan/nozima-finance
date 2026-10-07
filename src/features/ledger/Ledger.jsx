@@ -1,4 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { DUR, EASE } from '../../lib/motion.js';
+import useHeldValue from '../../hooks/useHeldValue.js';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount, convertToBase } from '../../lib/currency.js';
 import LedgerRow from './LedgerRow.jsx';
@@ -24,6 +28,7 @@ export default function Ledger() {
   const [editingTx, setEditingTx] = useState(null);
   const [deletingTx, setDeletingTx] = useState(null);
   const [initialDate, setInitialDate] = useState(null);
+  const heldDeletingTx = useHeldValue(deletingTx, !!deletingTx);
 
   useEffect(() => {
     if (pendingLedgerDate) {
@@ -144,7 +149,7 @@ export default function Ledger() {
             aria-label="NEW ENTRY"
             title="NEW ENTRY"
             onClick={handleOpenNewEntry}
-            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px] flex-shrink-0"
+            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px] flex-shrink-0"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -157,12 +162,12 @@ export default function Ledger() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:flex-nowrap sm:gap-3 md:grid md:grid-cols-3 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
           <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>NET</span>
-            <span className="text-white text-xs md:text-sm">{formatAmount(totals.net, 'UZS')}</span>
+            <span className="text-white text-xs md:text-sm"><AnimatedAmount value={totals.net} currency="UZS" /></span>
           </div>
           <div className="flex items-baseline gap-1 whitespace-nowrap">
             <span>LIABILITY</span>
             <span className="text-white text-xs md:text-sm">
-              {totalLiability > 0 ? '-' : ''}{formatAmount(totalLiability, 'UZS')}
+              {totalLiability > 0 ? '-' : ''}<AnimatedAmount value={totalLiability} currency="UZS" />
             </span>
           </div>
           <div className="hidden md:block">[ {transactions.length} ENTRIES ]</div>
@@ -172,38 +177,55 @@ export default function Ledger() {
       <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
 
       <div className="flex-1 overflow-y-auto px-4 py-2 sm:p-4 md:p-6">
-        <div className="pb-4 sm:pb-24">
+        <motion.div
+          key={`${sortBy}-${sortDirection}`}
+          className="pb-4 sm:pb-24"
+          initial={{ opacity: 0.4 }}
+          animate={{ opacity: 1, transition: { duration: DUR.content, ease: EASE } }}
+        >
           {sortedTransactions.length === 0 ? (
             <div className="text-gray-500 font-mono text-sm">[ NO ENTRIES YET ]</div>
           ) : sortBy === 'DATE' ? (
-            groupedByDate.map((group) => (
-              <div key={group.date}>
-                <div className="mt-3 mb-1 sm:mt-6 sm:mb-2 border-b border-dashed border-gray-700 pb-1">
-                  <span className="font-mono text-xs tracking-widest text-gray-500">--- {group.date} ---</span>
-                </div>
-                {group.items.map((tx) => (
-                  <LedgerRow
-                    key={tx.id}
-                    tx={tx}
-                    showDate={false}
-                    onEdit={() => handleOpenEdit(tx)}
-                    onDelete={() => setDeletingTx(tx)}
-                  />
-                ))}
-              </div>
-            ))
+            <AnimatePresence initial={false}>
+              {groupedByDate.map((group) => (
+                <motion.div
+                  key={group.date}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto', transition: { duration: DUR.content, ease: EASE } }}
+                  exit={{ opacity: 0, height: 0, transition: { duration: DUR.exit, ease: EASE } }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div className="mt-3 mb-1 sm:mt-6 sm:mb-2 border-b border-dashed border-gray-700 pb-1">
+                    <span className="font-mono text-xs tracking-widest text-gray-500">--- {group.date} ---</span>
+                  </div>
+                  <AnimatePresence initial={false}>
+                    {group.items.map((tx) => (
+                      <LedgerRow
+                        key={tx.id}
+                        tx={tx}
+                        showDate={false}
+                        onEdit={() => handleOpenEdit(tx)}
+                        onDelete={() => setDeletingTx(tx)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           ) : (
-            sortedTransactions.map((tx) => (
-              <LedgerRow
-                key={tx.id}
-                tx={tx}
-                showDate={true}
-                onEdit={() => handleOpenEdit(tx)}
-                onDelete={() => setDeletingTx(tx)}
-              />
-            ))
+            <AnimatePresence initial={false}>
+              {sortedTransactions.map((tx) => (
+                <LedgerRow
+                  key={tx.id}
+                  tx={tx}
+                  showDate={true}
+                  onEdit={() => handleOpenEdit(tx)}
+                  onDelete={() => setDeletingTx(tx)}
+                />
+              ))}
+            </AnimatePresence>
           )}
-        </div>
+        </motion.div>
       </div>
 
       <PunchCard isOpen={showPunchCard} onClose={handleClosePunchCard} editingTx={editingTx} initialDate={initialDate} />
@@ -211,9 +233,9 @@ export default function Ledger() {
       <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">
         <p className="font-mono text-sm text-white mb-6">DELETE THIS ENTRY? THIS CANNOT BE UNDONE.</p>
         <div className="border border-gray-800 p-3 mb-6 font-mono text-xs text-gray-500">
-          <div>[ {deletingTx?.category || 'TRANSFER'} ]</div>
-          <div>{deletingTx?.note || '(no note)'}</div>
-          <div>{deletingTx ? formatAmount(deletingTx.amount, deletingTx.currency) : ''}</div>
+          <div>[ {heldDeletingTx?.category || 'TRANSFER'} ]</div>
+          <div>{heldDeletingTx?.note || '(no note)'}</div>
+          <div>{heldDeletingTx ? formatAmount(heldDeletingTx.amount, heldDeletingTx.currency) : ''}</div>
         </div>
         <div className="flex justify-end gap-3">
           <Button onClick={() => setDeletingTx(null)}>CANCEL</Button>

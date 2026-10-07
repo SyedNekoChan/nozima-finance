@@ -1,11 +1,16 @@
 import { useMemo, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import useHeldValue from '../../hooks/useHeldValue.js';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import LedgerRow from '../ledger/LedgerRow.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount } from '../../lib/currency.js';
 
-export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
+export default function DailyLogModal({ isOpen, onClose, selectedDate: selectedDateProp }) {
+  // keep the day's content on screen while the modal fades out
+  const selectedDate = useHeldValue(selectedDateProp, isOpen);
   const transactions = useFinanceStore((s) => s.transactions);
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
@@ -15,6 +20,7 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
   const deleteTransaction = useFinanceStore((s) => s.deleteTransaction);
 
   const [deletingTx, setDeletingTx] = useState(null);
+  const heldDeletingTx = useHeldValue(deletingTx, !!deletingTx);
 
   const dayTransactions = useMemo(() => {
     if (!selectedDate) return [];
@@ -28,7 +34,7 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
     [dayTransactions, accounts, exchangeRates]
   );
 
-  if (!isOpen || !selectedDate) return null;
+  if (!selectedDate) return null;
 
   const handleAddEntryForDay = () => {
     setPendingLedgerDate(selectedDate.dateString);
@@ -57,11 +63,11 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
         <div className="grid grid-cols-2 gap-2 md:gap-4 font-mono text-[10px] sm:text-xs tracking-widest text-gray-500">
           <div className="min-w-0">
             <div>IN</div>
-            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dayTotals.totalIn, 'UZS')}</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words"><AnimatedAmount value={dayTotals.totalIn} currency="UZS" /></div>
           </div>
           <div className="min-w-0">
             <div>OUT</div>
-            <div className="text-white text-xs sm:text-sm mt-1 break-words">{formatAmount(dayTotals.totalOut, 'UZS')}</div>
+            <div className="text-white text-xs sm:text-sm mt-1 break-words"><AnimatedAmount value={dayTotals.totalOut} currency="UZS" /></div>
           </div>
         </div>
       </div>
@@ -72,15 +78,17 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
         </div>
       ) : (
         <div className="flex flex-col">
-          {dayTransactions.map((tx) => (
-            <LedgerRow
-              key={tx.id}
-              tx={tx}
-              showDate={false}
-              onEdit={() => handleEditFromHere(tx)}
-              onDelete={() => setDeletingTx(tx)}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {dayTransactions.map((tx) => (
+              <LedgerRow
+                key={tx.id}
+                tx={tx}
+                showDate={false}
+                onEdit={() => handleEditFromHere(tx)}
+                onDelete={() => setDeletingTx(tx)}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -91,9 +99,9 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate }) {
       <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">
         <p className="font-mono text-sm text-white mb-6">DELETE THIS ENTRY? THIS CANNOT BE UNDONE.</p>
         <div className="border border-gray-800 p-3 mb-6 font-mono text-xs text-gray-500">
-          <div>[ {deletingTx?.category || 'TRANSFER'} ]</div>
-          <div>{deletingTx?.note || '(no note)'}</div>
-          <div>{deletingTx ? formatAmount(deletingTx.amount, deletingTx.currency) : ''}</div>
+          <div>[ {heldDeletingTx?.category || 'TRANSFER'} ]</div>
+          <div>{heldDeletingTx?.note || '(no note)'}</div>
+          <div>{heldDeletingTx ? formatAmount(heldDeletingTx.amount, heldDeletingTx.currency) : ''}</div>
         </div>
         <div className="flex justify-end gap-3">
           <Button onClick={() => setDeletingTx(null)}>CANCEL</Button>

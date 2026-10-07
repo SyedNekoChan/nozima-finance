@@ -48,7 +48,7 @@ export default function Header() {
                 [ SYSTEM: ONLINE ]
               </span>
               <span
-                className={`ml-4 text-gray-500 transition-none inline ${showDistance ? 'opacity-100' : 'opacity-0'}`}
+                className={`ml-4 text-gray-500 motion-fade inline ${showDistance ? 'opacity-100' : 'opacity-0'}`}
               >
                 [ DISTANCE: {distance} ]
               </span>

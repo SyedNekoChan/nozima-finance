@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { monthVariants } from '../../lib/motion.js';
 import Button from '../../components/Button.jsx';
 import DailyLogModal from './DailyLogModal.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
@@ -26,6 +28,23 @@ export default function Calendar() {
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
+  const monthKey = `${year}-${month}`;
+
+  // +1 when moving to a later month, -1 to an earlier one (drives the slide direction)
+  const lastMonthIndex = useRef(year * 12 + month);
+  const monthDir = useRef(1);
+  if (lastMonthIndex.current !== year * 12 + month) {
+    monthDir.current = year * 12 + month > lastMonthIndex.current ? 1 : -1;
+    lastMonthIndex.current = year * 12 + month;
+  }
+  const dir = monthDir.current;
+  const monthMotion = {
+    custom: dir,
+    variants: monthVariants,
+    initial: 'enter',
+    animate: 'center',
+    exit: 'exit',
+  };
 
   const computedDailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
 
@@ -106,7 +125,7 @@ export default function Calendar() {
   };
 
   const navBtn =
-    'flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]';
+    'flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]';
 
   return (
     <>
@@ -129,7 +148,11 @@ export default function Calendar() {
             </svg>
           </button>
           <span className="text-center font-mono uppercase tracking-widest text-sm text-white leading-none whitespace-nowrap">
-            {getMonthName(month + 1)} {year}
+            <AnimatePresence mode="wait" initial={false} custom={dir}>
+              <motion.span key={monthKey} className="inline-block" {...monthMotion}>
+                {getMonthName(month + 1)} {year}
+              </motion.span>
+            </AnimatePresence>
           </span>
           <button
             type="button"
@@ -152,7 +175,12 @@ export default function Calendar() {
           ))}
         </div>
 
-        <div className="flex-shrink-0 grid grid-cols-7 auto-rows-[2rem] gap-y-0.5">
+        <AnimatePresence mode="wait" initial={false} custom={dir}>
+        <motion.div
+          key={monthKey}
+          className="flex-shrink-0 grid grid-cols-7 auto-rows-[2rem] gap-y-0.5"
+          {...monthMotion}
+        >
           {calendarDays.map((cell, idx) => {
             if (cell.empty) return <div key={idx} />;
 
@@ -163,7 +191,7 @@ export default function Calendar() {
                 key={cell.dateString}
                 type="button"
                 onClick={() => openDay(cell)}
-                className={`min-w-0 flex items-center justify-center border transition-none cursor-pointer font-mono text-xs leading-none whitespace-nowrap ${
+                className={`min-w-0 flex items-center justify-center border motion-btn cursor-pointer font-mono text-xs leading-none whitespace-nowrap ${
                   isSelected
                     ? 'bg-white text-black border-white font-bold'
                     : 'bg-transparent text-white border-transparent hover:border-white'
@@ -176,9 +204,15 @@ export default function Calendar() {
               </button>
             );
           })}
-        </div>
+        </motion.div>
+        </AnimatePresence>
 
-        <div className="flex-1 min-h-0 overflow-y-auto mt-2 border-t border-gray-800">
+        <AnimatePresence mode="wait" initial={false} custom={dir}>
+        <motion.div
+          key={monthKey}
+          className="flex-1 min-h-0 overflow-y-auto mt-2 border-t border-gray-800"
+          {...monthMotion}
+        >
           {monthFeed.length === 0 ? (
             <div className="font-mono text-xs text-gray-500 py-3">[ NO ENTRIES THIS MONTH ]</div>
           ) : (
@@ -187,7 +221,7 @@ export default function Calendar() {
                 key={tx.id}
                 type="button"
                 onClick={() => openDayFromTx(tx)}
-                className="w-full flex justify-between items-start gap-3 py-2 border-b border-dashed border-gray-800 text-left font-mono transition-none cursor-pointer"
+                className="w-full flex justify-between items-start gap-3 py-2 border-b border-dashed border-gray-800 text-left font-mono motion-btn cursor-pointer"
               >
                 <span className="min-w-0 flex flex-col gap-1">
                   <span className="text-xs font-bold tracking-widest text-white truncate">
@@ -201,7 +235,8 @@ export default function Calendar() {
               </button>
             ))
           )}
-        </div>
+        </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* SM+: original desktop/tablet layout, untouched */}
@@ -217,7 +252,12 @@ export default function Calendar() {
         </div>
 
         <div className="font-mono text-xs tracking-widest text-gray-500 mb-6">
-          MONTH: {getMonthName(month + 1)} {year}
+          MONTH:{' '}
+          <AnimatePresence mode="wait" initial={false} custom={dir}>
+            <motion.span key={monthKey} className="inline-block" {...monthMotion}>
+              {getMonthName(month + 1)} {year}
+            </motion.span>
+          </AnimatePresence>
         </div>
 
         <div className="flex-1 flex flex-col min-h-0">
@@ -229,7 +269,12 @@ export default function Calendar() {
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1 md:gap-2 flex-1 min-h-0">
+          <AnimatePresence mode="wait" initial={false} custom={dir}>
+          <motion.div
+            key={monthKey}
+            className="grid grid-cols-7 gap-1 md:gap-2 flex-1 min-h-0"
+            {...monthMotion}
+          >
             {calendarDays.map((cell, idx) => {
               if (cell.empty) {
                 return <div key={idx} className="border border-transparent" />;
@@ -238,8 +283,8 @@ export default function Calendar() {
               const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
 
               const baseClass = isSelected
-                ? 'flex flex-col items-center justify-center border bg-white text-black border-white md:border-2 transition-none'
-                : 'flex flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 transition-none';
+                ? 'flex flex-col items-center justify-center border bg-white text-black border-white md:border-2 motion-btn'
+                : 'flex flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 motion-btn';
 
               return (
                 <button
@@ -258,7 +303,8 @@ export default function Calendar() {
                 </button>
               );
             })}
-          </div>
+          </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 

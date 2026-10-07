@@ -7,7 +7,7 @@ export default function Button({
   className = '',
 }) {
   const base =
-    'font-mono uppercase tracking-widest text-xs md:text-sm px-3 py-1 border-2 transition-none select-none cursor-pointer active:translate-y-[1px]';
+    'font-mono uppercase tracking-widest text-xs md:text-sm px-3 py-1 border-2 motion-btn select-none cursor-pointer active:translate-y-[1px]';
   const state = active
     ? 'bg-white text-black border-white font-bold'
     : 'bg-black text-white border-transparent hover:border-white';
