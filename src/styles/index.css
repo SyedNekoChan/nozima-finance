@@ -125,9 +125,9 @@ html, body, #root {
   }
 
   /* NOMOZ.EXE: one absolutely positioned actor inside the perspective
-     backdrop layer. Its box is the 32px sprite times a whole-number
-     pixel scale (set inline, never below 128px), so no state or pose
-     ever changes its size. The canvas is scaled without smoothing so
+     backdrop layer. Its box is the 56x60 sprite times a whole-number
+     pixel scale (set inline: 3x on phones, 4x elsewhere), so no state or
+     pose ever changes its size. The canvas is scaled without smoothing so
      every pixel edge stays hard. */
   .nomoz-actor {
     position: absolute;

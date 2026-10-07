@@ -5,18 +5,19 @@ import useNomoz from '../hooks/useNomoz.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
 import { MOOD_ALPHA, deriveNomozMood } from '../lib/nomoz.js';
-import { PERSPECTIVE, alphaAt, makeGeo, toTransform } from '../lib/nomozSpace.js';
-import { SPRITE_SIZE, renderSprite } from '../lib/nomozSprites.js';
+import { PERSPECTIVE, alphaAt, depthLevel, makeGeo, toTransform } from '../lib/nomozSpace.js';
+import { SPRITE_H, SPRITE_W, renderSprite } from '../lib/nomozSprites.js';
 
 // Below this layer width NOMOZ.EXE uses the constrained mobile range.
 const COMPACT_MAX_WIDTH = 640;
 
-// Whole-number pixel scale of the 32px sprite: 128px on the narrowest
-// phones (the minimum readable size) up to 256px on wide desktops.
-const pixelScale = (width) => Math.min(8, Math.max(4, Math.round(width / 160)));
+// Whole-number pixel scale of the 56x60 sprite: 168px wide on phones (the
+// minimum readable size, about 140px of cat) and 224px on larger screens.
+const pixelScale = (width) => (width < 640 ? 3 : 4);
 
 /*
- * NOMOZ.EXE — 32-bit pixel-art backdrop entity (see design.md).
+ * NOMOZ.EXE — 16-bit pixel-art backdrop entity, the solid-black tabby
+ * (see design.md).
  *
  * It lives in the application shell's global backdrop layer, mounted
  * once beside (never inside) the tab content, so switching tabs does not
@@ -43,7 +44,8 @@ function Nomoz() {
   const [canvasEl, setCanvasEl] = useState(null);
 
   const scale = pixelScale(metrics ? metrics.width : 0);
-  const size = SPRITE_SIZE * scale;
+  const boxW = SPRITE_W * scale;
+  const boxH = SPRITE_H * scale;
 
   useLayoutEffect(() => {
     const layer = layerRef.current;
@@ -83,6 +85,9 @@ function Nomoz() {
   );
 
   const { view, frame, react, placed } = useNomoz({ mood, compact, reduced, geo });
+
+  // rim-light strength follows depth (quantised so it redraws rarely)
+  const light = depthLevel(view.z, compact);
 
   // One-shot reactions keep the existing event semantics: the store
   // raises the event, the pet reacts briefly, the event is cleared.
@@ -128,6 +133,7 @@ function Nomoz() {
       crown: view.crown,
       glitch: view.glitch,
       frame,
+      light,
     });
   }, [
     canvasEl,
@@ -145,6 +151,7 @@ function Nomoz() {
     view.crown,
     view.glitch,
     frame,
+    light,
   ]);
 
   const visible = placed && geo !== null;
@@ -165,8 +172,8 @@ function Nomoz() {
         ref={actorRef}
         className="nomoz-actor"
         style={{
-          width: size,
-          height: size,
+          width: boxW,
+          height: boxH,
           transform: visible ? toTransform(view, geo) : 'translate3d(0, 0, 0)',
           opacity,
           transition: visible
@@ -192,8 +199,8 @@ function Nomoz() {
               <canvas
                 ref={setCanvasEl}
                 data-mood={mood}
-                width={SPRITE_SIZE}
-                height={SPRITE_SIZE}
+                width={SPRITE_W}
+                height={SPRITE_H}
                 className="nomoz-canvas"
               />
             </motion.div>

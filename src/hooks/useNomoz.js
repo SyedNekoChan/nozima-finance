@@ -8,7 +8,7 @@ const INITIAL_VIEW = {
   sy: null,
   z: 0,
   facing: 1,
-  pose: 'stand',
+  pose: 'sit',
   gaze: 'c',
   eyes: 'open',
   mouth: 'idle',
@@ -27,7 +27,7 @@ const INITIAL_VIEW = {
 
 // Posture reset when the financial mood (or breakpoint) changes.
 const RESET = {
-  pose: 'stand',
+  pose: 'sit',
   gaze: 'c',
   eyes: 'open',
   mouth: 'idle',
@@ -96,7 +96,7 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
     commit({
       ...spot,
       facing: rng() < 0.5 ? -1 : 1,
-      pose: pick(rng, ['stand', 'stand', 'sit']),
+      pose: pick(rng, ['sit', 'sit', 'sit', 'stand']),
       gaze: pick(rng, ['c', 'l', 'r']),
       transitionMs: 0,
     });
@@ -190,7 +190,6 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
     eyes: cfg?.eyes ?? view.eyes,
     cue: cfg?.cue ?? view.cue,
     gaze: reaction?.gaze ?? view.gaze,
-    pose: cfg && view.pose === 'sit' ? 'stand' : view.pose,
   };
 
   return { view: merged, frame, react, placed };
