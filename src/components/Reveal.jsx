@@ -7,6 +7,10 @@ import { DUR, EASE, SHIFT } from '../lib/motion.js';
  * stable container (modal fields, error lines, empty states), so the
  * surrounding layout eases instead of jumping.
  *
+ * Overflow is clipped only for the duration of a height animation. A block
+ * that mounts without animating (AnimatePresence initial={false}) must stay
+ * overflow-visible, or it would clip popovers such as SelectorField forever.
+ *
  * `nudge` adds the single tiny horizontal settle used for validation
  * messages; it re-fires when `nudgeKey` (the message text) changes.
  */
@@ -20,16 +24,17 @@ export default function Reveal({ show, children, className = '', nudge = false, 
           ref={ref}
           key="reveal"
           className={`flow-root ${className}`}
-          style={{ overflow: 'hidden' }}
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0, transition: { duration: DUR.exit, ease: EASE } }}
           transition={{ duration: DUR.state, ease: EASE }}
           onAnimationStart={() => {
+            // clip only while the height is actually animating
             if (ref.current) ref.current.style.overflow = 'hidden';
           }}
           onAnimationComplete={(def) => {
-            // release clipping once open so focus outlines are never cut off
+            // once open, release clipping so absolutely positioned children
+            // (dropdowns) and focus outlines are never cut off
             if (ref.current && def && def.height === 'auto') ref.current.style.overflow = '';
           }}
         >
