@@ -1,5 +1,6 @@
 import { AMBIENT_MS, STEP_MS } from './nomoz.js';
 import { scaleAt } from './nomozSpace.js';
+import { textWidth } from './nomozSprites.js';
 
 /*
  * NOMOZ.EXE behavior system.
@@ -20,7 +21,8 @@ const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-const gazeForCol = (col) => (col < 5 ? 'l' : col > 9 ? 'r' : 'c');
+// Where an item sits in the 32px sprite space decides where the eyes go.
+const gazeForX = (x) => (x < 12 ? 'l' : x > 19 ? 'r' : 'c');
 
 function makeScript() {
   const beats = [];
@@ -134,9 +136,11 @@ def('look', { w: [10, 8, 0], cd: 5000 }, (c, S) => {
 });
 
 def('lookUp', { w: [6, 4, 0], cd: 15000 }, (c, S) => {
-  const col = int(c.rng, 4, 10);
+  const x = int(c.rng, 12, 20);
   S.at(0, { gaze: 'u', pose: 'stand', legs: 0 });
-  S.at(rnd(c.rng, 300, 800), { item: { ch: pick(c.rng, ['*', '.', '+']), row: 0, col } });
+  S.at(rnd(c.rng, 300, 800), {
+    item: { kind: 'text', text: pick(c.rng, ['*', '+', 'o']), x, y: 0 },
+  });
   const hold = rnd(c.rng, 1800, 3600);
   S.blink(hold * 0.6);
   S.at(hold, { item: null });
@@ -154,7 +158,12 @@ def('ponder', { w: [6, 0, 0], cd: 12000 }, (c, S) => {
 
 def('ponderSymbol', { w: [5, 5, 0], cd: 20000 }, (c, S) => {
   const text = pick(c.rng, ['$?', '%?', '+1', '-5', '12%', '=?', '$$']);
-  S.at(0, { pose: 'stand', gaze: 'u', mouth: 'think', item: { ch: text, row: 0, col: 10 } });
+  S.at(0, {
+    pose: 'stand',
+    gaze: 'u',
+    mouth: 'think',
+    item: { kind: 'text', text, x: 31 - textWidth(text), y: 0 },
+  });
   const hold = rnd(c.rng, 2800, 5000);
   S.blink(hold * 0.55);
   S.at(hold, { item: null, mouth: 'idle', gaze: 'c' });
@@ -233,12 +242,12 @@ def('read', { w: [5, 4, 0], cd: 70000 }, (c, S) => {
 
 def('inspect', { w: [6, 0, 0], cd: 40000 }, (c, S) => {
   const right = c.cur.facing > 0;
-  const ch = pick(c.rng, ['[#]', '<>', 'o', '%', '{}', '+']);
-  const col = right ? 12 : 0;
+  const name = pick(c.rng, ['box', 'gem', 'disk']);
+  const x = right ? 25 : 2;
   const side = right ? 'r' : 'l';
   S.at(0, { pose: 'stand', legs: 0, eyes: 'open' });
   const t1 = rnd(c.rng, 400, 900);
-  S.at(t1, { item: { ch, row: 9, col }, gaze: side, eyes: 'wide' });
+  S.at(t1, { item: { kind: 'obj', name, x, y: 24 }, gaze: side, eyes: 'wide' });
   const t2 = t1 + 900;
   S.at(t2, { eyes: 'down', lean: right ? 1 : -1 });
   const t3 = t2 + rnd(c.rng, 1800, 3500);
@@ -248,17 +257,17 @@ def('inspect', { w: [6, 0, 0], cd: 40000 }, (c, S) => {
 });
 
 def('floatSymbol', { w: [5, 3, 0], cd: 30000, moves: true }, (c, S) => {
-  const ch = pick(c.rng, ['@', '#', '&', '%', '+', '~']);
-  let col = int(c.rng, 2, 12);
-  S.at(0, { item: { ch, row: 0, col }, gaze: gazeForCol(col), pose: 'stand', legs: 0 });
+  const text = pick(c.rng, ['@', '#', '&', '%', '+', '~']);
+  let x = int(c.rng, 4, 26);
+  S.at(0, { item: { kind: 'text', text, x, y: 0 }, gaze: gazeForX(x), pose: 'stand', legs: 0 });
   let t = 0;
   for (let i = int(c.rng, 5, 8); i > 0; i--) {
     t += rnd(c.rng, 450, 900);
-    col = clamp(col + pick(c.rng, [-2, -1, 1, 2]), 1, 13);
-    S.at(t, { item: { ch, row: 0, col }, gaze: gazeForCol(col) });
+    x = clamp(x + pick(c.rng, [-6, -3, 3, 6]), 1, 27);
+    S.at(t, { item: { kind: 'text', text, x, y: c.rng() < 0.3 ? 1 : 0 }, gaze: gazeForX(x) });
   }
   t += 500;
-  S.at(t, { item: { ch: '*', row: 0, col }, eyes: 'happy' });
+  S.at(t, { item: { kind: 'text', text: '*', x, y: 0 }, eyes: 'happy' });
   S.at(t + 350, { item: null, gaze: 'c' });
   S.at(t + 1300, { eyes: 'open' });
   return t + 1700;
@@ -268,29 +277,29 @@ def('followPixel', { w: [5, 3, 0], cd: 30000, moves: true }, (c, S) => {
   const ltr = c.rng() < 0.5;
   S.at(0, { pose: 'stand', legs: 0 });
   let t = rnd(c.rng, 300, 800);
-  for (let i = 0; i < 15; i++) {
-    const col = ltr ? i : 14 - i;
-    S.at(t, { item: { ch: '▒', row: 0, col }, gaze: gazeForCol(col) });
+  for (let i = 0; i < 16; i++) {
+    const x = ltr ? i * 2 : 30 - i * 2;
+    S.at(t, { item: { kind: 'block', x, y: 2 }, gaze: gazeForX(x) });
     t += rnd(c.rng, 300, 430);
   }
   S.at(t, { item: null, gaze: 'c' });
   return t + 600;
 });
 
-def('coinPolish', { w: [4, 10, 0], cd: 25000, }, (c, S) => {
+def('coinPolish', { w: [4, 10, 0], cd: 25000 }, (c, S) => {
   const content = c.mood === 'content';
   const hold = rnd(c.rng, 4000, 7000);
   S.at(0, {
     pose: 'stand',
     legs: 0,
-    ...(content ? {} : { eyes: 'down', item: { ch: '$', row: 9, col: 7 } }),
+    ...(content ? {} : { eyes: 'down', item: { kind: 'coin', x: 13, y: 22, spark: false } }),
   });
   for (let t = 400, i = 0; t < hold; t += 500, i++) {
     S.at(
       t,
       content
-        ? { item: i % 2 ? { ch: '*', row: 8, col: 8 } : { ch: '*', row: 8, col: 6 } }
-        : { cue: i % 2 ? null : '*' }
+        ? { item: { kind: 'sparkle', x: i % 2 ? 21 : 9, y: i % 2 ? 17 : 19 } }
+        : { item: { kind: 'coin', x: 13, y: 22, spark: i % 2 === 0 } }
     );
   }
   S.at(hold, { cue: null, item: null, eyes: 'open' });
@@ -306,7 +315,7 @@ def('crown', { w: [3, 10, 0], cd: 25000 }, (c, S) => {
     }
     S.at(hold, { crown: 0, gaze: 'c' });
   } else {
-    S.at(0, { gaze: 'u', eyes: 'wide', item: { ch: '[_/_]', row: 1, col: 5 } });
+    S.at(0, { gaze: 'u', eyes: 'wide', item: { kind: 'crown', x: 13, y: 1 } });
     S.blink(hold * 0.6, 'wide');
     S.at(hold, { item: null, eyes: 'open', gaze: 'c' });
   }
@@ -606,31 +615,6 @@ export class NomozScheduler {
     clearTimeout(this.timer);
   }
 
-  // Layout changed (tab switch / resize): move on if hidden under content.
-  recheck() {
-    if (!this.alive) return;
-    const c = this.getCtx();
-    if (!c || c.cur.offscreen || c.cur.fade === 0) return;
-    if (c.overlap(c.cur) > 0.5) this.interrupt('relocate');
-  }
-
-  interrupt(forceId) {
-    if (!this.alive) return;
-    clearTimeout(this.timer);
-    this.apply({
-      legs: 0,
-      lean: 0,
-      cue: null,
-      item: null,
-      book: null,
-      glitch: 0,
-      crown: 0,
-      fade: 1,
-      eyes: 'open',
-    });
-    this.next(forceId);
-  }
-
   choose(c) {
     const idx = MOOD_INDEX[this.mood];
     const now = performance.now();
@@ -670,16 +654,7 @@ export class NomozScheduler {
       return;
     }
 
-    let id = forceId;
-    if (
-      !id &&
-      !c.cur.offscreen &&
-      c.overlap(c.cur) > 0.6 &&
-      performance.now() - (this.lastAt.relocate ?? -Infinity) > 8000
-    ) {
-      id = 'relocate';
-    }
-    id = id || this.choose(c);
+    const id = forceId || this.choose(c);
 
     const S = makeScript();
     const planned = byId[id].plan(c, S);

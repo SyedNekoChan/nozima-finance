@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AMBIENT_MS, REACTIONS, createRng, runtimeSeed } from '../lib/nomoz.js';
 import { NomozScheduler } from '../lib/nomozBehaviors.js';
-import { overlapAt, pickSpot } from '../lib/nomozSpace.js';
+import { pickSpot } from '../lib/nomozSpace.js';
 
 const INITIAL_VIEW = {
   sx: null,
@@ -41,7 +41,7 @@ const RESET = {
   fade: 1,
 };
 
-const FRAME_MS = 900;
+const FRAME_MS = 1000;
 const FAST_FRAME_MS = 300;
 
 const rnd = (r, a, b) => a + r() * (b - a);
@@ -55,11 +55,14 @@ const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
  * state and restarts it when mood / breakpoint / reduced-motion change.
  * Everything is torn down on unmount.
  *
- *   geo      : makeGeo(...) once the layer is measured, else null
- *   getBusy  : () => foreground rectangles (see nomozSpace.scanBusy)
- *   layoutKey: changes when the layout under the backdrop changes
+ * Nothing here knows about tabs or foreground content: the entity's
+ * world position, seed, scheduler and animation progress simply
+ * persist while the UI above it changes. Only a physical viewport
+ * resize may clamp the position back into range.
+ *
+ *   geo : makeGeo(...) once the layer is measured, else null
  */
-export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutKey }) {
+export default function useNomoz({ mood, compact, reduced, geo }) {
   const [view, setView] = useState(INITIAL_VIEW);
   const [reaction, setReaction] = useState(null);
   const [frame, setFrame] = useState(0);
@@ -88,7 +91,7 @@ export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutK
   useEffect(() => {
     if (!ready || curRef.current.sx !== null) return;
     const rng = rngRef.current;
-    const spot = pickSpot(geoRef.current, getBusy(), rng, {});
+    const spot = pickSpot(geoRef.current, rng, {});
 
     commit({
       ...spot,
@@ -97,7 +100,7 @@ export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutK
       gaze: pick(rng, ['c', 'l', 'r']),
       transitionMs: 0,
     });
-  }, [ready, getBusy, commit]);
+  }, [ready, commit]);
 
   // Keep the entity inside the usable range after a resize.
   useEffect(() => {
@@ -120,7 +123,6 @@ export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutK
     const getCtx = () => {
       const g = geoRef.current;
       if (!g) return null;
-      const busy = getBusy();
       return {
         rng,
         mood,
@@ -128,9 +130,7 @@ export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutK
         reduced,
         cur: curRef.current,
         geo: g,
-        busy,
-        pickSpot: (o) => pickSpot(g, busy, rng, o),
-        overlap: (p) => overlapAt(g, busy, p.sx, p.sy, p.z),
+        pickSpot: (o) => pickSpot(g, rng, o),
       };
     };
 
@@ -145,24 +145,20 @@ export default function useNomoz({ mood, compact, reduced, geo, getBusy, layoutK
       sch.stop();
       if (schedRef.current === sch) schedRef.current = null;
     };
-  }, [mood, compact, reduced, placed, getBusy, commit]);
+  }, [mood, compact, reduced, placed, commit]);
 
-  // Tab switch / resize: if the new layout covers it, move to open space.
-  useEffect(() => {
-    if (!placed) return undefined;
-    const id = setTimeout(() => schedRef.current?.recheck(), 450);
-    return () => clearTimeout(id);
-  }, [layoutKey, placed]);
-
-  // Stressed fragments flip between two frames; other states are static.
-  const fast = reaction && REACTIONS[reaction.kind]?.fast;
+  // Slow animation clock for breathing, tail flicks and the stressed
+  // frame flip. One interval; absent under reduced motion.
+  const fast = mood === 'stressed' && reaction && REACTIONS[reaction.kind]?.fast;
 
   useEffect(() => {
-    setFrame(0);
-    if (mood !== 'stressed' || reduced) return undefined;
+    if (reduced) {
+      setFrame(0);
+      return undefined;
+    }
     const id = setInterval(() => setFrame((f) => f + 1), fast ? FAST_FRAME_MS : FRAME_MS);
     return () => clearInterval(id);
-  }, [mood, reduced, fast]);
+  }, [reduced, fast]);
 
   // One-shot reactions: timed overlays, never persistent state.
   const react = useCallback((kind) => {
