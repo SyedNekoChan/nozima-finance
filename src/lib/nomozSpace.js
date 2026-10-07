@@ -1,4 +1,4 @@
-import { SPRITE_COLS } from './nomoz.js';
+import { STEPS_PER_SPRITE } from './nomoz.js';
 
 /*
  * NOMOZ.EXE's lightweight 3D space.
@@ -8,6 +8,10 @@ import { SPRITE_COLS } from './nomoz.js';
  * (sx, sy = where the sprite's centre appears, z = depth), so walking,
  * bounds and overlap tests all work in the pixels the user sees, and
  * toTransform() converts back into the pre-perspective offset.
+ *
+ * The coordinates belong to the global backdrop, not to any tab: the
+ * foreground UI never influences where the entity is, and it may be
+ * covered by foreground content (it keeps living behind it).
  *
  *   z > 0 : closer  (larger, a little stronger)
  *   z < 0 : farther (smaller, a little fainter)
@@ -46,7 +50,7 @@ export function makeGeo(metrics, compact) {
     spriteH,
     compact,
     margin,
-    cell: spriteW / SPRITE_COLS,
+    cell: spriteW / STEPS_PER_SPRITE,
     zRange: getZRange(compact),
 
     half(z) {
@@ -89,99 +93,30 @@ export function toTransform({ sx, sy, z }, geo) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Foreground awareness                                                */
+/* Placement                                                           */
 /* ------------------------------------------------------------------ */
 
-const BUSY_SELECTOR =
-  'canvas, svg, img, table, input, textarea, select, button, [class*="bg-"]';
-const ALWAYS_BUSY = /^(canvas|svg|img|table)$/;
-
 /*
- * Rectangles (relative to the backdrop layer) of foreground blocks that
- * would visually swallow the entity: graphics, tables, controls and
- * anything with a painted background. Plain text is deliberately not
- * counted — the entity can sit behind sparse type. Called only when a
- * behavior is planned, never per frame.
- */
-export function scanBusy(layer) {
-  const host = layer && layer.parentElement;
-  if (!host) return [];
-
-  const lr = layer.getBoundingClientRect();
-  const out = [];
-
-  host.querySelectorAll(BUSY_SELECTOR).forEach((el) => {
-    if (layer.contains(el)) return;
-
-    const r = el.getBoundingClientRect();
-    if (r.width < 12 || r.height < 12) return;
-
-    let w = 1;
-    if (!ALWAYS_BUSY.test(el.tagName.toLowerCase())) {
-      const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/);
-      if (!m) return;
-      const parts = m[1].split(',').map((p) => parseFloat(p));
-      w = parts.length > 3 ? parts[3] : 1;
-      if (!(w > 0.05)) return;
-    }
-
-    out.push({
-      l: r.left - lr.left,
-      t: r.top - lr.top,
-      r: r.right - lr.left,
-      b: r.bottom - lr.top,
-      w,
-    });
-  });
-
-  return out;
-}
-
-// 0 (open backdrop) .. 1 (fully under foreground blocks)
-export function overlapAt(geo, busy, sx, sy, z) {
-  if (!busy.length) return 0;
-  const [hw, hh] = geo.half(z);
-  const l = sx - hw;
-  const r = sx + hw;
-  const t = sy - hh;
-  const b = sy + hh;
-
-  let sum = 0;
-  for (const o of busy) {
-    const ix = Math.max(0, Math.min(r, o.r) - Math.max(l, o.l));
-    const iy = Math.max(0, Math.min(b, o.b) - Math.max(t, o.t));
-    sum += ix * iy * o.w;
-  }
-  return Math.min(1, sum / (4 * hw * hh));
-}
-
-/*
- * A random reachable spot, preferring open backdrop. Samples several
- * candidates and picks randomly among the least-covered ones, so it is
- * visible-by-intent but never always the same "best" place.
+ * A random reachable spot anywhere in the backdrop space.
  *   zRange : depth band to sample (default: the full range)
  *   near   : { sx, sy, radius } keeps the spot close to a point
  */
-export function pickSpot(geo, busy, rng, { zRange, near, tries = 28 } = {}) {
+export function pickSpot(geo, rng, { zRange, near } = {}) {
   const [z0, z1] = zRange || geo.zRange;
-  const cands = [];
+  const z = z0 + (z1 - z0) * rng();
+  const b = geo.bounds(z);
 
-  for (let i = 0; i < tries; i++) {
-    const z = z0 + (z1 - z0) * rng();
-    const b = geo.bounds(z);
-    let sx = b.minX + (b.maxX - b.minX) * rng();
-    let sy = b.minY + (b.maxY - b.minY) * rng();
-
-    if (near) {
-      sx = clamp(near.sx + (rng() * 2 - 1) * near.radius, b.minX, b.maxX);
-      sy = clamp(near.sy + (rng() * 2 - 1) * near.radius, b.minY, b.maxY);
-    }
-
-    cands.push({ sx, sy, z, ov: overlapAt(geo, busy, sx, sy, z) });
+  if (near) {
+    return {
+      sx: clamp(near.sx + (rng() * 2 - 1) * near.radius, b.minX, b.maxX),
+      sy: clamp(near.sy + (rng() * 2 - 1) * near.radius, b.minY, b.maxY),
+      z,
+    };
   }
 
-  const best = Math.min(...cands.map((c) => c.ov));
-  const pool = cands.filter((c) => c.ov <= best + 0.12);
-  const { sx, sy, z } = pool[Math.floor(rng() * pool.length)];
-  return { sx, sy, z };
+  return {
+    sx: b.minX + (b.maxX - b.minX) * rng(),
+    sy: b.minY + (b.maxY - b.minY) * rng(),
+    z,
+  };
 }
