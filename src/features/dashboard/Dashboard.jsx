@@ -28,8 +28,7 @@ export default function Dashboard() {
       for (let i = 29; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
         const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, label: `${dd}.${mm}` });
+        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, label: `${dd} ${getMonthName(d.getMonth() + 1)}` });
       }
     } else if (granularity === 'YEAR') {
       for (let i = 5; i >= 0; i--) {
@@ -153,7 +152,7 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-        <DotMatrixGraph data={graphData} labels={graphLabels} currencyCode="UZS" />
+        <DotMatrixGraph data={graphData} labels={graphLabels} granularity={granularity} currencyCode="UZS" />
       </div>
 
       <Modal isOpen={showBudgetModal} onClose={() => setShowBudgetModal(false)} title="SET MONTHLY BUDGET" size="sm">
