@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { DUR, EASE } from '../../lib/motion.js';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { formatAmount } from '../../lib/currency.js';
 import Button from '../../components/Button.jsx';
 import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 
 const iconBtn =
-  'flex items-center justify-center w-7 h-7 bg-black text-white border-2 border-transparent hover:border-white transition-none select-none cursor-pointer active:translate-y-[1px]';
+  'flex items-center justify-center w-7 h-7 bg-black text-white border-2 border-transparent hover:border-white motion-btn select-none cursor-pointer active:translate-y-[1px]';
 
 export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
   const accounts = useFinanceStore((s) => s.accounts);
@@ -20,7 +22,13 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
   const prefix = tx.type === 'INCOME' ? '+' : '-';
 
   return (
-    <div className="group flex flex-row sm:flex-col md:flex-row md:items-start justify-between gap-3 sm:gap-0 py-3 sm:py-4 px-2 border-b border-dashed border-gray-800 hover:bg-white hover:text-black transition-none cursor-pointer">
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto', transition: { duration: DUR.content, ease: EASE } }}
+      exit={{ opacity: 0, height: 0, transition: { duration: DUR.exit, ease: EASE } }}
+      style={{ overflow: 'hidden' }}
+    >
+    <div className="group flex flex-row sm:flex-col md:flex-row md:items-start justify-between gap-3 sm:gap-0 py-3 sm:py-4 px-2 border-b border-dashed border-gray-800 hover:bg-white hover:text-black motion-row cursor-pointer">
       <div className="flex flex-col min-w-0 flex-1 sm:flex-none md:flex-1">
         <div className="flex flex-wrap items-center">
           {tx.type === 'TRANSFER' ? (
@@ -111,5 +119,6 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
         imageData={tx.imageData}
       />
     </div>
+    </motion.div>
   );
 }

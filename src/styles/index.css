@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Motion tokens: mirrored by DUR / EASE in src/lib/motion.js */
+:root {
+  --motion-micro: 120ms;
+  --motion-state: 180ms;
+  --motion-content: 220ms;
+  --motion-data: 320ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
 * {
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -68,4 +77,69 @@ html, body, #root {
 
 .brutalist-overbudget-pulse {
   animation: overbudget-pulse 1.6s linear infinite;
+}
+
+/* ---- Motion system --------------------------------------------------
+   Buttons / rows / fields only transition paint properties (color,
+   background, border, opacity) plus the 1px pressed translate, so
+   nothing here triggers layout. */
+@layer base {
+  input,
+  textarea {
+    transition-property: border-color, background-color, color, opacity;
+    transition-duration: var(--motion-state);
+    transition-timing-function: var(--motion-ease);
+  }
+}
+
+@layer components {
+  .motion-btn {
+    transition-property: color, background-color, border-color, opacity, transform;
+    transition-duration: var(--motion-micro);
+    transition-timing-function: var(--motion-ease);
+  }
+
+  /* active/inactive tab + selected-state fills ease a touch slower */
+  .motion-state {
+    transition-duration: var(--motion-state);
+  }
+
+  .motion-field {
+    transition-property: border-color, background-color, color, opacity;
+    transition-duration: var(--motion-state);
+    transition-timing-function: var(--motion-ease);
+  }
+
+  .motion-fade {
+    transition-property: opacity;
+    transition-duration: var(--motion-state);
+    transition-timing-function: var(--motion-ease);
+  }
+
+  .motion-row,
+  .motion-row * {
+    transition-property: color, background-color, border-color;
+    transition-duration: var(--motion-micro);
+    transition-timing-function: var(--motion-ease);
+  }
+
+  /* touch devices have no hover: give a short pressed dim instead */
+  @media (hover: none) {
+    .motion-btn:active {
+      opacity: 0.75;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-micro: 0ms;
+    --motion-state: 0ms;
+    --motion-content: 0ms;
+    --motion-data: 0ms;
+  }
+
+  .motion-btn:active {
+    transform: none;
+  }
 }

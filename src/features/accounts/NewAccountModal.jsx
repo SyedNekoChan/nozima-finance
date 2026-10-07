@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import Modal from '../../components/Modal.jsx';
+import FieldError from '../../components/FieldError.jsx';
+import Reveal from '../../components/Reveal.jsx';
 import Button from '../../components/Button.jsx';
 
 const ACCOUNT_TYPES = ['BANK', 'CASH', 'CREDIT', 'DEBT'];
@@ -33,8 +35,8 @@ export default function NewAccountModal({ isOpen, onClose }) {
     setName(e.target.value.toUpperCase().replace(/\s+/g, '_'));
   };
 
+  // the form is re-seeded on open, so it is not cleared here (it would blank mid fade-out)
   const handleClose = () => {
-    resetState();
     onClose();
   };
 
@@ -61,7 +63,6 @@ export default function NewAccountModal({ isOpen, onClose }) {
     };
 
     addAccount(account);
-    resetState();
     onClose();
   };
 
@@ -103,7 +104,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
         </div>
       </div>
 
-      {currency === 'OTHER' && (
+      <Reveal show={currency === 'OTHER'}>
         <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CODE</span>
           <input
@@ -116,13 +117,9 @@ export default function NewAccountModal({ isOpen, onClose }) {
           />
           <span className="font-mono text-xs text-gray-600 mt-1 block">3-LETTER CODE</span>
         </div>
-      )}
+      </Reveal>
 
-      {errorMsg && (
-        <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">
-          {errorMsg}
-        </div>
-      )}
+      <FieldError message={errorMsg} className="mb-4" />
 
       <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button onClick={handleSave} active={true} className="w-full sm:w-auto">

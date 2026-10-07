@@ -1,7 +1,17 @@
-export default function AsciiProgressBar({ value, max, width = 20, className = '' }) {
-  const percentage = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+import useTweenedText from '../hooks/useTweenedText.js';
+
+const render = (pct, width) => {
+  const percentage = Math.round(pct);
   const filled = Math.round((percentage / 100) * width);
   const empty = width - filled;
+  return `[${'|'.repeat(filled)}${'_'.repeat(empty)}] ${percentage}%`;
+};
+
+export default function AsciiProgressBar({ value, max, width = 20, className = '' }) {
+  // the capped ratio is what eases, so the bar and the percentage move together
+  // and the over-budget state still renders maxed out at 100%
+  const ratio = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const ref = useTweenedText(ratio, (v) => render(v, width), width);
 
   /*
    * value > max (over budget) is announced once, globally, by
@@ -12,8 +22,9 @@ export default function AsciiProgressBar({ value, max, width = 20, className = '
    * spend-vs-budget shape rather than disappearing.
    */
   return (
-    <span className={`font-mono text-xs sm:text-sm md:text-base whitespace-nowrap ${className}`}>
-      [{'|'.repeat(filled)}{'_'.repeat(empty)}] {percentage}%
-    </span>
+    <span
+      ref={ref}
+      className={`font-mono text-xs sm:text-sm md:text-base whitespace-nowrap ${className}`}
+    />
   );
 }

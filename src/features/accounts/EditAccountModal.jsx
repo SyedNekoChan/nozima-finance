@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, parseAmount, convertBetween } from '../../lib/currency.js';
+import { parseAmount, convertBetween } from '../../lib/currency.js';
 import Modal from '../../components/Modal.jsx';
+import FieldError from '../../components/FieldError.jsx';
 import Button from '../../components/Button.jsx';
+import useHeldValue from '../../hooks/useHeldValue.js';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import { ensureExchangeRates } from '../../hooks/useExchangeRates.js';
 
-export default function EditAccountModal({ isOpen, onClose, account }) {
+export default function EditAccountModal({ isOpen, onClose, account: accountProp }) {
+  // keep the account's content on screen while the modal fades out
+  const account = useHeldValue(accountProp, isOpen);
   const updateAccount = useFinanceStore((s) => s.updateAccount);
   const addTransaction = useFinanceStore((s) => s.addTransaction);
 
@@ -37,8 +42,8 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
 
   const isDebt = account.type === 'DEBT';
 
+  // the form is re-seeded on open, so it is not cleared here (it would blank mid fade-out)
   const handleClose = () => {
-    resetState();
     onClose();
   };
 
@@ -135,7 +140,7 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
       <div className="border-b border-gray-800 pb-3 sm:pb-4 mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENT BALANCE</span>
         <span className="font-mono text-2xl md:text-3xl text-white">
-          {formatAmount(account.balance, account.currency)}
+          <AnimatedAmount value={account.balance} currency={account.currency} />
         </span>
       </div>
 
@@ -154,7 +159,7 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
 
         <div className="mb-3 sm:mb-5">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">AMOUNT</span>
-          <div className="flex items-center w-full min-w-0 bg-black border-b-2 border-gray-800 focus-within:border-white">
+          <div className="flex items-center w-full min-w-0 bg-black border-b-2 border-gray-800 focus-within:border-white motion-field">
             {isDebt && (
               <span className="shrink-0 select-none font-mono text-2xl text-white pl-1 pr-1">-</span>
             )}
@@ -214,11 +219,7 @@ export default function EditAccountModal({ isOpen, onClose, account }) {
         </div>
       </div>
 
-      {errorMsg && (
-        <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">
-          {errorMsg}
-        </div>
-      )}
+      <FieldError message={errorMsg} className="mb-4" />
 
       <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button onClick={handleSave} active={true} className="w-full sm:w-auto">

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, convertToBase } from '../../lib/currency.js';
+import { convertToBase } from '../../lib/currency.js';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import { getMonthName } from '../../lib/date.js';
 import HeroStats from './HeroStats.jsx';
 import AsciiProgressBar from '../../components/AsciiProgressBar.jsx';
@@ -88,7 +89,7 @@ export default function Dashboard() {
             </span>
             <br />
             <span className="font-mono text-[length:clamp(1.125rem,6vw,1.5rem)] sm:text-3xl md:text-4xl text-white mt-1 break-words">
-              {formatAmount(spentThisMonth, 'UZS')}
+              <AnimatedAmount value={spentThisMonth} currency="UZS" />
             </span>
           </div>
 
@@ -102,7 +103,7 @@ export default function Dashboard() {
                 aria-label="EDIT BUDGET"
                 title="EDIT BUDGET"
                 onClick={openBudgetModal}
-                className="sm:hidden flex items-center justify-center w-8 h-8 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+                className="sm:hidden flex items-center justify-center w-8 h-8 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
                   <path d="M12 20h9" />
@@ -114,7 +115,7 @@ export default function Dashboard() {
             {monthlyBudget ? (
               <>
                 <span className="font-mono text-[length:clamp(1.125rem,6vw,1.5rem)] sm:text-3xl md:text-4xl text-white mt-1 break-words">
-                  {formatAmount(monthlyBudget, 'UZS')}
+                  <AnimatedAmount value={monthlyBudget} currency="UZS" />
                 </span>
                 <div className="mt-2">
                   <AsciiProgressBar value={spentThisMonth} max={monthlyBudget} width={30} className="sm:hidden" />
@@ -141,7 +142,7 @@ export default function Dashboard() {
                 key={g}
                 type="button"
                 onClick={() => setGranularity(g)}
-                className={`font-mono uppercase tracking-wider sm:tracking-widest text-[10px] sm:text-xs px-1.5 py-0.5 border-2 whitespace-nowrap transition-none select-none cursor-pointer ${
+                className={`font-mono uppercase tracking-wider sm:tracking-widest text-[10px] sm:text-xs px-1.5 py-0.5 border-2 whitespace-nowrap motion-btn motion-state select-none cursor-pointer ${
                   granularity === g
                     ? 'bg-white text-black border-white font-bold'
                     : 'bg-black text-white border-transparent hover:border-white'

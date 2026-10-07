@@ -1,6 +1,6 @@
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { HER_NAME_CYRILLIC } from '../../lib/constants.js';
-import { formatAmount } from '../../lib/currency.js';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 
 export default function HeroStats() {
   const totalBalance = useFinanceStore((s) => s.getTotalBalanceInUZS());
@@ -15,7 +15,7 @@ export default function HeroStats() {
       </h1>
       <div className="mt-2 sm:mt-4 md:mt-6 w-full min-w-0">
         <p className="font-mono font-bold tracking-tight text-[length:clamp(1.25rem,7.5vw,1.875rem)] sm:text-4xl md:text-[length:clamp(2rem,5vw,4.5rem)] text-white break-words">
-          {formatAmount(totalBalance, 'UZS')}
+          <AnimatedAmount value={totalBalance} currency="UZS" />
         </p>
       </div>
     </div>

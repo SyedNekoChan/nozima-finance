@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
-import { formatAmount } from '../../lib/currency.js';
+import { motion } from 'framer-motion';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import { DUR, EASE, SHIFT } from '../../lib/motion.js';
 import { FUTURE_FUND_NAME } from '../../lib/constants.js';
 import Button from '../../components/Button.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
@@ -32,7 +34,14 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
   }, []);
 
   return (
-    <div className="border-2 border-white bg-black p-3 sm:p-4 flex flex-col justify-between min-h-0 sm:min-h-[160px] relative min-w-0">
+    <motion.div
+      layout="position"
+      initial={{ opacity: 0, y: SHIFT.item }}
+      animate={{ opacity: 1, y: 0, transition: { duration: DUR.content, ease: EASE } }}
+      exit={{ opacity: 0, y: -SHIFT.item, transition: { duration: DUR.exit, ease: EASE } }}
+      transition={{ layout: { duration: DUR.content, ease: EASE } }}
+      className="border-2 border-white bg-black p-3 sm:p-4 flex flex-col justify-between min-h-0 sm:min-h-[160px] relative min-w-0"
+    >
       <div>
         <div className="flex justify-between items-start">
           <h3 className="font-mono uppercase tracking-widest text-sm text-white break-words min-w-0">
@@ -55,7 +64,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
       <div className="my-2 sm:my-4">
         {/* opacity subordinates negative balances instead of color */}
         <span className={`font-mono font-bold text-xl sm:text-2xl md:text-3xl text-white break-words ${isNegative ? 'opacity-70' : ''}`}>
-          {formatAmount(account.balance, account.currency)}
+          <AnimatedAmount value={account.balance} currency={account.currency} />
         </span>
       </div>
 
@@ -65,7 +74,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           aria-label="EDIT"
           title="EDIT"
           onClick={() => onEdit(account)}
-          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <path d="M12 20h9" />
@@ -77,7 +86,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           aria-label="TRANSFER"
           title="TRANSFER"
           onClick={() => onTransfer(account)}
-          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <polyline points="17 1 21 5 17 9" />
@@ -91,7 +100,7 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           aria-label="DELETE"
           title="DELETE"
           onClick={() => onDelete(account)}
-          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white transition-none select-none cursor-pointer active:translate-y-[1px]"
+          className="flex-1 flex items-center justify-center py-1.5 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
             <polyline points="3 6 5 6 21 6" />
@@ -113,6 +122,6 @@ export default function AccountCard({ account, onEdit, onTransfer, onDelete }) {
           DELETE
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -1,11 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import Modal from '../../components/Modal.jsx';
+import FieldError from '../../components/FieldError.jsx';
+import Reveal from '../../components/Reveal.jsx';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import useHeldValue from '../../hooks/useHeldValue.js';
 import Button from '../../components/Button.jsx';
-import { formatAmount, parseAmount } from '../../lib/currency.js';
+import { parseAmount } from '../../lib/currency.js';
 import { getTodayDateString } from '../../lib/date.js';
 
-export default function TransferModal({ isOpen, onClose, sourceAccount }) {
+export default function TransferModal({ isOpen, onClose, sourceAccount: sourceAccountProp }) {
+  // keep the source account on screen while the modal fades out
+  const sourceAccount = useHeldValue(sourceAccountProp, isOpen);
   const accounts = useFinanceStore((s) => s.accounts);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
   const createTransfer = useFinanceStore((s) => s.createTransfer);
@@ -19,6 +25,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
 
   // reset form whenever a new transfer session starts
   useEffect(() => {
+    if (!isOpen) return; // keep the form intact while the modal fades out
     setDestinationId('');
     setAmountInput('');
     setNote('');
@@ -64,13 +71,9 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
 
   if (!sourceAccount) return null;
 
+  // the form is re-seeded on open, so it is not cleared here (it would blank mid fade-out)
   const handleClose = () => {
     if (isSubmitting) return;
-    setDestinationId('');
-    setAmountInput('');
-    setNote('');
-    setRateInput('');
-    setErrorMsg('');
     onClose();
   };
 
@@ -133,7 +136,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
           <span className="font-mono text-sm text-white min-w-0 break-words">[ {sourceAccount.name} ]</span>
           <span className="font-mono text-xs text-gray-500 flex-shrink-0">{sourceAccount.currency}</span>
           <span className="font-mono text-xs text-gray-500 sm:ml-auto flex-shrink-0">
-            {formatAmount(sourceAccount.balance, sourceAccount.currency)}
+            <AnimatedAmount value={sourceAccount.balance} currency={sourceAccount.currency} />
           </span>
         </div>
       </div>
@@ -176,11 +179,11 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
         <span className="font-mono text-xs text-gray-500 mt-1 block">{sourceAccount.currency}</span>
       </div>
 
-      {isCrossCurrency && (
+      <Reveal show={isCrossCurrency}>
         <div className="mb-4 sm:mb-6">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">EXCHANGE RATE</span>
           <span className="block font-mono text-xs text-gray-500 mb-2">
-            1 {sourceAccount.currency} = ? {destinationAccount.currency}
+            1 {sourceAccount.currency} = ? {destinationAccount?.currency}
           </span>
           <input
             type="text"
@@ -190,19 +193,19 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
             disabled={isSubmitting}
             className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm disabled:opacity-40"
           />
-          {showReceived && (
+          <Reveal show={Boolean(showReceived)}>
             <div className="mt-3 font-mono text-sm text-gray-400">
-              YOU WILL RECEIVE: {formatAmount(received, destinationAccount.currency)}
+              YOU WILL RECEIVE: <AnimatedAmount value={received} currency={destinationAccount?.currency} />
             </div>
-          )}
+          </Reveal>
         </div>
-      )}
+      </Reveal>
 
-      {!isCrossCurrency && showReceived && destinationAccount && (
+      <Reveal show={!isCrossCurrency && Boolean(showReceived) && Boolean(destinationAccount)}>
         <div className="mb-4 sm:mb-6 font-mono text-sm text-gray-400">
-          YOU WILL RECEIVE: {formatAmount(received, destinationAccount.currency)}
+          YOU WILL RECEIVE: <AnimatedAmount value={received} currency={destinationAccount?.currency} />
         </div>
-      )}
+      </Reveal>
 
       <div className="mb-4 sm:mb-6">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">NOTE</span>
@@ -216,9 +219,7 @@ export default function TransferModal({ isOpen, onClose, sourceAccount }) {
         />
       </div>
 
-      {errorMsg && (
-        <div className="font-mono text-xs text-gray-400 mb-4 border-l-2 border-white pl-3">{errorMsg}</div>
-      )}
+      <FieldError message={errorMsg} className="mb-4" />
 
       <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button

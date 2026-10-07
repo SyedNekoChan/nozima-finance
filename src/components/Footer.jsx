@@ -52,7 +52,7 @@ export default function Footer() {
               onClick={() => setActiveTab(tab)}
               aria-label={tab}
               title={tab}
-              className={`flex items-center justify-center py-3 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
+              className={`flex items-center justify-center py-3 border-2 motion-btn motion-state select-none cursor-pointer active:translate-y-[1px] ${
                 active
                   ? 'bg-white text-black border-white'
                   : 'bg-black text-white border-transparent'
@@ -70,7 +70,7 @@ export default function Footer() {
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
-            className={`font-mono uppercase tracking-widest text-xs md:text-sm px-3 py-1 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
+            className={`font-mono uppercase tracking-widest text-xs md:text-sm px-3 py-1 border-2 motion-btn motion-state select-none cursor-pointer active:translate-y-[1px] ${
               activeTab === tab
                 ? 'bg-white text-black border-white font-bold'
                 : 'bg-black text-white border-transparent hover:border-white'

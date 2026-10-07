@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import {
-  formatAmount,
   parseAmount,
 } from '../../lib/currency.js';
 import {
@@ -13,13 +12,21 @@ import Modal from '../../components/Modal.jsx';
 import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 import Button from '../../components/Button.jsx';
 import SelectorField from '../../components/SelectorField.jsx';
+import Reveal from '../../components/Reveal.jsx';
+import FieldError from '../../components/FieldError.jsx';
+import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import useHeldValue from '../../hooks/useHeldValue.js';
 
 export default function PunchCard({
   isOpen,
   onClose,
-  editingTx,
-  initialDate,
+  editingTx: editingTxProp,
+  initialDate: initialDateProp,
 }) {
+  // keep the entry being edited on screen while the modal fades out
+  const editingTx = useHeldValue(editingTxProp, isOpen);
+  const initialDate = useHeldValue(initialDateProp, isOpen);
+
   const accounts =
     useFinanceStore((s) => s.accounts);
 
@@ -92,6 +99,7 @@ export default function PunchCard({
     useRef(null);
 
   useEffect(() => {
+    if (!isOpen) return; // form is re-seeded on open; do not blank it mid fade-out
     if (editingTx) {
       setDate(editingTx.date);
       setType(editingTx.type);
@@ -483,7 +491,7 @@ export default function PunchCard({
                     option.key
                   )
                 }
-                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-1.5 border-2 transition-none select-none cursor-pointer active:translate-y-[1px] ${
+                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-1.5 border-2 motion-btn select-none cursor-pointer active:translate-y-[1px] ${
                   type === option.key
                     ? 'bg-white text-black border-white font-bold'
                     : 'bg-black text-white border-transparent hover:border-white'
@@ -552,7 +560,7 @@ export default function PunchCard({
         )}
       </div>
 
-      {type === 'TRANSFER' && (
+      <Reveal show={type === 'TRANSFER'}>
         <div className="mb-3 sm:mb-4">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             TO ACCOUNT
@@ -580,7 +588,7 @@ export default function PunchCard({
             placeholder="SELECT DESTINATION"
           />
         </div>
-      )}
+      </Reveal>
 
       <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
@@ -611,7 +619,7 @@ export default function PunchCard({
         </div>
       </div>
 
-      {type !== 'TRANSFER' && (
+      <Reveal show={type !== 'TRANSFER'}>
         <div className="mb-3 sm:mb-4">
           <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
             CATEGORY
@@ -634,7 +642,7 @@ export default function PunchCard({
             searchable={false}
           />
         </div>
-      )}
+      </Reveal>
 
       <div className="mb-3 sm:mb-4">
         <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
@@ -709,8 +717,7 @@ export default function PunchCard({
         )}
       </div>
 
-      {type === 'TRANSFER' &&
-        isCrossCurrency && (
+      <Reveal show={type === 'TRANSFER' && isCrossCurrency}>
           <div className="mb-3 sm:mb-4">
             <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
               EXCHANGE RATE
@@ -719,11 +726,11 @@ export default function PunchCard({
             <span className="block font-mono text-xs text-gray-500 mb-1">
               1{' '}
               {
-                sourceAccount.currency
+                sourceAccount?.currency
               }{' '}
               ={' '}
               {
-                destAccount.currency
+                destAccount?.currency
               }
             </span>
 
@@ -743,19 +750,15 @@ export default function PunchCard({
 
             <span className="font-mono text-xs text-gray-500 mt-2 block">
               YOU WILL RECEIVE:{' '}
-              {formatAmount(
-                calculatedDestination,
-                destAccount.currency
-              )}
+              <AnimatedAmount
+                value={calculatedDestination}
+                currency={destAccount?.currency}
+              />
             </span>
           </div>
-        )}
+      </Reveal>
 
-      {errorMsg && (
-        <div className="font-mono text-xs text-gray-400 mb-3 sm:mb-4 border-l-2 border-white pl-3">
-          {errorMsg}
-        </div>
-      )}
+      <FieldError message={errorMsg} className="mb-3 sm:mb-4" />
 
       <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
         <Button
