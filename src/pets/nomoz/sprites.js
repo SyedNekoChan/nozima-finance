@@ -1,33 +1,38 @@
 /*
- * NOMOZ.EXE — 16-bit pixel-art sprite of the solid-black tabby.
- *
- * The character is the attached concept art (design.md): a front-facing,
- * sitting solid-black tabby with pointed ears (lighter inner ear), big
- * round black eyes with a bright vertical highlight, a small grey nose,
- * long whiskers, an open mouth, a lighter chest bib, a haunch / front-leg
- * stack and a tail curling up on one side. Every pose is built from the
- * SAME shared parts so the cat never changes design between frames:
+ * NOMOZ.EXE — 16-bit pixel-art sprite of the lonely black cat (the
+ * canonical reference art, see design.md): a front-facing, sitting,
+ * solid-black cat with pointed ears (white inner ear), half-lidded amber
+ * eyes (a pale crescent with a bright highlight), long whiskers, a lighter
+ * chest bib, a haunch / front-leg stack and a tail curling up on one side.
+ * Every pose is built from the SAME shared parts so the cat never changes
+ * design between frames:
  *
  *   HEAD     : one mirrored half-grid (ears, forehead stripes, cheek stripes)
  *   TORSO    : sitting (the reference pose) and standing (walk cycle)
  *   TAIL     : one grid with a small sway
  *   FACE     : eye / nose / mouth overlays (the expressions)
- *   PROPS    : crown, $ coin, book, objects, pixel font
+ *   PROPS    : coin, crown, book, objects, glyphs, pixel font
  *
  * VISIBILITY. The cat is predominantly black, so it is revealed by light
  * rather than by recolouring it: a directional rim light on the upper-left
  * edges, a dim edge on the right, a dithered backlight aura just outside
  * the silhouette, a lit floor pool with a black contact shadow beneath
  * the paws, and near-black internal planes (bib, haunch, stripes). All of
- * it is computed per frame, so every pose gets it. Depth changes the rim
- * strength (`light`), never the fur colour.
+ * it is computed per frame (parameters in ./config.js LIGHTING), so every
+ * pose gets it. Depth changes the rim strength (`light`), never the fur.
  *
  * Everything is hard pixels (no smoothing); the canvas is scaled with
  * image-rendering: pixelated.
+ *
+ * Worn items (crown, chest coin, held coin, book) are not drawn here: they
+ * are vanity items (./vanity.js) rendered through the pet's vanity
+ * registry. Temporary overlays (cues, drifting pixels, objects, glyphs)
+ * are drawn by the ITEM_KINDS table below; add a kind there to add a prop.
  */
+import { LIGHTING, SPRITE_SIZE } from './config.js';
 
-export const SPRITE_W = 56;
-export const SPRITE_H = 60;
+export const SPRITE_W = SPRITE_SIZE.width;
+export const SPRITE_H = SPRITE_SIZE.height;
 
 const PALETTE = {
   0: '#000000', // ink / deepest fur
@@ -38,6 +43,9 @@ const PALETTE = {
   5: '#3b424a', // rim light
   6: '#56606a', // rim light, corners
   E: '#e6edf2', // eye highlight
+  Y: '#f0cd80', // amber eye
+  y: '#c99a4a', // amber eye, shaded
+  I: '#d6dde3', // inner ear
   e: '#8d9ba5', // eye highlight (dim)
   a: '#0e1114', // backlight aura
   f: '#0b0e11', // floor pool
@@ -95,10 +103,10 @@ const HEAD_HALF = [
   '.....22.........',
   '....2222........',
   '...22222........',
-  '...23422........',
-  '..2234422.......',
-  '..2234442222....',
-  '..22344422222...',
+  '...23I22........',
+  '..223II22.......',
+  '..223III2222....',
+  '..223III22222...',
   '.222344222222222',
   '2222222222212121',
   '2222222222212121',
@@ -123,13 +131,14 @@ const HEAD_HALF = [
 
 const HEAD = HEAD_HALF.map((r) => r + [...r].reverse().join(''));
 
-// 6x6 eye templates; '.' leaves the fur showing.
+// 6x6 eye templates; '.' leaves the fur showing. The resting eye is the
+// reference's half-lidded amber crescent with a bright highlight.
 const EYES = {
-  open: ['.0000.', '00EE00', '00EE00', '00ee00', '000000', '.0000.'],
-  wide: ['.0000.', '0EEE00', '0EEe00', '0EEe00', '00ee00', '.0000.'],
+  open: ['......', '......', '.Y..EY', 'YY...Y', '.YYYY.', '......'],
+  wide: ['.YYYY.', 'Y.EE.Y', 'Y.E..Y', 'Y....Y', '.YYYY.', '......'],
   closed: ['......', '......', '......', '5....5', '.5555.', '......'],
   happy: ['......', '..ee..', '.e..e.', 'e....e', '......', '......'],
-  down: ['......', '......', '.5555.', '000000', '00ee00', '.0000.'],
+  down: ['......', '......', '.5555.', 'Y....Y', '.YyyY.', '......'],
   panic: ['.0000.', '0eeee0', 'eeeeee', 'ee00ee', 'ee00ee', '.eeee.'],
 };
 
@@ -178,7 +187,7 @@ function drawHead(g, p, hx, hy) {
   drawEye(g, EYES[kind], hx + 20 + dx, hy + 12 + dy);
 
   // nose
-  blit(g, ['5555', '.55.'], hx + 14, hy + 20);
+  blit(g, ['4444', '.44.'], hx + 14, hy + 20);
 
   // mouth
   const mouth = stressed ? 'panic' : content ? 'happy' : p.mouth;
@@ -337,12 +346,7 @@ function drawTail(g, x0, y0, sway) {
 /* Visibility: rim light, aura, floor pool                             */
 /* ------------------------------------------------------------------ */
 
-// [top/left, corner, right] rim levels by depth light 0..2
-const RIM = [
-  ['4', '4', '3'],
-  ['5', '5', '4'],
-  ['5', '6', '4'],
-];
+const RIM = LIGHTING.rim;
 
 function rimLight(cat, light) {
   const [tl, corner, right] = RIM[light];
@@ -373,15 +377,16 @@ function rimLight(cat, light) {
 // Dithered backlight just outside the silhouette + lit floor pool with a
 // black contact shadow under the paws. Drawn beneath the cat.
 function drawUnder(under, cat, light, footY, footX0, footX1) {
+  const { cx, rx, ry, solid, dy } = LIGHTING.pool;
+  const cy = footY + dy;
+
   // floor pool
-  const cx = 27.5;
-  const cy = footY + 1.5;
   for (let y = footY - 2; y < SPRITE_H; y++) {
     for (let x = 0; x < SPRITE_W; x++) {
-      const nx = (x - cx) / 23;
-      const ny = (y - cy) / 3.6;
+      const nx = (x - cx) / rx;
+      const ny = (y - cy) / ry;
       const d = nx * nx + ny * ny;
-      if (d <= 1 && (d < 0.45 || (x + y) % 2 === 0)) under[y][x] = 'f';
+      if (d <= 1 && (d < solid || (x + y) % 2 === 0)) under[y][x] = 'f';
     }
   }
 
@@ -391,7 +396,7 @@ function drawUnder(under, cat, light, footY, footX0, footX1) {
     if (x > footX0 + 1 && x < footX1 - 1) under[footY + 1][x] = '0';
   }
 
-  if (light < 1) return;
+  if (light < LIGHTING.auraFromLevel) return;
 
   // aura
   for (let y = 0; y < SPRITE_H; y++) {
@@ -411,14 +416,34 @@ function drawUnder(under, cat, light, footY, footX0, footX1) {
 /* Props                                                               */
 /* ------------------------------------------------------------------ */
 
-const CROWN = ['G..GG..G', 'GG.GG.GG', 'GGGGGGGG', 'gggggggg'];
+export const CROWN = ['G..GG..G', 'GG.GG.GG', 'GGGGGGGG', 'gggggggg'];
 
 const COIN = ['..GGGG..', '.GGGGGg.', 'GGGGGGGg', 'GGGGGGGg', 'GGGGGGGg', 'GGGGGGGg', '.GGGGGg.', '..gggg..'];
+
+// The coin turning about its vertical axis: face, narrowing, edge, back.
+// Rows are 8 tall; the back is plain gold with a small notch.
+const COIN_TURN = [
+  null, // 0: face (the full coin)
+  ['...GG...', '..GGGg..', '.GGGGg..', '.GGGGg..', '.GGGGg..', '.GGGGg..', '..GGgg..', '...gg...'],
+  ['...Gg...', '...Gg...', '...Gg...', '...Gg...', '...Gg...', '...Gg...', '...Gg...', '...gg...'],
+  ['...GG...', '..gGGG..', '..gGGG..', '..gGkG..', '..gGGG..', '..gGGG..', '..gGGG..', '...gg...'],
+  ['..GGGG..', '.GGGGGg.', 'GGGGGGGg', 'GGGkkGGg', 'GGGGGGGg', 'GGGGGGGg', '.GGGGGg.', '..gggg..'],
+];
 
 const OBJECTS = {
   box: ['uuuuuuu', 'uvvvvvu', 'uvuuuvu', 'uvuuuvu', 'uvvvvvu', 'uuuuuuu'],
   gem: ['..CCC..', '.CWCCc.', 'CWCCCCc', 'cCCCCcc', '.cCCcc.', '..ccc..', '...c...'],
   disk: ['qqqqqqq', 'qpppppq', 'qpppppq', 'qqqqqqq', 'qmmmmmq', 'qmuummq', 'qqqqqqq'],
+};
+
+// Small pixel glyphs (the environmental "idea" symbol and friends).
+const GLYPHS = {
+  bulb: [
+    ['..G..', '.GGG.', 'GGWGG', 'GGGGG', '.GGG.', '..g..', '..g..'],
+    ['G.G.G', '.GGG.', 'GGWGG', 'GGGGG', '.GGG.', '..g..', '..g..'],
+  ],
+  bang: [['.G.', '.G.', '.G.', '...', '.G.']],
+  note: [['..GG', '..G.', '.G..', 'GG..', 'GG..']],
 };
 
 // Open book: left page, spine, right page. Frames 1-2 turn a page.
@@ -477,7 +502,7 @@ export function textWidth(text) {
 }
 
 // Draws pixel glyphs straight onto a canvas context.
-function fillPixels(ctx, rows, x0, y0, colorFor) {
+export function fillPixels(ctx, rows, x0, y0, colorFor) {
   for (let y = 0; y < rows.length; y++) {
     for (let i = 0; i < rows[y].length; i++) {
       const ch = rows[y][i];
@@ -488,7 +513,7 @@ function fillPixels(ctx, rows, x0, y0, colorFor) {
   }
 }
 
-const paletteColor = (ch) => PALETTE[ch];
+export const paletteColor = (ch) => PALETTE[ch];
 
 function drawText(ctx, text, x, y, color) {
   if (text === '<3') {
@@ -503,7 +528,13 @@ function drawText(ctx, text, x, y, color) {
   }
 }
 
-function drawCoin(ctx, x, y) {
+// turn: 0 = face, 1..4 = the coin turning over to its back and round again
+export function drawCoin(ctx, x, y, turn = 0) {
+  const rows = turn > 0 ? COIN_TURN[Math.min(turn, COIN_TURN.length - 1)] : null;
+  if (rows) {
+    fillPixels(ctx, rows, x, y, paletteColor);
+    return;
+  }
   fillPixels(ctx, COIN, x, y, paletteColor);
   fillPixels(ctx, FONT.$, x + 2, y + 1, () => PALETTE.k);
   ctx.fillStyle = PALETTE.k;
@@ -511,32 +542,43 @@ function drawCoin(ctx, x, y) {
   ctx.fillRect(x + 3, y + 7, 2, 1);
 }
 
-function drawItem(ctx, item) {
-  if (!item) return;
+export function drawBook(ctx, frame) {
+  const rows = bookRows(frame);
+  fillPixels(ctx, rows, 16, 56 - rows.length, paletteColor);
+  // paws resting on the book
+  fillPixels(ctx, ['22222', '23332', '.222.'], 17, 52, paletteColor);
+  fillPixels(ctx, ['22222', '23332', '.222.'], 34, 52, paletteColor);
+}
 
-  switch (item.kind) {
-    case 'text':
-      drawText(ctx, item.text, item.x, item.y, PALETTE.C);
-      break;
-    case 'block':
-      ctx.fillStyle = PALETTE.C;
-      ctx.fillRect(item.x, item.y, 2, 2);
-      break;
-    case 'obj':
-      fillPixels(ctx, OBJECTS[item.name], item.x, item.y, paletteColor);
-      break;
-    case 'crown':
-      fillPixels(ctx, CROWN, item.x, item.y, paletteColor);
-      break;
-    case 'coin':
-      drawCoin(ctx, item.x, item.y);
-      if (item.spark) fillPixels(ctx, SPARK, item.x + 6, item.y - 5, paletteColor);
-      break;
-    case 'sparkle':
-      fillPixels(ctx, SPARK, item.x, item.y, paletteColor);
-      break;
-    default:
-  }
+/*
+ * Temporary overlays (view.item): one drawer per kind. Adding a prop kind
+ * is adding an entry here; unknown kinds are ignored.
+ */
+const ITEM_KINDS = {
+  text: (ctx, i) => drawText(ctx, i.text, i.x, i.y, PALETTE.C),
+  block: (ctx, i) => {
+    ctx.fillStyle = PALETTE.C;
+    ctx.fillRect(i.x, i.y, 2, 2);
+  },
+  obj: (ctx, i) => fillPixels(ctx, OBJECTS[i.name], i.x, i.y, paletteColor),
+  crown: (ctx, i) => fillPixels(ctx, CROWN, i.x, i.y, paletteColor),
+  coin: (ctx, i) => {
+    drawCoin(ctx, i.x, i.y, i.turn || 0);
+    if (i.spark) fillPixels(ctx, SPARK, i.x + 6, i.y - 5, paletteColor);
+  },
+  sparkle: (ctx, i) => fillPixels(ctx, SPARK, i.x, i.y, paletteColor),
+  glyph: (ctx, i) => {
+    const frames = GLYPHS[i.name];
+    if (frames) fillPixels(ctx, frames[(i.frame || 0) % frames.length], i.x, i.y, paletteColor);
+  },
+};
+
+// Kinds that never clash with the stressed appearance.
+const STRESS_SAFE_ITEMS = new Set(['text', 'block']);
+
+function drawItem(ctx, item, stressed) {
+  if (!item || (stressed && !STRESS_SAFE_ITEMS.has(item.kind))) return;
+  ITEM_KINDS[item.kind]?.(ctx, item);
 }
 
 /* ------------------------------------------------------------------ */
@@ -549,11 +591,13 @@ function buildCat(p) {
   const stand = p.pose === 'stand';
   const stretch = p.pose === 'stretch';
   const stressed = p.mood === 'stressed';
-  const lowered = p.book !== null || p.eyes === 'down' || (p.eyes === 'closed' && !stand);
+  const lowered = p.book != null || p.eyes === 'down' || (p.eyes === 'closed' && !stand);
   const walkBob = stand && p.legs !== 0 ? (p.legs === 1 ? 0 : 1) : p.frame % 2;
 
   const hx = HX + p.lean + (stressed ? (p.frame % 2 ? -1 : 1) : 0);
-  const hy = 4 + (stand ? -1 : 0) + walkBob + (stretch ? 5 : 0) + (lowered ? 2 : 0) + (stressed ? 1 : 0);
+  const droop = stressed ? 0 : p.droop || 0;
+  const hy =
+    4 + (stand ? -1 : 0) + walkBob + (stretch ? 5 : 0) + (lowered ? 2 : 0) + droop + (stressed ? 1 : 0);
 
   // tail (behind), torso, head
   const sway = stressed ? (p.frame % 2 ? 2 : -1) : p.frame % 3 === 2 ? 1 : 0;
@@ -574,24 +618,14 @@ function buildCat(p) {
   drawHead(cat, p, hx, hy);
   drawWhiskers(over, hx, hy, stressed, p.frame % 2);
 
-  return { cat, over, hx, hy, footY: stand ? 58 : 56 };
+  return { cat, over, hx, hy, footY: stand ? LIGHTING.shadow.standY : LIGHTING.shadow.sitY };
 }
 
-// Chest charm, crown, book: drawn after the lighting passes.
-function drawProps(ctx, p, hx, hy) {
-  const content = p.mood === 'content';
-  const stressed = p.mood === 'stressed';
-
-  if (content || stressed) drawCoin(ctx, 24, 34);
-  if (content) fillPixels(ctx, CROWN, hx + 12 + p.crown, hy + 3, paletteColor);
-
-  if (p.book !== null && p.book !== undefined && p.pose !== 'stand') {
-    const rows = bookRows(p.book);
-    fillPixels(ctx, rows, 16, 56 - rows.length, paletteColor);
-    // paws resting on the book
-    fillPixels(ctx, ['22222', '23332', '.222.'], 17, 52, paletteColor);
-    fillPixels(ctx, ['22222', '23332', '.222.'], 34, 52, paletteColor);
-  }
+// Worn and held items render through the pet's vanity registry, after the
+// lighting passes, using the head anchor of this frame.
+function drawProps(ctx, p, hx, hy, vanity) {
+  if (!vanity) return;
+  vanity.draw(ctx, { ...p, hx, hy }, { fillPixels, colorFor: paletteColor });
 }
 
 /* ------------------------------------------------------------------ */
@@ -645,11 +679,12 @@ function paintGrid(ctx, g) {
 
 /*
  * p: { mood, gaze, eyes, mouth, legs, pose, lean, facing, cue, item,
- *      book, crown, glitch, frame, light }
+ *      book, crown, crownLift, coin, droop, glitch, frame, light }
+ * vanity: the pet's vanity registry (worn items).
  * The caller's ctx is a SPRITE_W x SPRITE_H canvas context. The base art
  * has its tail on the right (as in the concept art); facing > 0 mirrors it.
  */
-export function renderSprite(ctx, p) {
+export function renderSprite(ctx, p, vanity) {
   const { a, ac, b, bc } = layers();
   const flip = p.facing > 0;
   const stressed = p.mood === 'stressed';
@@ -665,13 +700,15 @@ export function renderSprite(ctx, p) {
   const { cat, over, hx, hy, footY } = buildCat(q);
   const lit = rimLight(cat, light);
   const under = makeGrid();
-  drawUnder(under, lit, light, footY, q.pose === 'stand' ? 16 : 14, q.pose === 'stand' ? 39 : 41);
+  const stand = q.pose === 'stand';
+  const [f0, f1] = stand ? LIGHTING.shadow.standFeet : LIGHTING.shadow.sitFeet;
+  drawUnder(under, lit, light, footY, f0, f1);
 
   ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
   paintGrid(ac, under);
   paintGrid(ac, lit);
   paintGrid(ac, over);
-  drawProps(ac, q, hx, hy);
+  drawProps(ac, q, hx, hy, vanity);
 
   bc.clearRect(0, 0, SPRITE_W, SPRITE_H);
   bc.save();
@@ -726,5 +763,5 @@ export function renderSprite(ctx, p) {
     const w = textWidth(p.cue);
     drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, 0, stressed ? PALETTE.R : PALETTE.C);
   }
-  drawItem(ctx, p.item);
+  drawItem(ctx, p.item, stressed);
 }
