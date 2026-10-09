@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
 import usePet from '../pets/usePet.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
+import EnvProp from '../pets/EnvProp.jsx';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
@@ -187,6 +188,25 @@ function Pet({ pet }) {
   ]);
 
   const visible = placed && geo !== null;
+
+  // Temporary environmental props live in the same perspective layer. Props
+  // deeper than the pet are drawn before it, nearer ones after it, so the
+  // pet passes in front of or behind them like any object in the space.
+  const propEntries =
+    visible && view.props
+      ? Object.entries(view.props).filter(([, spec]) => pet.props?.[spec.kind])
+      : [];
+  const renderProp = ([id, spec]) => (
+    <EnvProp
+      key={id}
+      spec={spec}
+      def={pet.props[spec.kind]}
+      world={world}
+      geo={geo}
+      scale={scale}
+      frame={frame}
+    />
+  );
   const moveMs = reduced ? 0 : view.transitionMs;
   const ease = view.ease === 'linear' ? 'linear' : 'var(--motion-ease)';
   const opacity = visible
@@ -203,6 +223,7 @@ function Pet({ pet }) {
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
       style={{ perspective: `${world.perspective}px`, perspectiveOrigin: '50% 50%' }}
     >
+      {propEntries.filter(([, spec]) => spec.z <= view.z).map(renderProp)}
       <div
         ref={actorRef}
         className="nomoz-actor"
@@ -242,6 +263,7 @@ function Pet({ pet }) {
           )}
         </AnimatePresence>
       </div>
+      {propEntries.filter(([, spec]) => spec.z > view.z).map(renderProp)}
     </div>
   );
 }

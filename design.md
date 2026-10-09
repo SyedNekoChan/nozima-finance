@@ -263,6 +263,98 @@ disable either with `enabled: false`; a pet that defines no
 `financialReactions` simply has none. New pets reuse the same adapter and
 director.
 
+### Rare environmental encounters
+
+Two rare, unscripted discoveries in the cat's world. Each is one registered
+behavior built by `defineEncounter` (`src/pets/core/encounter.js`); the
+scheduler treats them like any other behavior. Neither reads, shows or
+changes application data, and neither is connected to financial events.
+
+**Miniature terminal** (`miniTerminal`). A tiny floating pixel-art terminal
+(grey housing, dark teal glass, a faint highlight, stand and keyboard hint, a
+one-pixel float on the slow clock) appears at a random X / Y / Z spot in the
+backdrop. The cat notices it (wide eyes, gaze toward it), hesitates, then
+approaches cautiously with the normal walking steps and stops a little nearer
+to the viewer than the terminal. The screen wakes with a blinking cursor, the
+cat leans in slightly, and exactly one decorative glyph from a small
+configurable set (`glyphs`: `* + # ~ = @ & %`) shows for 2.6–5.2s. The cat
+watches, blinks, glances up and back, the screen goes dark, and the cat turns
+and walks away; the terminal fades and is removed. It can only ever show that
+glyph or a cursor, never text, numbers or user data.
+
+**Mysterious depth anomaly** (`depthAnomaly`). A small, localized tear in the
+backdrop forms at a random position and depth: short, near-black pixel runs
+that slip sideways in bands, a few detached fragments, a handful of cool
+pixels. It is not a sphere, orb or portal, nothing screen-wide, and the cat's
+sprite is never altered. The cat notices it, hesitates, approaches to a wary
+distance (the tear's displacement grows with proximity), studies it for
+3.5–7s with wandering gaze and, usually, one small step closer. The tear then
+surges (larger offsets, a few more cool pixels) and the cat flinches back and
+retreats by walking; the tear loses coherence in steps, fragments, fades and is
+removed. The cat stays where it naturally reached, pauses, glances back once
+and resumes.
+
+**World props.** Encounter objects are world-anchored props
+(`src/pets/EnvProp.jsx`): a small canvas inside the pet's perspective layer,
+placed with the same `translate3d` transform as the cat, so they have real
+X / Y / Z positions and scale with depth. Props deeper than the cat are drawn
+before it and nearer ones after it. They are part of the global backdrop:
+they belong to no tab, stay behind all foreground UI and never take pointer
+events. A pet declares prop kinds in `definePet({ props })`
+(`nomoz/props.js`: `{ width, height, render(ctx, spec, frame) }`); encounters
+create, update and remove them by id with `S.prop(t, id, spec | null)`. The
+prop's look changes only through the encounter's own script beats (glyph,
+screen state, coherence, displacement phase); there is no separate animation
+loop.
+
+**Scheduling and rarity.**
+
+- Weights are tiny (about 0.5–0.7 against 3–16 for ordinary behaviors) and the
+  rarity tier is `extremelyRare`, so an encounter is a rare pick.
+- Not before a randomized `startDelay` after page load (2–5 min).
+- A randomized per-encounter cooldown after each run (terminal 20–45 min,
+  anomaly 25–50 min) and a shared randomized quiet gap after any encounter
+  (8–16 min), kept in the scheduler's per-session `memory`. The two therefore
+  never follow each other closely and never repeat soon. The scheduler also
+  never repeats a behavior back to back.
+- Only in the idle and content moods, never stressed. Not while the pet is
+  off-screen. They are `moves` behaviors, so reduced motion never selects
+  them.
+- One behavior runs at a time and each encounter owns a single prop id, so
+  encounters and their props can never overlap or compete for movement.
+- Spawn spot, depth, distance from the cat, glyph, tear seed, hesitation and
+  inspection times are all drawn at run time.
+
+**Lifecycle and cleanup.** `plan` builds one timeline (settle → appear →
+notice → hesitate → approach → examine → depart → removal) that the
+scheduler plays from its single timer. `exit` runs on completion and on
+cancellation (a financial-state change, an interaction request, an error):
+it removes the prop by id and records the cooldowns, so nothing is left
+behind, and the pet's posture reset also clears all props. If the financial
+state changes mid-encounter the existing transition rules apply, the encounter
+is cancelled cleanly and the scheduler resumes with an eligible behavior for
+the new state. Movement is continuous walking in X / Y / Z; nothing teleports,
+and a viewport resize only clamps props back inside the layer.
+
+**Configuration.** Per-encounter data is in `ENCOUNTERS` (`nomoz/config.js`):
+id, name, rarity, weights, cooldown, duration, spawn depth band and distance
+(in cells), approach stop distance, depth offset and step time, timing ranges,
+glyph set, screen timings, inspection and retreat ranges, follow-ons. Shared
+defaults (`startDelay`, `groupGap`, spawn tries) are in `ENCOUNTER`
+(`src/pets/config.js`). Disable or retune without code: `BEHAVIOR_OVERRIDES`
+(`{ miniTerminal: { enabled: false } }`), or remove the module from
+`behaviors/encounters.js`.
+
+**Adding an encounter.** 1) Add a prop kind to `nomoz/props.js` and list it in
+the pet's `props`. 2) Add its data block to `ENCOUNTERS`. 3) Export a
+`defineEncounter({ ...data, appear(c), examine(S, c, run, t), depart(S, c, run, t) })`
+from `behaviors/encounters.js` (or a new file listed in `behaviors/index.js`).
+`examine` and `depart` return the new time `t`; `run` provides `spawn`, `stop`,
+`facing`, `gaze` and `away(cells)`. The framework supplies selection
+eligibility, spawning, noticing, approaching, cleanup and cooldowns. No change
+to the scheduler, the shell or any other component is needed, and a pet
+without the prop kind simply does not offer the encounter.
+
 ### Behavior scheduler
 
 `PetScheduler` (`src/pets/core/scheduler.js`) is the only thing that picks
@@ -313,6 +405,9 @@ Personality behaviors:
 | sleep        | idle                  | Eyes droop, a slow nod, the head sinks, `z` cues for 8–20s, wakes naturally |
 | vanity       | content               | Rare and composed: adjusts its crown, admires its coin with sparkles, or checks itself over |
 
+Rare encounters (see "Rare environmental encounters"): `miniTerminal`,
+`depthAnomaly`.
+
 Financial-context behaviors (see "Financial context"): `relax`, `budgetWatch`
 (flag-driven), `startle`, `unsettledLook` (stressed), and the reaction-only
 `incomeGlance`, `expenseGlance`, `transferNod`, `interest`, `relief`.
@@ -331,6 +426,7 @@ src/pets/
   registry.js          registerPet / getPet / listPets / getActivePet
   usePet.js            hook: view state, placement, scheduler, frame clock
   PetErrorBoundary.jsx a pet error removes the pet, never the app
+  EnvProp.jsx          one world-anchored environmental prop (encounter objects)
   finance/
     config.js          FINANCE: approach ratio (visual only), queue, cooldowns
     director.js        FinancialDirector + defineFinancialReaction
@@ -342,6 +438,7 @@ src/pets/
     animations.js      animation registry
     vanity.js          vanity / equipment registry
     interactions.js    future interaction API
+    encounter.js       defineEncounter: rare environmental encounters
     space.js           createWorld: depth, bounds, spots, transform
     rng.js             seed, PRNG and small helpers
   nomoz/
@@ -349,6 +446,7 @@ src/pets/
     config.js          appearances, overrides, lighting, equipped items
     sprites.js         pixel art, pose / frame composition, prop drawers
     financial.js       NOMOZ.EXE's financial reactions (data)
+    props.js           world props: miniature terminal, depth anomaly
     animations.js      shared animation sequences
     vanity.js          slots and items (crown, coins, book)
     behaviors/         one module per group of behaviors
@@ -365,7 +463,7 @@ definition.
 `definePet` takes: `id`, `name`, `sprite { width, height, render(ctx, params,
 vanity) }`, `animations`, `behaviors` (+ `behaviorOverrides`), `appearances`
 (per financial state: base alpha), `vanity { slots, items, equipped }`,
-`capabilities`, `reactions`, `financialReactions`, `world` overrides, `initial` placement hints,
+`capabilities`, `reactions`, `props`, `financialReactions`, `world` overrides, `initial` placement hints,
 and palette / lighting data used by its own sprite module.
 
 1. Create `src/pets/<id>/` with a sprite module, animations, behaviors and
@@ -392,6 +490,7 @@ Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
 | `duration`           | `[min, max]` ms (read with `this.duration` in `plan`)             |
 | `moves`              | needs motion: skipped under reduced motion                        |
 | `requires`           | capabilities or `vanity:<itemId>`; unsupported behaviors are inert |
+| `requires` (`prop:<kind>`) | a pet must declare that prop kind                        |
 | `requiresFlags`      | financial-context flags that must be set (e.g. `approaching`)     |
 | `flagWeights`        | `{ flag: factor }` weight multipliers while a flag is set         |
 | `reactMoods`         | moods where a financial reaction may run it despite weight 0      |
@@ -403,7 +502,7 @@ Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
 
 `c` holds `rng`, `pet`, `mood`, `compact`, `reduced`, `cur` (current view
 including `sx`, `sy`, `z`), `geo`, `pickSpot`, `apply`. `S.at(t, patch)`,
-`S.blink(t)` and `S.play(animationId, t, opts)` build the script;
+`S.blink(t)`, `S.prop(t, id, spec | null)` and `S.play(animationId, t, opts)` build the script;
 `travel`, `sweep`, `zBand` in `core/toolkit.js` handle movement (travel
 walks in X, Y and Z, one linear glide per step, optionally weighting depth
 so a pure Z move takes proportionally more steps). The scheduler plays the
@@ -462,6 +561,8 @@ never override the stressed or prosperous appearance.
 | Depth range, near boost, scale, margins, opacity, light steps | `WORLD` in `src/pets/config.js`        |
 | Gaps, cooldown history, rarity weights, step timing, clocks   | `SCHEDULER` in `src/pets/config.js`    |
 | Active pet, enabled interactions                              | `src/pets/config.js`                   |
+| Encounter start delay and shared quiet gap                    | `ENCOUNTER` in `src/pets/config.js`    |
+| Encounter weights, cooldowns, spawn, glyphs, timing           | `ENCOUNTERS` in `src/pets/nomoz/config.js` |
 | Approach ratio, queue size, settle / dedupe, ack cooldowns, priorities | `FINANCE` in `src/pets/finance/config.js` |
 | Financial reaction triggers, priorities, TTL, cooldowns, candidates | `src/pets/nomoz/financial.js`     |
 | Per-pet world override, appearances, lighting / shadow        | `src/pets/nomoz/config.js`             |
@@ -489,5 +590,5 @@ random and the correct state is shown, but walking, peeking, depth drift,
 leans, glitches, the animation clock and all position / opacity
 transitions are disabled. Only stationary behaviors remain (sit, observe,
 look, watch beyond, long pause, sleep, read, idea, vanity, coin inspection
-and the like, plus the gaze-only financial reactions), on a slower cadence; the coin turn collapses to a still
+and the like, plus the gaze-only financial reactions; the walking encounters are not offered), on a slower cadence; the coin turn collapses to a still
 face-and-back. State changes are instant.

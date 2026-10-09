@@ -515,7 +515,7 @@ export function fillPixels(ctx, rows, x0, y0, colorFor) {
 
 export const paletteColor = (ch) => PALETTE[ch];
 
-function drawText(ctx, text, x, y, color) {
+export function drawText(ctx, text, x, y, color) {
   if (text === '<3') {
     fillPixels(ctx, HEART, x, y, paletteColor);
     return;
