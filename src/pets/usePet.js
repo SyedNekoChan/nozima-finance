@@ -26,6 +26,7 @@ const INITIAL_VIEW = {
   droop: 0,
   glitch: 0,
   fade: 1,
+  props: {},
   offscreen: false,
   transitionMs: 0,
   ease: 'out',
@@ -49,6 +50,7 @@ const RESET = {
   droop: 0,
   glitch: 0,
   fade: 1,
+  props: {}, // temporary environmental objects never outlive a cancelled behavior
 };
 
 /*
@@ -101,8 +103,20 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
   flagsRef.current = approaching ? ['approaching'] : [];
   modeRef.current = { mood, compact, reduced };
 
+  // Patches merge into the view. `propOps` ([[id, spec | null], ...]) creates,
+  // updates or removes world-anchored environmental props by id.
   const commit = useCallback((patch) => {
-    curRef.current = { ...curRef.current, ...patch };
+    let next = patch;
+    if (patch.propOps) {
+      const { propOps, ...rest } = patch;
+      const props = { ...curRef.current.props };
+      for (const [id, spec] of propOps) {
+        if (spec === null) delete props[id];
+        else props[id] = { ...props[id], ...spec };
+      }
+      next = { ...rest, props };
+    }
+    curRef.current = { ...curRef.current, ...next };
     setView(curRef.current);
   }, []);
 
@@ -134,6 +148,14 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
     if (c.sx !== cur.sx || c.sy !== cur.sy) {
       commit({ ...c, transitionMs: reduced ? 0 : SCHEDULER.ambientMs, ease: 'out' });
     }
+
+    // environmental props stay inside the layer after a resize too
+    const ops = [];
+    for (const [id, spec] of Object.entries(cur.props || {})) {
+      const p = geo.clamp(spec);
+      if (p.sx !== spec.sx || p.sy !== spec.sy) ops.push([id, { sx: p.sx, sy: p.sy }]);
+    }
+    if (ops.length) commit({ propOps: ops });
   }, [geo, reduced, commit]);
 
   // The one behavior scheduler for this pet. Created once it is placed and

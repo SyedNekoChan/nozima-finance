@@ -63,3 +63,16 @@ export const SCHEDULER = {
   frameMs: 1000,
   fastFrameMs: 300,
 };
+
+/* ------------------------------------------------------------------ */
+/* Environmental encounters (rare, shared defaults)                    */
+/* ------------------------------------------------------------------ */
+
+export const ENCOUNTER = {
+  // not before this long after page load (randomised per session)
+  startDelay: [120000, 300000],
+  // quiet time after ANY encounter, so two never follow each other closely
+  groupGap: [480000, 960000],
+  // spawn attempts before falling back to a plain random spot
+  spawnTries: 10,
+};

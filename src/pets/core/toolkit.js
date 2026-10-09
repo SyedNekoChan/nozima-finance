@@ -23,6 +23,10 @@ export function makeScript(c, animations) {
       S.at(t + 140, { eyes: back });
       return S;
     },
+    // create / update / remove (spec = null) a world-anchored environmental prop
+    prop(t, id, spec) {
+      return S.at(t, { propOps: [[id, spec]] });
+    },
     // play a named animation from the pet's animation registry
     play(id, t0 = 0, opts) {
       return animations ? animations.play(S, c, id, t0, opts) : t0;

@@ -17,6 +17,8 @@ import { createWorld } from './space.js';
  *   vanity      { slots, items, equipped }
  *   capabilities  ['walk', 'read', ...]  optional extensions it supports
  *   reactions   { semanticName: behaviorId }  for the interaction API
+ *   props       { kind: { width, height, render(ctx, spec, frame) } }  world-anchored
+ *               environmental objects (encounters spawn them by kind)
  *   financialReactions  [defineFinancialReaction(...)]  how this pet reacts to
  *               financial transitions and successful operations, mapped onto
  *               its own behaviors (the shared adapter / director is reused)
@@ -42,8 +44,13 @@ export function definePet(def) {
   });
 
   const capabilities = new Set(def.capabilities || []);
+  const props = def.props || {};
   const hasCapability = (cap) =>
-    cap.startsWith('vanity:') ? vanity.has(cap.slice(7)) : capabilities.has(cap);
+    cap.startsWith('vanity:')
+      ? vanity.has(cap.slice(7))
+      : cap.startsWith('prop:')
+      ? !!props[cap.slice(5)]
+      : capabilities.has(cap);
 
   const animations = createAnimationRegistry(def.animations || []);
 
@@ -63,6 +70,7 @@ export function definePet(def) {
     initial: { poses: ['sit'] },
     ...def,
     vanity,
+    props,
     financialReactions,
     animations,
     capabilities,

@@ -59,6 +59,7 @@ export class PetScheduler {
     this.lastAt = {};
     this.broken = new Set(); // behaviors that threw: switched off for the session
     this.queued = null; // a requested reaction waiting for the next boundary
+    this.memory = {}; // per-session scratch space for behaviors (cooldowns spanning runs)
   }
 
   // Exactly one pending timer at any moment.
@@ -113,7 +114,10 @@ export class PetScheduler {
     this.current = null;
     if (b?.exit) {
       const c = this.getCtx();
-      if (c) this.guard(() => b.exit(c, why));
+      if (c) {
+        c.memory = this.memory;
+        this.guard(() => b.exit(c, why));
+      }
     }
   }
 
@@ -220,6 +224,7 @@ export class PetScheduler {
       this.schedule(() => this.next(forceId), 200);
       return;
     }
+    c.memory = this.memory;
 
     const id = forceId || this.choose(c);
     const b = id && this.byId[id];
