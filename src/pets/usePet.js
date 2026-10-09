@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AMBIENT_MS, REACTIONS, createRng, runtimeSeed } from '../lib/nomoz.js';
-import { NomozScheduler } from '../lib/nomozBehaviors.js';
-import { pickSpot } from '../lib/nomozSpace.js';
+import { REACTIONS } from '../lib/nomoz.js';
+import { SCHEDULER } from './config.js';
+import { attachInteractions } from './core/interactions.js';
+import { createRng, pick, rnd, runtimeSeed } from './core/rng.js';
+import { PetScheduler } from './core/scheduler.js';
 
 const INITIAL_VIEW = {
   sx: null,
@@ -18,6 +20,9 @@ const INITIAL_VIEW = {
   item: null,
   book: null,
   crown: 0,
+  crownLift: 0,
+  coin: null,
+  droop: 0,
   glitch: 0,
   fade: 1,
   offscreen: false,
@@ -25,7 +30,8 @@ const INITIAL_VIEW = {
   ease: 'out',
 };
 
-// Posture reset when the financial mood (or breakpoint) changes.
+// Posture reset when the financial mood (or breakpoint) changes, or a
+// behavior is cancelled. Position and depth are never part of it.
 const RESET = {
   pose: 'sit',
   gaze: 'c',
@@ -37,32 +43,30 @@ const RESET = {
   item: null,
   book: null,
   crown: 0,
+  crownLift: 0,
+  coin: null,
+  droop: 0,
   glitch: 0,
   fade: 1,
 };
 
-const FRAME_MS = 1000;
-const FAST_FRAME_MS = 300;
-
-const rnd = (r, a, b) => a + r() * (b - a);
-const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
-
 /*
- * Owns NOMOZ.EXE's state. A runtime seed (new every page load) drives
+ * Owns the active pet's state. A runtime seed (new every page load) drives
  * the initial placement, orientation, pose and the first behavior, so
- * startup is never scripted. After that a single NomozScheduler picks
- * behaviors dynamically; this hook only mirrors its patches into React
- * state and restarts it when mood / breakpoint / reduced-motion change.
- * Everything is torn down on unmount.
+ * startup is never scripted. After that ONE PetScheduler per pet picks
+ * behaviors dynamically; this hook mirrors its patches into React state
+ * and only tells it when mood / breakpoint / reduced-motion change. It
+ * stops everything on unmount.
  *
- * Nothing here knows about tabs or foreground content: the entity's
- * world position, seed, scheduler and animation progress simply
- * persist while the UI above it changes. Only a physical viewport
- * resize may clamp the position back into range.
+ * Nothing here knows about tabs or foreground content: the pet's world
+ * position, seed, scheduler and animation progress persist while the UI
+ * above it changes. Only a physical viewport resize may clamp the position
+ * back into range.
  *
- *   geo : makeGeo(...) once the layer is measured, else null
+ *   pet : a registered pet definition (see pets/registry.js)
+ *   geo : pet.world.makeGeo(...) once the layer is measured, else null
  */
-export default function useNomoz({ mood, compact, reduced, geo }) {
+export default function usePet({ pet, mood, compact, reduced, geo }) {
   const [view, setView] = useState(INITIAL_VIEW);
   const [reaction, setReaction] = useState(null);
   const [frame, setFrame] = useState(0);
@@ -73,11 +77,12 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
   // curRef is the source of truth; `view` mirrors it for rendering.
   const curRef = useRef(INITIAL_VIEW);
   const geoRef = useRef(geo);
+  const modeRef = useRef({ mood, compact, reduced });
   const schedRef = useRef(null);
-  const firstRun = useRef(true);
   const reactionTimers = useRef([]);
 
   geoRef.current = geo;
+  modeRef.current = { mood, compact, reduced };
 
   const commit = useCallback((patch) => {
     curRef.current = { ...curRef.current, ...patch };
@@ -91,18 +96,18 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
   useEffect(() => {
     if (!ready || curRef.current.sx !== null) return;
     const rng = rngRef.current;
-    const spot = pickSpot(geoRef.current, rng, {});
+    const spot = pet.world.pickSpot(geoRef.current, rng, {});
 
     commit({
       ...spot,
       facing: rng() < 0.5 ? -1 : 1,
-      pose: pick(rng, ['sit', 'sit', 'sit', 'stand']),
+      pose: pick(rng, pet.initial.poses),
       gaze: pick(rng, ['c', 'l', 'r']),
       transitionMs: 0,
     });
-  }, [ready, commit]);
+  }, [ready, pet, commit]);
 
-  // Keep the entity inside the usable range after a resize.
+  // Keep the pet inside the usable range after a resize.
   useEffect(() => {
     if (!geo) return;
     const cur = curRef.current;
@@ -110,11 +115,13 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
 
     const c = geo.clamp(cur);
     if (c.sx !== cur.sx || c.sy !== cur.sy) {
-      commit({ ...c, transitionMs: reduced ? 0 : AMBIENT_MS, ease: 'out' });
+      commit({ ...c, transitionMs: reduced ? 0 : SCHEDULER.ambientMs, ease: 'out' });
     }
   }, [geo, reduced, commit]);
 
-  // The one behavior scheduler for this entity.
+  // The one behavior scheduler for this pet. Created once it is placed and
+  // kept for the life of the mount: tabs, modals and ordinary UI updates do
+  // not touch it.
   useEffect(() => {
     if (!placed) return undefined;
 
@@ -125,27 +132,65 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
       if (!g) return null;
       return {
         rng,
-        mood,
-        compact,
-        reduced,
+        pet,
+        mood: sch.mood,
+        compact: sch.compact,
+        reduced: sch.reduced,
         cur: curRef.current,
         geo: g,
-        pickSpot: (o) => pickSpot(g, rng, o),
+        pickSpot: (o) => pet.world.pickSpot(g, rng, o),
+        apply: commit,
+        has: pet.hasCapability,
       };
     };
 
-    const sch = new NomozScheduler({ rng, mood, reduced, getCtx, apply: commit });
+    const sch = new PetScheduler({
+      key: pet.id,
+      rng,
+      ...modeRef.current,
+      behaviors: pet.behaviors,
+      animations: pet.animations,
+      getCtx,
+      apply: commit,
+      resetPatch: RESET,
+    });
     schedRef.current = sch;
+    sch.start(rnd(rng, ...SCHEDULER.firstDelay));
 
-    if (!firstRun.current) commit(RESET);
-    sch.start(firstRun.current ? rnd(rng, 200, 3200) : rnd(rng, 300, 1100));
-    firstRun.current = false;
+    // Isolated extension point; nothing is attached while none is enabled.
+    const detach = attachInteractions({
+      pet,
+      request: (id, opts) => sch.request(id, opts),
+      getSnapshot: () => {
+        const c = curRef.current;
+        return Object.freeze({
+          petId: pet.id,
+          mood: sch.mood,
+          reduced: sch.reduced,
+          sx: c.sx,
+          sy: c.sy,
+          z: c.z,
+          facing: c.facing,
+        });
+      },
+    });
 
     return () => {
+      detach();
       sch.stop();
       if (schedRef.current === sch) schedRef.current = null;
     };
-  }, [mood, compact, reduced, placed, commit]);
+  }, [pet, placed, commit]);
+
+  // Financial mood / breakpoint / motion preference changed: the same
+  // scheduler abandons its current behavior and carries on.
+  useEffect(() => {
+    const sch = schedRef.current;
+    if (!sch) return;
+    if (sch.mood !== mood || sch.compact !== compact || sch.reduced !== reduced) {
+      sch.setMode({ mood, compact, reduced }, rnd(rngRef.current, ...SCHEDULER.restartDelay));
+    }
+  }, [mood, compact, reduced]);
 
   // Slow animation clock for breathing, tail flicks and the stressed
   // frame flip. One interval; absent under reduced motion.
@@ -156,7 +201,10 @@ export default function useNomoz({ mood, compact, reduced, geo }) {
       setFrame(0);
       return undefined;
     }
-    const id = setInterval(() => setFrame((f) => f + 1), fast ? FAST_FRAME_MS : FRAME_MS);
+    const id = setInterval(
+      () => setFrame((f) => f + 1),
+      fast ? SCHEDULER.fastFrameMs : SCHEDULER.frameMs
+    );
     return () => clearInterval(id);
   }, [reduced, fast]);
 

@@ -19,14 +19,14 @@ All tiers collapse to 0ms under `prefers-reduced-motion`.
 
 | Layer                                   | z-index |
 | --------------------------------------- | ------- |
-| NOMOZ.EXE backdrop layer                | 0       |
+| Pet backdrop layer (NOMOZ.EXE)          | 0       |
 | Active tab content                      | 10      |
 | `[ ! OVER BUDGET ! ]` readout           | 20      |
 | Header                                  | 30      |
 | Footer                                  | 50      |
 | Modals and dropdown overlays            | 50–100  |
 
-The backdrop layer is `absolute inset-0 overflow-hidden pointer-events-none`
+The pet backdrop layer is `absolute inset-0 overflow-hidden pointer-events-none`
 and `aria-hidden`. It is mounted once in the application shell, next to
 (not inside) the tab content, so it is global: it belongs to no tab. It
 lives inside the main area, so it never reaches the header or the fixed
@@ -43,279 +43,348 @@ tab. It is a level-based status (no dismiss, never re-fires) and is the only
 OVER BUDGET indicator in the app. The Dashboard progress bar simply renders
 maxed out at 100%.
 
-## NOMOZ.EXE — backdrop entity
+## NOMOZ.EXE — the backdrop pet
 
-NOMOZ.EXE is a 16-bit pixel-art solid-black tabby cat that lives in a
-shallow 3D space behind the terminal UI. It is the single anomaly element of
-the app: a secondary environmental presence, large enough to be recognised at
-a glance, but always behind the primary financial content.
+NOMOZ.EXE is a 16-bit pixel-art solid-black cat that lives in a shallow 3D
+space behind the terminal UI: a secondary environmental presence, large
+enough to recognise at a glance, always behind the primary financial
+content. It is the first pet of a small, moddable pet subsystem
+(`src/pets`); everything below describes the implemented system.
 
 ### Canonical reference
 
-The attached concept art ("Solid Black Tabby") is the source of truth for
-the character. Every frame, in every state, is that same cat:
+The "lonely black cat" pixel-art image is the source of truth for the
+character. Every frame, pose and state is that same cat:
 
-- A front-facing, sitting solid-black tabby (the default pose).
-- Two pointed ears with a lighter inner ear.
-- A round head with faint tabby stripes on the forehead and cheeks.
-- Big round black eyes, each with a bright vertical highlight.
-- A small grey nose, two thin whiskers per side and a small `w` mouth
-  (a proper cat face: no long jaw, no light muzzle patch and no big open
-  mouth, so it never reads as a moustache or beard).
-- A lighter, downward-pointing chest bib.
-- Two front legs with a dark gap between them, haunches at the sides and
-  a striped tail curling up on one side.
+- A solid-black, front-facing, sitting cat with a wide head and a flat
+  crown between two pointed ears, each with a white inner ear.
+- Half-lidded amber eyes: a pale gold crescent with a small bright
+  highlight pixel, on black.
+- Long thin whiskers extending past the head on both sides.
+- A tall narrow sitting body and a tail curling up on the right (mirrored
+  when it faces the other way).
+- Near-black internal planes only (chest bib, haunch, leg and stripe
+  tones), so it reads as black, never as a grey or generic cat.
 
-It is not an ASCII cat and not a generic pixel cat. No unrelated accessories
-are added; the only extras are the crown and `$` coin of the content state.
+Pixel-art rules, for every future frame:
 
-### Persistent world
+- 16-bit, hard pixels, no blur or smoothing, no vector or cartoon
+  reinterpretation. Frames are built from the shared parts of the same cat
+  (head, torso, tail, eye overlays); poses are expression, lean, head
+  offset and leg frames, never a redrawn or distorted character.
+- No bright outlines, neon edges, glossy highlights or extra colours. The
+  only bright pixels are the eye highlights, white inner ears, the gold of
+  the prosperous state, and the cyan / red cues.
+- Eye states: resting amber crescent, wide ring (surprise), lowered crescent
+  (reading), closed arc (blink / sleep), `^ ^` (content), pale panic eyes
+  (stressed).
 
-- NOMOZ.EXE belongs to the global backdrop, not to any tab. It is mounted
-  once and stays mounted while Dashboard, Ledger, Calendar, Accounts (and
-  anything else) change above it.
-- Its world position (X, Y, Z), facing, depth, current behavior, behavior
-  scheduler, random seed and animation progress all persist across tab
-  changes and modal open/close. Switching tabs has no effect on any of
-  them; the component does not even read the active tab.
-- Foreground content may naturally cover it. That is intended: it keeps
-  living behind the UI and is simply seen again wherever it has walked to.
-- It is never teleported, relocated or re-placed to stay visible, and
-  there is no tab-specific placement or visibility logic. It is never drawn
-  above foreground content to make it visible.
-- Only a physical viewport resize may clamp its position back into the
-  usable range.
+### Lighting, shading, shadows, depth
 
-### Pixel art
+The cat stays black; it is revealed by light, never by recolouring:
 
-- A 56x60 logical-pixel canvas, drawn from pixel grids and scaled by a
-  whole number (3x on phones, 4x elsewhere) with `image-rendering:
-  pixelated`. Edges are hard pixels: no smoothing, no gradients on the cat,
-  no vector art, no CSS glow.
-- Frames are built from shared parts rather than whole pre-drawn images, so
-  the design cannot drift between poses: one mirrored head half-grid
-  (ears, stripes, wide rounded face), a sitting torso (the reference pose) and a
-  standing torso (walk cycle), one tail grid with a small sway, eye / nose /
-  mouth overlays, and props (crown, `$` coin, book, objects, a 3x5 pixel
-  font for cues). All of it lives in `src/lib/nomozSprites.js`.
-- The art faces one way (tail on the right, as in the reference) and is
-  mirrored for the other direction. Gaze and lean are screen-space.
-- Breathing is a one-pixel head bob on a slow clock, with an occasional
-  tail sway.
-
-### Staying black, staying visible
-
-The cat stays solid black; it is revealed by light instead of recolouring:
-
-- Fur is near-black in five tones (`#000` to `#292e34`). The tones only
-  separate body planes: the chest bib, inner ears, haunch and leg planes,
-  tabby stripes.
-- A directional rim light on the upper-left edges and a dimmer edge on the
-  right (`#3b424a` and `#56606a` corners). It is computed for every pose
-  from the silhouette, so walking, sleeping and reading are all lit the
-  same way.
+- Fur is near-black in five tones (`#000` to `#292e34`) separating body
+  planes only.
+- A directional rim light on the upper-left edges and a dimmer one on the
+  right, computed from the silhouette of every frame, so walking, sleeping
+  and reading are lit identically.
 - A dithered one-pixel backlight aura just outside the silhouette.
-- A dim lit floor pool under the cat with a black contact shadow under the
-  paws, so the cat sits in a space instead of floating.
-- Depth changes the lighting: farther placements get a weaker rim (and
-  lower opacity), nearer ones a stronger rim.
-- Not used: white outlines, neon edges, halos, glossy highlights, drop
-  shadows. The only bright pixels are the eye highlights, the gold of the
-  content state, and the cyan and red cues.
+- A dim floor pool under the cat with a black contact shadow under the
+  paws. Both scale with the sprite, so the shadow responds to depth.
+- Farther placements get a weaker rim and lower opacity, nearer ones a
+  stronger rim. Rim levels, pool size, shadow extents and aura threshold
+  are in `LIGHTING` (`src/pets/nomoz/config.js`).
 
-### Size
+Z-depth (`src/pets/core/space.js`, numbers in `WORLD` in
+`src/pets/config.js`):
 
-- On a 320px phone the cat is about 140px wide and 160px tall before depth
-  scaling; on a wide desktop about 185px by 215px.
-- Depth scaling is bounded, so it stays recognisable and never becomes
-  small on narrow screens.
+- The layer has `perspective: 900px`; the pet is one `translate3d(x, y, z)`
+  child, so depth is real perspective scaling.
+- Position is kept in screen space (`sx`, `sy`) plus `z`; `toTransform`
+  converts it to the pre-perspective offset, so steps and bounds are in
+  visible pixels.
+- Apparent size = perspective scale × a foreground boost that is exactly 1
+  up to mid depth and eases in (smoothstep) to +28% at the closest depth:
+  about 0.74×–1.6× on desktop and 0.8×–1.5× on mobile, no jump anywhere
+  along Z. The boost scales about the sprite centre; placement bounds use
+  the boosted size, so the larger foreground cat never clips an edge.
+- Depth moves continuously by walking or an ambient-tier glide. Movement
+  uses `transform` and `opacity` only.
+- Sprite box: 56×60 logical pixels at a whole-number scale (3× under 640px
+  layer width, 4× above), `image-rendering: pixelated`.
 
-### State 1 — Idle
+### The persistent global pet environment
 
-The reference cat as drawn: eyes open with highlights, a small nose and a
-small `w` mouth, sitting. Its activity is driven by the behavior scheduler (below).
+- The pet belongs to the global backdrop, mounted once in the shell beside
+  (never inside) the tab content. The pet shell (`Anomaly.jsx`) does not
+  read the active tab or any foreground UI.
+- World position (X, Y, Z), facing, current behavior, the scheduler, the
+  random seed and animation progress persist across tab changes, modal
+  open/close and ordinary UI updates. Nothing ever teleports, respawns,
+  resets or relocates to stay visible; foreground content may cover it.
+- Only a physical viewport resize may clamp the position back into range.
+- Stacking: layer z-0, behind tab content (z-10), the OVER BUDGET readout
+  (z-20), header (z-30), footer and modals (z-50+). The layer is
+  `pointer-events: none`, `aria-hidden` and `overflow-hidden`; it never
+  intercepts input or scrolls the page.
+- Placement keeps a margin from every edge (14px desktop, 6px mobile),
+  clears the OVER BUDGET readout and ends above the footer. Spots are
+  random and never chosen with reference to the foreground UI. Layers
+  under 640px use the compact profile (narrower depth range, shorter walks);
+  no horizontal scrolling at 320–375px.
+- A fresh runtime seed on every page load decides the first position,
+  depth, facing, pose, gaze, the first delay (up to ~3s) and the first
+  behavior. There is no fixed loop.
 
-### State 2 — Content / prosperous
+### Financial states
 
-Shown when this month has income, at least 30% of it remains unspent
-(net / income >= 0.3), total balance is positive, and the budget is neither
-exceeded nor reached.
+The state is derived by `deriveNomozMood` (`src/lib/nomoz.js`) from existing
+store selectors only. No threshold, calculation or business rule changed,
+and no animation outcome ever touches financial data.
 
-- The same cat, calm and comfortable: closed happy `^ ^` eyes drawn in a
-  light tone so they read on black, and a small open smile under the `w`.
-- A small pixel gold crown (the `[_/_]` motif) on the forehead between the
-  ears.
-- A gold `$` cyber-coin on the chest bib.
-- Restrained behaviors: sitting, observing, polishing the coin, adjusting
-  the crown, short walks, a brief glint.
+- **Idle** — the reference cat as drawn. It performs the environmental and
+  personality behaviors.
+- **Content / prosperous** — income this month, at least 30% of it unspent,
+  positive balance, budget not reached. The same cat with closed `^ ^`
+  eyes, a small smile, a gold pixel crown and the gold `$` cyber-coin on
+  the chest bib. Calm, composed behaviors only.
+- **Stressed / overspending** — over budget or the budget reached. The same
+  cat, tense and fragmented: rows of the sprite slip sideways in two
+  alternating frames, sparse pixels drop out, head jitters, tail lashes,
+  pale panic eyes, a small jagged mouth, the `$` charm stays, cyan sweat
+  droplets and red `! ? X` marks. The frame flips about every second (300ms
+  during an overspend event).
 
-### State 3 — Stressed / overspending
+One-shot store reactions (`INCOME`, `EXPENSE`, `TRANSFER`, `OVERSPEND`,
+`CELEBRATE`) come from the existing `anomalyEvent` and last seconds; on the
+special calendar day a pixel heart cue shows once per day. State changes
+cross-fade the sprite.
 
-Shown when spending exceeds the monthly budget, or has reached it.
+Financial state has priority over every optional activity:
 
-- The same cat, tense and fragmented: rows of the sprite slip sideways in two
-  alternating frames, sparse pixels drop out of the fur, the head jitters and
-  hunches, and the tail lashes.
-- Wide panicked eyes (pale eye with a small pupil) and a small jagged mouth;
-  the `$` charm stays on the chest.
-- Detached cyan sweat droplets and red `! ? X` marks around it.
-- The frames flip about every second (every 300ms for the first 3s of an
-  overspend event). This is a stepped flicker, not a smooth animation.
-- Nervous behaviors: short shuffles and pacing, flinching leans, rapid
-  `!` / `?` glances, restrained glitches, long still periods.
-
-### 3D space (X / Y / Z)
-
-- The backdrop layer carries `perspective: 900px` (origin at its centre).
-  The sprite is one `translate3d(x, y, z)` child, so depth is real
-  perspective scaling.
-- Position is tracked in screen space: `sx`, `sy` are where the sprite's
-  centre appears and `z` is depth. `toTransform` converts that into the
-  pre-perspective offset, so walking steps and bounds are in visible
-  pixels.
-- Closer (higher z) means larger, more opaque and with a stronger rim; farther
-  means smaller, slightly more subdued and with a weaker rim. Apparent size
-  is perspective scale times a foreground boost: the boost is exactly 1 from
-  the far end through mid depth, so far and mid depth are plain perspective,
-  and it eases in (smoothstep) over the nearer half of the range to +28% at
-  the closest depth. The result is about 0.74x–1.6x on desktop and
-  0.8x–1.5x on mobile, with no jump anywhere along Z. The boost scales
-  about the sprite's own centre, so it never moves the cat's X/Y, and the
-  placement bounds use the boosted size so the foreground cat cannot clip
-  an edge or the footer.
-- Depth interpolates continuously while walking, or glides over the ambient
-  tier. The floor pool and contact shadow scale with the sprite, so the
-  shadow responds to depth. There is no camera movement or parallax.
-- Movement uses `transform` and `opacity` only. Nothing animates layout.
-  The canvas keeps nearest-neighbour scaling, so pixel edges stay crisp.
-
-### Placement
-
-- It may be anywhere in the backdrop (X, Y and Z). The usable region keeps
-  a margin from every edge (14px desktop, 6px mobile), clears the OVER
-  BUDGET readout at the top, and ends at the top of the fixed footer.
-- Spots are chosen at random across that region and are never chosen with
-  reference to the foreground UI.
-- Only the deliberate peek and edge-exit behaviors leave the visible area,
-  and they are hidden by the layer's overflow clip.
-
-### Per-load randomness
-
-Nothing about startup is scripted. A fresh runtime seed is generated on every
-page load and decides:
-
-- Initial X, Y and depth.
-- Facing direction.
-- Initial pose and gaze.
-- A random delay of up to about 3s before the first behavior.
-- The first behavior, which is a weighted draw from the pool.
-
-There is no fixed master loop. The seed is created once and is not reset by
-tab switches or modal open/close.
+- A behavior can only be chosen if it has a positive weight in the current
+  state, so an idle activity can never override the stressed or prosperous
+  appearance (e.g. reading, sleeping and the vanity moments are never
+  eligible while stressed).
+- The sprite additionally refuses incompatible props in the stressed state
+  (the book and objects are never drawn; the vanity items declare their own
+  visibility by state).
+- When the state changes, the running behavior is cancelled cleanly (its
+  `exit` hook runs, posture resets) and the same scheduler carries on;
+  position and depth are not touched.
 
 ### Behavior scheduler
 
-- Each behavior has a weight per financial state, a cooldown and its own
-  rhythm. The next behavior is drawn only when the previous one finishes.
-- The same behavior never runs back-to-back, recent ones are down-weighted,
-  and rare behaviors stay rare.
-- Some behaviors nudge what tends to follow (reading is often followed by a
-  stretch), which gives occasional natural chaining without any fixed chain.
-- Between behaviors there is a random pause, and about one in five pauses is
-  long (4–11s), so it spends real time doing nothing.
-- One timer drives it at any moment. It is cleared on unmount and
-  whenever the financial state changes, so two schedulers can never control
-  the same entity. It is not touched by tab changes.
+`PetScheduler` (`src/pets/core/scheduler.js`) is the only thing that picks
+behaviors, and it is independent of tabs:
+
+- Weighted random selection from each behavior's weight for the current
+  state; cooldowns; the same behavior never runs back to back; the last few
+  are down-weighted (×0.4); `followOn` factors nudge natural continuations
+  (reading is often followed by a stretch) without fixed sequences.
+- Rarity: `common`, `uncommon`, `rare`, `veryRare`, `extremelyRare` map to
+  base weights in `SCHEDULER.rarityWeight`; a behavior may also give
+  explicit per-state `weights`.
+- Between behaviors a random pause (0.5–2.6s); about one in five pauses is
+  long (4–11s), so it spends real time doing nothing. Durations, delays,
+  destinations and animation variants are randomised per run.
+- One timer drives it. A module-level lock means starting a scheduler stops
+  any other one for the same pet. It is created once per mounted pet and
+  kept: tab switches and modals neither restart nor touch it. State,
+  breakpoint or reduced-motion changes call `setMode`, which cancels the
+  current behavior and resumes with cooldowns, history and the random
+  stream intact.
+- A behavior that throws is disabled for the session and the scheduler
+  moves on; a failing `apply` patch is logged and skipped.
+- Reduced motion: behaviors flagged `moves` are never chosen, durations
+  stretch ×1.3 and pauses ×1.5, the animation clock stops, glides and
+  fades are instant. Only stationary behaviors remain.
 
 ### Behavior library
 
-Behaviors play through the sprite's frames (expression, pose, leg frames,
-props) and are timed by the scheduler. Walking uses the standing pose with
-alternating raised front paws, a body bob, and the gaze turned toward the
-direction of travel.
+Environmental behaviors (new in this system unless noted):
 
-| Behavior       | What it does                                                        |
-| -------------- | ------------------------------------------------------------------- |
-| sit            | settles and observes the app, blinking                              |
-| observe        | holds one position and sweeps its gaze around                       |
-| look           | quick glances left / right                                          |
-| lookUp         | looks upward at something passing overhead                          |
-| ponder         | thought cue (`. o ?`)                                               |
-| ponderSymbol   | studies a financial-looking symbol or number (`$?`, `12%`, `+1`)    |
-| stillness      | sits motionless for a long time, then moves on                      |
-| sleep          | head dips, eyes close, `z` / `zZ` cue                               |
-| tired          | a short rest with a subtle `z`                                      |
-| stretch        | lowers its head and reaches its paws forward, then relaxes          |
-| read           | see below                                                           |
-| inspect        | finds a small pixel object on the ground and examines it            |
-| floatSymbol    | follows a drifting symbol with its eyes, then pops it               |
-| followPixel    | tracks a block drifting across the top of the backdrop              |
-| coinPolish     | checks its `$` coin (sparkle)                                       |
-| crown          | examines a crown overhead (content: adjusts its own)                |
-| curious        | notices something off-screen, may step toward it, returns           |
-| glitch         | a restrained flicker: rows slip sideways with a cyan ghost          |
-| walk           | continuous walking to a nearby spot, sometimes stopping partway     |
-| travel         | walks to a far destination and pauses there for a long time         |
-| retreat        | walks deep into the background and watches from there               |
-| approach       | comes closer to the foreground as though investigating the UI       |
-| peek           | slides partly in from a screen edge, looks around, withdraws        |
-| edgeExit       | leaves past an edge and re-enters elsewhere                         |
-| relocate       | fades out and reappears in a different spot of its own choosing     |
-| twitch         | a one-pixel lean and back                                           |
+| Behavior           | Moods            | What it does                                                                 |
+| ------------------ | ---------------- | ---------------------------------------------------------------------------- |
+| investigatePixel   | idle, content    | A tiny block drifts across; it notices, watches, follows a few steps, loses interest |
+| watchBeyond        | idle, content    | Looks up / toward a distant point with no object, tracks it slowly, resumes  |
+| floatingObject     | idle, content    | Finds a small bobbing object, examines it from several angles, nudges it, walks away leaving it behind |
+| longPause          | idle, content    | Extremely rare 28–55s stillness with sparse blinks, gaze shifts and tiny leans / nods |
+| vanish             | idle, content    | Walks steadily deeper into Z, smaller and dimmer, stays 8–26s, walks back; fully continuous |
 
-### Reading a book
+Personality behaviors:
 
-A rare, randomized-length behavior (about 10–22s). It may first walk to a
-nearby comfortable spot, then settles into the sitting pose, lowers its head
-and holds an open pixel-art book in its lap, with its paws resting on the
-edges. It looks down at the page, occasionally turns a page (the book changes
-over three short frames), glances up briefly, and returns to the page. The
-book disappears when it finishes.
+| Behavior     | Moods                 | What it does                                                                 |
+| ------------ | --------------------- | ---------------------------------------------------------------------------- |
+| read         | idle, content         | Settles (sometimes walks to a nearby spot), opens a pixel book in its lap, 10–22s of reading with varied page turns and glances up, closes it |
+| glitch       | idle, content, stressed | Rare, brief: two or three row slips with a faint cyan ghost, then a startled look, a glance aside and back to normal; never a flicker |
+| coinInspect  | content               | Lifts the cyber-$ off its chest, turns it over (face, edge, back), puts it back |
+| idea         | idle, content         | Stops in a thinking pose; a tiny pixel bulb appears above its head, then goes. An environmental animation, not a UI overlay |
+| sleep        | idle                  | Eyes droop, a slow nod, the head sinks, `z` cues for 8–20s, wakes naturally |
+| vanity       | content               | Rare and composed: adjusts its crown, admires its coin with sparkles, or checks itself over |
 
-### Financial context and reactions
+Existing behaviors kept as they were: sit, observe, look, lookUp, ponder,
+ponderSymbol, stillness, tired, stretch, inspect, floatSymbol, followPixel,
+coinPolish, crown, glint, twitch, curious, walk, travel, retreat, approach,
+relocate, edgeExit, peek, and the stressed set (shuffle, pace, flinch,
+nervousLook, still). Their weights per state are unchanged.
 
-- The persistent state is derived by `deriveNomozMood` from the existing
-  store selectors (budget, spend, ledger totals, total balance). No
-  financial calculation or rule is changed.
-- One-shot reactions come from the existing `anomalyEvent` and last only
-  seconds. They never become permanent animations:
-  - `INCOME` — happy eyes and a `$` cue.
-  - `EXPENSE` — wide eyes and a droplet cue.
-  - `TRANSFER` — a left-then-right glance.
-  - `OVERSPEND` — fast frame flicker and an `X` cue for 3s, then the
-    persistent stressed state takes over.
-  - `CELEBRATE` — happy eyes and a `*` cue.
-- On the special calendar date, a pixel heart cue appears for 8s, once per
-  day.
-- Switching states cross-fades the sprite over the content/exit tiers.
+### Pet subsystem architecture (`src/pets`)
 
-### Responsive behavior
+```
+src/pets/
+  config.js            shared WORLD, SCHEDULER, ACTIVE_PET_ID, ACTIVE_INTERACTIONS
+  registry.js          registerPet / getPet / listPets / getActivePet
+  usePet.js            hook: view state, placement, scheduler, frame clock
+  PetErrorBoundary.jsx a pet error removes the pet, never the app
+  core/
+    pet.js             definePet: validates and assembles a pet definition
+    behaviors.js       defineBehavior, weightFor, buildBehaviorSet
+    scheduler.js       PetScheduler (selection, lifecycle, lock, request)
+    toolkit.js         makeScript, travel, sweep, zBand, flick
+    animations.js      animation registry
+    vanity.js          vanity / equipment registry
+    interactions.js    future interaction API
+    space.js           createWorld: depth, bounds, spots, transform
+    rng.js             seed, PRNG and small helpers
+  nomoz/
+    index.js           the NOMOZ.EXE definition (registered first)
+    config.js          appearances, overrides, lighting, equipped items
+    sprites.js         pixel art, pose / frame composition, prop drawers
+    animations.js      shared animation sequences
+    vanity.js          slots and items (crown, coins, book)
+    behaviors/         one module per group of behaviors
+src/lib/nomoz.js      financial mood + store reaction table (shared bridge)
+src/components/Anomaly.jsx   pet shell: measures, draws the canvas, moves it
+```
 
-- The same cat, states and behaviors on every device; only the whole-number
-  scale and movement ranges differ.
-- Layer widths under 640px use the compact profile: smaller edge margin,
-  shorter walks, a narrower depth range, and smaller wander radii. X, Y
-  and Z variation is still meaningful.
-- Scale depends only on the viewport and depth, never on the active tab.
-- No horizontal scrolling at 320–375px, no overlap with the fixed footer,
-  and it is never interactive: `pointer-events: none` and `aria-hidden`.
+The shell (`Anomaly.jsx`), the backdrop layer, movement engine, financial
+integration, modals and scheduler are pet-agnostic. A pet supplies only a
+definition.
 
-### Performance
+#### Pet registry and adding a pet
 
-- The sprite is a small canvas redrawn only when its frame changes (a few
-  times per second at most), not an animation loop. The scheduler uses one
-  timeout and one slow animation clock, and rim lighting is recomputed
-  only for those redraws.
-- Tab switches cause no re-render of the entity and no timer churn.
+`definePet` takes: `id`, `name`, `sprite { width, height, render(ctx, params,
+vanity) }`, `animations`, `behaviors` (+ `behaviorOverrides`), `appearances`
+(per financial state: base alpha), `vanity { slots, items, equipped }`,
+`capabilities`, `reactions`, `world` overrides, `initial` placement hints,
+and palette / lighting data used by its own sprite module.
+
+1. Create `src/pets/<id>/` with a sprite module, animations, behaviors and
+   an `index.js` that returns `definePet({...})` (see `nomoz/index.js`,
+   which returns `null` rather than throwing if assembly fails).
+2. In `registry.js` import it and call `registerPet(...)`.
+3. Set `ACTIVE_PET_ID` in `src/pets/config.js`.
+
+Nothing in the backdrop, movement engine, financial integration, modals or
+scheduler changes. There is no pet-selection UI and NOMOZ.EXE is the only
+registered pet.
+
+#### Creating a behavior
+
+Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
+`index.js` there collects every export). Fields:
+
+| Field                | Meaning                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `id`                 | unique id                                                         |
+| `rarity`, `moods`    | base weight from `SCHEDULER.rarityWeight` in each listed state    |
+| `weights`            | explicit `{ idle, content, stressed }` (0 = never)                |
+| `cooldown`           | ms before it can run again                                        |
+| `duration`           | `[min, max]` ms (read with `this.duration` in `plan`)             |
+| `moves`              | needs motion: skipped under reduced motion                        |
+| `requires`           | capabilities or `vanity:<itemId>`; unsupported behaviors are inert |
+| `eligible(c)`        | extra rule on the live context                                    |
+| `followOn`           | `{ otherId: factor }` natural continuations                       |
+| `enter(c)`, `exit(c, why)` | lifecycle; `exit` also runs on cancellation (`why === 'cancel'`) |
+| `plan(c, S)`         | adds timed patches to `S`, returns its duration in ms             |
+| `enabled`            | `false` switches it off                                           |
+
+`c` holds `rng`, `pet`, `mood`, `compact`, `reduced`, `cur` (current view
+including `sx`, `sy`, `z`), `geo`, `pickSpot`, `apply`. `S.at(t, patch)`,
+`S.blink(t)` and `S.play(animationId, t, opts)` build the script;
+`travel`, `sweep`, `zBand` in `core/toolkit.js` handle movement (travel
+walks in X, Y and Z, one linear glide per step, optionally weighting depth
+so a pure Z move takes proportionally more steps). The scheduler plays the
+script from one timeout. To tune or disable without editing a behavior, use
+`BEHAVIOR_OVERRIDES` in `nomoz/config.js` (`{ vanity: { enabled: false } }`).
+
+#### Animations and sprite assets
+
+An animation (`nomoz/animations.js`) is a named, reusable sequence of view
+patches, either data (`{ id, steps: [[dt, patch], ...] }`) or code
+(`{ id, build(S, c, t0, opts) -> end }` for varied timing). Behaviors
+reference them with `S.play('pageTurn', t)`; several behaviors can share
+one, and a missing animation is a no-op. Patches only set view fields; the
+frame art those fields select lives in `nomoz/sprites.js`:
+
+- View fields: `pose`, `gaze`, `eyes`, `mouth`, `legs`, `lean`, `droop`,
+  `cue`, `item`, `book`, `crown`, `crownLift`, `coin`, `glitch`, `fade`,
+  plus position (`sx`, `sy`, `z`, `facing`, `transitionMs`).
+- New eye / pose / glyph frames are added to the template tables in
+  `sprites.js`; temporary overlays go in `ITEM_KINDS` (`text`, `block`,
+  `obj`, `crown`, `coin`, `sparkle`, `glyph`). Add a pixel-row table and one
+  entry; each asset is defined once and shared.
+
+#### Vanity / equipment
+
+`core/vanity.js` is the foundation (no shop, inventory or monetisation).
+A pet declares slots (`head`, `neck`, `chest`, `held`, `prop`, `accessory`)
+as anchor functions, and items (`defineVanityItem`) with `id`, `slot`,
+compatible `pets`, `rows(p)` or `draw(...)`, `offset(p)` for animation,
+`visible(p)` for conditions (state, behavior fields) and `layer`. The pet
+lists default-worn ids in `equipped`. Items shipped: `crown`, `chestCoin`,
+`heldCoin` (lifted and turned by `coinInspect`) and `book` (shown while
+`view.book` is set). To add an item, append a `defineVanityItem` in
+`nomoz/vanity.js` and its id to `EQUIPPED`; a behavior can animate it by
+setting a view field the item's `visible` / `offset` read. Invalid or
+incompatible items are skipped; a failing item draw is skipped.
+
+#### Future interaction API
+
+`core/interactions.js` isolates user-triggered behavior (cursor awareness,
+click reactions...). Nothing is active (`ACTIVE_INTERACTIONS` is empty).
+A module registers with `registerInteraction({ id, attach(port) })` and is
+enabled by adding its id to `ACTIVE_INTERACTIONS`. It receives only a
+frozen port: `reactions` (names the pet supports), `requestReaction(name,
+{ interrupt })` and a read-only `snapshot()`; never the store, navigation or
+shell. Names resolve through the pet's `reactions` map (`notice`, `startle`,
+`acknowledge`, `delight` for NOMOZ.EXE) to its own behaviors, and the
+scheduler accepts a request only if the behavior is enabled and eligible for
+the current financial state and motion preference, so an interaction can
+never override the stressed or prosperous appearance.
+
+#### Configuration locations
+
+| What                                                         | Where                                  |
+| ------------------------------------------------------------ | -------------------------------------- |
+| Depth range, near boost, scale, margins, opacity, light steps | `WORLD` in `src/pets/config.js`        |
+| Gaps, cooldown history, rarity weights, step timing, clocks   | `SCHEDULER` in `src/pets/config.js`    |
+| Active pet, enabled interactions                              | `src/pets/config.js`                   |
+| Per-pet world override, appearances, lighting / shadow        | `src/pets/nomoz/config.js`             |
+| Behavior weights, rarity, cooldowns, durations                | each behavior in `nomoz/behaviors/`, overridable in `BEHAVIOR_OVERRIDES` |
+| Vanity slots and items                                        | `nomoz/vanity.js`, `EQUIPPED` in config |
+| Financial mood and store reactions                            | `src/lib/nomoz.js`                     |
+
+### Failure isolation and lifecycle
+
+- `PetErrorBoundary` removes the pet if rendering throws; sprite drawing
+  errors stop only the drawing; behavior errors disable only that
+  behavior; invalid behaviors, animations and vanity items are skipped at
+  registration; a pet that fails to assemble is simply not registered.
+  The financial application never depends on any of it.
+- The scheduler's single timer, the frame interval, reaction timers and
+  interaction listeners are all cleared on unmount.
+- The sprite is a small canvas redrawn only when a drawn field or the slow
+  frame changes (a few times per second at most), not an animation loop;
+  there are no per-frame React updates beyond that clock.
 
 ### Reduced motion
 
-With `prefers-reduced-motion: reduce`:
-
-- The initial placement is still random and the correct state is shown.
-- Walking, peeking, depth drift, leans, glitches, the animation clock and
-  all position/opacity transitions are disabled.
-- Only stationary behaviors remain (sit, observe, look, look up, ponder,
-  sleep, rest, stretch, read, inspect, coin and crown checks), on a slower
-  cadence.
-- State changes are instant.
+With `prefers-reduced-motion: reduce` the initial placement is still
+random and the correct state is shown, but walking, peeking, depth drift,
+leans, glitches, the animation clock and all position / opacity
+transitions are disabled. Only stationary behaviors remain (sit, observe,
+look, watch beyond, long pause, sleep, read, idea, vanity, coin inspection
+and the like), on a slower cadence; the coin turn collapses to a still
+face-and-back. State changes are instant.

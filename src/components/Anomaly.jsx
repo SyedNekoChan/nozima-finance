@@ -1,23 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
-import useNomoz from '../hooks/useNomoz.js';
+import usePet from '../pets/usePet.js';
+import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
+import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
-import { MOOD_ALPHA, deriveNomozMood } from '../lib/nomoz.js';
-import { PERSPECTIVE, alphaAt, depthLevel, makeGeo, toTransform } from '../lib/nomozSpace.js';
-import { SPRITE_H, SPRITE_W, renderSprite } from '../lib/nomozSprites.js';
-
-// Below this layer width NOMOZ.EXE uses the constrained mobile range.
-const COMPACT_MAX_WIDTH = 640;
-
-// Whole-number pixel scale of the 56x60 sprite: 168px wide on phones (the
-// minimum readable size, about 140px of cat) and 224px on larger screens.
-const pixelScale = (width) => (width < 640 ? 3 : 4);
+import { deriveNomozMood } from '../lib/nomoz.js';
 
 /*
- * NOMOZ.EXE — 16-bit pixel-art backdrop entity, the solid-black tabby
- * (see design.md).
+ * The backdrop pet (NOMOZ.EXE by default; see design.md and src/pets).
+ * This component is the pet-agnostic shell: it measures the layer, mounts
+ * the active pet's sprite on a canvas and moves it. The pet itself
+ * (art, animations, behaviors, vanity items) comes from the registry.
  *
  * It lives in the application shell's global backdrop layer, mounted
  * once beside (never inside) the tab content, so switching tabs does not
@@ -32,7 +27,7 @@ const pixelScale = (width) => (width < 640 ? 3 : 4);
  * Nothing here can scroll the page: the layer is overflow-hidden and
  * sits beneath the z-10 tab content, header, footer and modals.
  */
-function Nomoz() {
+function Pet({ pet }) {
   const mood = useFinanceStore(deriveNomozMood);
   const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
   const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
@@ -43,7 +38,10 @@ function Nomoz() {
   const [metrics, setMetrics] = useState(null);
   const [canvasEl, setCanvasEl] = useState(null);
 
-  const scale = pixelScale(metrics ? metrics.width : 0);
+  const { world } = pet;
+  const SPRITE_W = pet.sprite.width;
+  const SPRITE_H = pet.sprite.height;
+  const scale = world.pixelScale(metrics ? metrics.width : 0);
   const boxW = SPRITE_W * scale;
   const boxH = SPRITE_H * scale;
 
@@ -77,17 +75,17 @@ function Nomoz() {
     return () => ro.disconnect();
   }, []);
 
-  const compact = metrics !== null && metrics.width < COMPACT_MAX_WIDTH;
+  const compact = metrics !== null && world.isCompact(metrics.width);
 
   const geo = useMemo(
-    () => (metrics && metrics.spriteW > 0 ? makeGeo(metrics, compact) : null),
-    [metrics, compact]
+    () => (metrics && metrics.spriteW > 0 ? world.makeGeo(metrics, compact) : null),
+    [world, metrics, compact]
   );
 
-  const { view, frame, react, placed } = useNomoz({ mood, compact, reduced, geo });
+  const { view, frame, react, placed } = usePet({ pet, mood, compact, reduced, geo });
 
   // rim-light strength follows depth (quantised so it redraws rarely)
-  const light = depthLevel(view.z, compact);
+  const light = world.depthLevel(view.z, compact);
 
   // One-shot reactions keep the existing event semantics: the store
   // raises the event, the pet reacts briefly, the event is cleared.
@@ -113,29 +111,45 @@ function Nomoz() {
   }, [react]);
 
   // Draw the current frame. An exiting canvas (mood cross-fade) keeps
-  // the art of the mood it was drawn for.
+  // the art of the mood it was drawn for. A sprite error only stops the
+  // drawing; it never reaches the rest of the application.
+  const drawFailed = useRef(false);
+
   useEffect(() => {
-    if (!canvasEl || canvasEl.dataset.mood !== mood) return;
+    if (!canvasEl || canvasEl.dataset.mood !== mood || drawFailed.current) return;
     const ctx = canvasEl.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    renderSprite(ctx, {
-      mood,
-      gaze: view.gaze,
-      eyes: view.eyes,
-      mouth: view.mouth,
-      legs: view.legs,
-      pose: view.pose,
-      lean: view.lean,
-      facing: view.facing,
-      cue: view.cue,
-      item: view.item,
-      book: view.book,
-      crown: view.crown,
-      glitch: view.glitch,
-      frame,
-      light,
-    });
+    try {
+      pet.sprite.render(
+        ctx,
+        {
+          mood,
+          gaze: view.gaze,
+          eyes: view.eyes,
+          mouth: view.mouth,
+          legs: view.legs,
+          pose: view.pose,
+          lean: view.lean,
+          facing: view.facing,
+          cue: view.cue,
+          item: view.item,
+          book: view.book,
+          crown: view.crown,
+          crownLift: view.crownLift,
+          coin: view.coin,
+          droop: view.droop,
+          glitch: view.glitch,
+          frame,
+          light,
+        },
+        pet.vanity
+      );
+    } catch (err) {
+      drawFailed.current = true;
+      console.warn('[pets] sprite drawing stopped:', err);
+    }
   }, [
+    pet,
     canvasEl,
     mood,
     view.gaze,
@@ -149,6 +163,9 @@ function Nomoz() {
     view.item,
     view.book,
     view.crown,
+    view.crownLift,
+    view.coin,
+    view.droop,
     view.glitch,
     frame,
     light,
@@ -158,7 +175,10 @@ function Nomoz() {
   const moveMs = reduced ? 0 : view.transitionMs;
   const ease = view.ease === 'linear' ? 'linear' : 'var(--motion-ease)';
   const opacity = visible
-    ? Math.min(0.95, MOOD_ALPHA[mood] * alphaAt(view.z, compact)) * view.fade
+    ? Math.min(
+        world.config.alpha.ceiling,
+        pet.appearances[mood].alpha * world.alphaAt(view.z, compact)
+      ) * view.fade
     : 0;
 
   return (
@@ -166,7 +186,7 @@ function Nomoz() {
       ref={layerRef}
       aria-hidden="true"
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
-      style={{ perspective: `${PERSPECTIVE}px`, perspectiveOrigin: '50% 50%' }}
+      style={{ perspective: `${world.perspective}px`, perspectiveOrigin: '50% 50%' }}
     >
       <div
         ref={actorRef}
@@ -174,7 +194,7 @@ function Nomoz() {
         style={{
           width: boxW,
           height: boxH,
-          transform: visible ? toTransform(view, geo) : 'translate3d(0, 0, 0)',
+          transform: visible ? world.toTransform(view, geo) : 'translate3d(0, 0, 0)',
           opacity,
           transition: visible
             ? `transform ${moveMs}ms ${ease}, opacity var(--motion-ambient) var(--motion-ease)`
@@ -261,6 +281,8 @@ function OverBudgetIndicator({ isOverBudget }) {
 
 export default function Anomaly() {
   const isOverBudget = useFinanceStore((s) => s.getIsOverBudgetThisMonth());
+  // The registered pet shown in the backdrop (NOMOZ.EXE unless configured).
+  const pet = getActivePet();
 
   return (
     <>
@@ -269,7 +291,11 @@ export default function Anomaly() {
         background presence that picks open backdrop space rather than
         sitting on top of anything.
       */}
-      <Nomoz />
+      {pet && (
+        <PetErrorBoundary key={pet.id}>
+          <Pet pet={pet} />
+        </PetErrorBoundary>
+      )}
 
       {/*
         The status readout is a SEPARATE top-level layer (its own
