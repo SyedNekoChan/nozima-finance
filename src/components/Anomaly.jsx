@@ -6,7 +6,7 @@ import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
-import { deriveNomozMood } from '../lib/nomoz.js';
+import { deriveBudgetProximity, deriveNomozMood } from '../lib/nomoz.js';
 
 /*
  * The backdrop pet (NOMOZ.EXE by default; see design.md and src/pets).
@@ -29,6 +29,9 @@ import { deriveNomozMood } from '../lib/nomoz.js';
  */
 function Pet({ pet }) {
   const mood = useFinanceStore(deriveNomozMood);
+  // visual-only budget proximity and "data loaded" (arms transition detection)
+  const approaching = useFinanceStore(deriveBudgetProximity);
+  const armed = useFinanceStore((s) => s.isLoaded);
   const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
   const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
   const reduced = useReducedMotion() ?? false;
@@ -82,18 +85,30 @@ function Pet({ pet }) {
     [world, metrics, compact]
   );
 
-  const { view, frame, react, placed } = usePet({ pet, mood, compact, reduced, geo });
+  const { view, frame, react, notifyEvent, placed } = usePet({
+    pet,
+    mood,
+    compact,
+    reduced,
+    geo,
+    approaching,
+    armed,
+  });
 
   // rim-light strength follows depth (quantised so it redraws rarely)
   const light = world.depthLevel(view.z, compact);
 
-  // One-shot reactions keep the existing event semantics: the store
-  // raises the event, the pet reacts briefly, the event is cleared.
+  // One-shot reactions keep the existing event semantics: the store raises
+  // the event only after a genuinely successful operation, the pet reacts
+  // briefly (the cue), the event is cleared. The same event is also handed
+  // to the financial director, which dedupes, coalesces and rate-limits it
+  // into at most one behavior reaction at a safe boundary.
   useEffect(() => {
     if (!anomalyEvent) return;
     react(anomalyEvent.type);
+    notifyEvent(anomalyEvent);
     clearAnomalyEvent();
-  }, [anomalyEvent, clearAnomalyEvent, react]);
+  }, [anomalyEvent, clearAnomalyEvent, react, notifyEvent]);
 
   // Special calendar days: a heart cue, at most once per day.
   const heartDay = useRef(null);
