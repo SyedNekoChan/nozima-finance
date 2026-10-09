@@ -69,6 +69,7 @@ export const ponder = defineBehavior({
   id: 'ponder',
   weights: W(6),
   cooldown: 12000,
+  flagWeights: { approaching: 2 }, // more thoughtful near the budget limit
   plan(c, S) {
     S.at(0, { pose: 'sit', gaze: pick(c.rng, ['l', 'r', 'u']), mouth: 'think', cue: '.o?' });
     S.at(rnd(c.rng, 1200, 1800), { cue: '?' });
@@ -82,6 +83,7 @@ export const ponderSymbol = defineBehavior({
   id: 'ponderSymbol',
   weights: W(5, 5),
   cooldown: 20000,
+  flagWeights: { approaching: 2 }, // more thoughtful near the budget limit
   plan(c, S) {
     const text = pick(c.rng, ['$?', '%?', '+1', '-5', '12%', '=?', '$$']);
     S.at(0, {

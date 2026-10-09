@@ -173,6 +173,96 @@ Financial state has priority over every optional activity:
   `exit` hook runs, posture resets) and the same scheduler carries on;
   position and depth are not touched.
 
+### Financial context: mood vs. reactions
+
+Two concepts stay separate:
+
+- **Persistent mood** — the appearance and general demeanor (idle, content,
+  stressed), derived by `deriveNomozMood` from the existing store selectors.
+  It always wins. The financial context only influences which behaviors are
+  eligible; the randomized scheduler still decides what the cat does.
+- **Transient reactions** — occasional one-shots for state transitions and
+  successful operations, handled by the `FinancialDirector`
+  (`src/pets/finance/director.js`, tuned in `src/pets/finance/config.js`,
+  mapped per pet in `src/pets/nomoz/financial.js`).
+
+Inputs are only what the application already computes: budget utilisation
+(`getSpentThisMonthInUZS` / `getMonthlyBudgetUZS`, the dashboard bar's ratio),
+`getIsOverBudgetThisMonth`, ledger totals and total balance (inside
+`deriveNomozMood`), and the store's `anomalyEvent`, which the store raises
+only after a successful income, expense or transfer is saved (and on the write
+that crosses the budget). No financial calculation, threshold or rule was
+added or changed, and nothing a pet does feeds back into financial data.
+
+**Healthy.** The content mood keeps the composed look. Eligible, never forced:
+sitting and observing, `coinPolish`, `coinInspect`, `crown`, `vanity`, and the
+new `relax` (a slow-breathing rest). They sit in the ordinary random pool.
+
+**Approaching the budget limit.** `deriveBudgetProximity` (`src/lib/nomoz.js`)
+is a boolean: the existing utilisation ratio is at or above
+`FINANCE.approachRatio` (0.8, visual only) while the application still
+considers the budget intact. It is a scheduler **context flag**, not a state:
+it never cancels anything. While it holds, the `budgetWatch` behavior becomes
+eligible (looks at a financial-looking symbol, checks its coin or turns
+attentive, sometimes a flicker of concern) and `ponder`, `ponderSymbol` and
+`coinPolish` get a ×2 weight. No text, notification or UI is shown.
+
+**Over budget.** The existing stressed treatment and priority are untouched.
+Stressed-eligible behaviors gain `startle` (a small tense lean) and
+`unsettledLook` (quick wary looks, now and then a tiny glitch), both with long
+cooldowns, alongside the existing shuffle, pace, flinch, nervousLook, glitch
+and still. They are ordinary weighted candidates, so they cannot repeat every
+render or scheduler cycle.
+
+**Transitions** (edge-detected once per change, never on render):
+
+| Transition          | Priority | Reaction (candidates)                              |
+| ------------------- | -------- | -------------------------------------------------- |
+| stress-entered      | 3        | startle, flinch, unsettledLook, glitch             |
+| stress-recovered    | 3        | relief (breath-like pause, attention back to coin), coinInspect |
+| position-changed    | 2        | interest, look (idle ↔ healthy)                    |
+
+Transitions only arm after the data has loaded and a short baseline window
+(`FINANCE.baselineMs`), so startup, tab switches and exchange-rate refreshes
+do not look like financial events. The `OVERSPEND` store event coalesces with
+`stress-entered`.
+
+**Successful operations** (priority 1, one coalesced `ack` slot):
+`incomeGlance` / `coinInspect` / `crown` for income, `expenseGlance` /
+`ponderSymbol` for expenses (`nervousLook` while stressed), `transferNod` /
+`look` for transfers. Failed, cancelled or invalid forms never reach the store
+event, so they never react; opening modals, sorting, filtering and tab
+changes raise nothing.
+
+**Queue rules.** Events are deduplicated by `(type, id)`; a burst coalesces
+into a single pending acknowledgement that waits `settleMs` for the burst to
+end; per-reaction cooldowns and a global acknowledgement cooldown apply; a
+pending persistent change makes a minor acknowledgement redundant, and
+taking a priority ≥ 2 reaction drops what is waiting below it; the queue
+holds at most `queueMax` entries and every entry expires (`ttl`). Entries
+with no candidate playable in the current mood are dropped, so a reaction can
+never override the stressed or prosperous appearance. The director owns no
+timer and no loop.
+
+**Priority and boundaries.**
+
+1. Persistent mood and appearance (the scheduler's mood rules).
+2. Essential transitions: a mood change cancels the running behavior through
+   `setMode` (appearance first), then the transition reaction is the first
+   thing offered.
+3. One-shot reactions: offered only at a behavior boundary
+   (`reactionSource.take`), never mid-animation.
+4. Ordinary randomized behavior, which resumes afterwards and is otherwise
+   unaffected (position, depth, seed and scheduler persist).
+
+Reaction-only behaviors have weight 0 everywhere and a `reactMoods` list; they
+never appear at random and only run in the moods that list allows. All of it
+is data: add a reaction by appending an entry to `FINANCIAL_REACTIONS`
+(e.g. a new transaction type's event), a behavior with `defineBehavior`, or
+disable either with `enabled: false`; a pet that defines no
+`financialReactions` simply has none. New pets reuse the same adapter and
+director.
+
 ### Behavior scheduler
 
 `PetScheduler` (`src/pets/core/scheduler.js`) is the only thing that picks
@@ -223,6 +313,10 @@ Personality behaviors:
 | sleep        | idle                  | Eyes droop, a slow nod, the head sinks, `z` cues for 8–20s, wakes naturally |
 | vanity       | content               | Rare and composed: adjusts its crown, admires its coin with sparkles, or checks itself over |
 
+Financial-context behaviors (see "Financial context"): `relax`, `budgetWatch`
+(flag-driven), `startle`, `unsettledLook` (stressed), and the reaction-only
+`incomeGlance`, `expenseGlance`, `transferNod`, `interest`, `relief`.
+
 Existing behaviors kept as they were: sit, observe, look, lookUp, ponder,
 ponderSymbol, stillness, tired, stretch, inspect, floatSymbol, followPixel,
 coinPolish, crown, glint, twitch, curious, walk, travel, retreat, approach,
@@ -237,6 +331,9 @@ src/pets/
   registry.js          registerPet / getPet / listPets / getActivePet
   usePet.js            hook: view state, placement, scheduler, frame clock
   PetErrorBoundary.jsx a pet error removes the pet, never the app
+  finance/
+    config.js          FINANCE: approach ratio (visual only), queue, cooldowns
+    director.js        FinancialDirector + defineFinancialReaction
   core/
     pet.js             definePet: validates and assembles a pet definition
     behaviors.js       defineBehavior, weightFor, buildBehaviorSet
@@ -251,10 +348,11 @@ src/pets/
     index.js           the NOMOZ.EXE definition (registered first)
     config.js          appearances, overrides, lighting, equipped items
     sprites.js         pixel art, pose / frame composition, prop drawers
+    financial.js       NOMOZ.EXE's financial reactions (data)
     animations.js      shared animation sequences
     vanity.js          slots and items (crown, coins, book)
     behaviors/         one module per group of behaviors
-src/lib/nomoz.js      financial mood + store reaction table (shared bridge)
+src/lib/nomoz.js      financial mood, budget proximity, store reaction table (the bridge)
 src/components/Anomaly.jsx   pet shell: measures, draws the canvas, moves it
 ```
 
@@ -267,7 +365,7 @@ definition.
 `definePet` takes: `id`, `name`, `sprite { width, height, render(ctx, params,
 vanity) }`, `animations`, `behaviors` (+ `behaviorOverrides`), `appearances`
 (per financial state: base alpha), `vanity { slots, items, equipped }`,
-`capabilities`, `reactions`, `world` overrides, `initial` placement hints,
+`capabilities`, `reactions`, `financialReactions`, `world` overrides, `initial` placement hints,
 and palette / lighting data used by its own sprite module.
 
 1. Create `src/pets/<id>/` with a sprite module, animations, behaviors and
@@ -294,6 +392,9 @@ Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
 | `duration`           | `[min, max]` ms (read with `this.duration` in `plan`)             |
 | `moves`              | needs motion: skipped under reduced motion                        |
 | `requires`           | capabilities or `vanity:<itemId>`; unsupported behaviors are inert |
+| `requiresFlags`      | financial-context flags that must be set (e.g. `approaching`)     |
+| `flagWeights`        | `{ flag: factor }` weight multipliers while a flag is set         |
+| `reactMoods`         | moods where a financial reaction may run it despite weight 0      |
 | `eligible(c)`        | extra rule on the live context                                    |
 | `followOn`           | `{ otherId: factor }` natural continuations                       |
 | `enter(c)`, `exit(c, why)` | lifecycle; `exit` also runs on cancellation (`why === 'cancel'`) |
@@ -361,6 +462,8 @@ never override the stressed or prosperous appearance.
 | Depth range, near boost, scale, margins, opacity, light steps | `WORLD` in `src/pets/config.js`        |
 | Gaps, cooldown history, rarity weights, step timing, clocks   | `SCHEDULER` in `src/pets/config.js`    |
 | Active pet, enabled interactions                              | `src/pets/config.js`                   |
+| Approach ratio, queue size, settle / dedupe, ack cooldowns, priorities | `FINANCE` in `src/pets/finance/config.js` |
+| Financial reaction triggers, priorities, TTL, cooldowns, candidates | `src/pets/nomoz/financial.js`     |
 | Per-pet world override, appearances, lighting / shadow        | `src/pets/nomoz/config.js`             |
 | Behavior weights, rarity, cooldowns, durations                | each behavior in `nomoz/behaviors/`, overridable in `BEHAVIOR_OVERRIDES` |
 | Vanity slots and items                                        | `nomoz/vanity.js`, `EQUIPPED` in config |
@@ -386,5 +489,5 @@ random and the correct state is shown, but walking, peeking, depth drift,
 leans, glitches, the animation clock and all position / opacity
 transitions are disabled. Only stationary behaviors remain (sit, observe,
 look, watch beyond, long pause, sleep, read, idea, vanity, coin inspection
-and the like), on a slower cadence; the coin turn collapses to a still
+and the like, plus the gaze-only financial reactions), on a slower cadence; the coin turn collapses to a still
 face-and-back. State changes are instant.

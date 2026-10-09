@@ -1,6 +1,7 @@
 import { createAnimationRegistry } from './animations.js';
 import { buildBehaviorSet } from './behaviors.js';
 import { createVanityRegistry } from './vanity.js';
+import { defineFinancialReaction } from '../finance/director.js';
 import { createWorld } from './space.js';
 
 /*
@@ -16,6 +17,9 @@ import { createWorld } from './space.js';
  *   vanity      { slots, items, equipped }
  *   capabilities  ['walk', 'read', ...]  optional extensions it supports
  *   reactions   { semanticName: behaviorId }  for the interaction API
+ *   financialReactions  [defineFinancialReaction(...)]  how this pet reacts to
+ *               financial transitions and successful operations, mapped onto
+ *               its own behaviors (the shared adapter / director is reused)
  *   world       overrides for depth range, scale, bounds (see config.js)
  *   initial     { poses, ... } hints for the random first placement
  *
@@ -43,12 +47,23 @@ export function definePet(def) {
 
   const animations = createAnimationRegistry(def.animations || []);
 
+  // invalid or disabled reactions are skipped; the pet keeps working without them
+  const financialReactions = [];
+  for (const raw of def.financialReactions || []) {
+    try {
+      financialReactions.push(defineFinancialReaction(raw));
+    } catch (err) {
+      console.warn('[pets] financial reaction skipped:', err.message);
+    }
+  }
+
   return {
     appearances: { idle: { alpha: 1 }, content: { alpha: 1 }, stressed: { alpha: 1 } },
     reactions: {},
     initial: { poses: ['sit'] },
     ...def,
     vanity,
+    financialReactions,
     animations,
     capabilities,
     hasCapability,

@@ -1,7 +1,7 @@
 import { SCHEDULER } from '../config.js';
 import { makeScript } from './toolkit.js';
 import { rnd } from './rng.js';
-import { weightFor } from './behaviors.js';
+import { canReact, weightFor } from './behaviors.js';
 
 /*
  * The one behavior scheduler of a pet instance.
@@ -14,6 +14,12 @@ import { weightFor } from './behaviors.js';
  * Financial mood has priority: only behaviors with a positive weight in the
  * current mood are ever eligible, so an optional idle activity can never
  * override the stressed or prosperous appearance.
+ *
+ * Selection order at every behavior BOUNDARY (never mid-animation):
+ *   1. a requested interaction reaction            (request)
+ *   2. a pending financial reaction                (reactionSource.take)
+ *   3. ordinary weighted random behavior           (with context flags
+ *      such as 'approaching' adjusting eligibility and weights)
  *
  * A module-level lock guarantees that two schedulers can never control the
  * same pet instance: starting one stops the other.
@@ -30,7 +36,7 @@ export class PetScheduler {
    * resetPatch : posture reset applied when a behavior is cancelled
    * animations : the pet's animation registry
    */
-  constructor({ key, rng, mood, reduced, compact, behaviors, animations, getCtx, apply, resetPatch }) {
+  constructor({ key, rng, mood, reduced, compact, behaviors, animations, getCtx, apply, resetPatch, reactionSource = null, flags = [] }) {
     this.key = key;
     this.rng = rng;
     this.mood = mood;
@@ -42,6 +48,8 @@ export class PetScheduler {
     this.getCtx = getCtx;
     this.apply = apply;
     this.resetPatch = resetPatch;
+    this.reactionSource = reactionSource; // { take({ mood, canRun }) -> behavior id | null }
+    this.flags = new Set(flags); // persistent financial-context flags
 
     this.alive = true;
     this.timer = null;
@@ -89,6 +97,11 @@ export class PetScheduler {
     this.schedule(() => this.next(), delay);
   }
 
+  // Level-based context flags (e.g. 'approaching'): never cancels anything.
+  setFlags(flags) {
+    this.flags = new Set(flags);
+  }
+
   cancel() {
     clearTimeout(this.timer);
     this.runExit('cancel');
@@ -117,7 +130,17 @@ export class PetScheduler {
     if (!b.enabled || !b.supported || this.broken.has(b.id)) return false;
     if (weightFor(b, this.mood) <= 0) return false;
     if (this.reduced && b.moves) return false;
+    if (!b.requiresFlags.every((f) => this.flags.has(f))) return false;
     if (now - (this.lastAt[b.id] ?? -Infinity) < b.cooldown) return false;
+    return !b.eligible || !!this.guard(() => b.eligible(c));
+  }
+
+  // Can a financial reaction run this behavior right now? Cooldown is
+  // bypassed (the reaction has its own); appearance rules are not.
+  canRunAsReaction(id, c) {
+    const b = this.byId[id];
+    if (!b || !b.enabled || !b.supported || this.broken.has(id)) return false;
+    if (!canReact(b, this.mood) || (this.reduced && b.moves)) return false;
     return !b.eligible || !!this.guard(() => b.eligible(c));
   }
 
@@ -130,7 +153,7 @@ export class PetScheduler {
   request(id, { interrupt = false } = {}) {
     const b = this.byId[id];
     if (!this.alive || !b || !b.enabled || !b.supported || this.broken.has(id)) return false;
-    if (weightFor(b, this.mood) <= 0 || (this.reduced && b.moves)) return false;
+    if (!canReact(b, this.mood) || (this.reduced && b.moves)) return false;
 
     if (interrupt) {
       this.cancel();
@@ -147,7 +170,15 @@ export class PetScheduler {
     if (this.queued) {
       const id = this.queued;
       this.queued = null;
-      if (this.isEligible({ ...this.byId[id], cooldown: 0 }, c, now)) return id;
+      if (this.canRunAsReaction(id, c)) return id;
+    }
+
+    // a pending financial reaction, offered only at this safe boundary
+    if (this.reactionSource) {
+      const id = this.guard(() =>
+        this.reactionSource.take({ mood: this.mood, canRun: (rid) => this.canRunAsReaction(rid, c) })
+      );
+      if (id && this.canRunAsReaction(id, c)) return id;
     }
 
     const pool = this.behaviors.filter((b) => b.id !== this.last && this.isEligible(b, c, now));
@@ -158,6 +189,7 @@ export class PetScheduler {
       (b) =>
         weightFor(b, this.mood) *
         (follow[b.id] || 1) *
+        this.flagFactor(b) *
         (this.history.includes(b.id) ? SCHEDULER.historyPenalty : 1)
     );
 
@@ -167,6 +199,12 @@ export class PetScheduler {
       if (r <= 0) return pool[i].id;
     }
     return pool[0].id;
+  }
+
+  flagFactor(b) {
+    let f = 1;
+    for (const flag of this.flags) f *= b.flagWeights[flag] ?? 1;
+    return f;
   }
 
   fallbackId() {

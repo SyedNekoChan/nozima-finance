@@ -15,6 +15,10 @@ import { SCHEDULER } from '../config.js';
  *     duration,               [min, max] ms, informational + helper for planners
  *     moves,                  true if it needs motion (skipped under reduced motion)
  *     requires,               pet capabilities / vanity items it needs
+ *     requiresFlags,          financial-context flags that must be set ('approaching'...)
+ *     flagWeights,            { flag: factor } weight multipliers while a flag is set
+ *     reactMoods,             moods where a financial reaction may run it even though
+ *                             its ordinary weight there is 0
  *     eligible(c),            optional extra rule on the live context
  *     followOn,               { otherId: factor } natural continuations (a nudge, never a script)
  *     enter(c), exit(c, why), lifecycle hooks; exit also runs on cancellation
@@ -38,6 +42,9 @@ export function defineBehavior(def) {
     duration: null,
     moves: false,
     requires: [],
+    requiresFlags: [],
+    flagWeights: {},
+    reactMoods: [],
     followOn: {},
     enabled: true,
     ...def,
@@ -50,6 +57,9 @@ export function weightFor(b, mood) {
   if (!b.moods.includes(mood)) return 0;
   return SCHEDULER.rarityWeight[b.rarity] ?? SCHEDULER.rarityWeight.common;
 }
+
+// May a financial reaction run this behavior in this mood? (never against appearance rules)
+export const canReact = (b, mood) => weightFor(b, mood) > 0 || b.reactMoods.includes(mood);
 
 /*
  * Builds the pet's live behavior set: normalises modules, applies the

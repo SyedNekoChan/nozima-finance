@@ -264,6 +264,7 @@ export const coinPolish = defineBehavior({
   id: 'coinPolish',
   weights: W(4, 10),
   cooldown: 25000,
+  flagWeights: { approaching: 2 }, // more thoughtful near the budget limit
   followOn: { crown: 2, glint: 2 },
   plan(c, S) {
     const content = c.mood === 'content';

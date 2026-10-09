@@ -10,6 +10,7 @@ import {
   SPRITE_SIZE,
   WORLD_OVERRIDES,
 } from './config.js';
+import { FINANCIAL_REACTIONS } from './financial.js';
 import { ITEMS, SLOTS } from './vanity.js';
 import { renderSprite } from './sprites.js';
 
@@ -35,6 +36,7 @@ function build() {
       vanity: { slots: SLOTS, items: ITEMS, equipped: EQUIPPED },
       capabilities: ['walk', 'depth', 'read', 'sleep', 'glitch', 'coin', 'crown'],
       reactions: REACTIONS_MAP,
+      financialReactions: FINANCIAL_REACTIONS,
       world: WORLD_OVERRIDES,
       initial: { poses: ['sit', 'sit', 'sit', 'stand'] },
     });

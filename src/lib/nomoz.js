@@ -1,12 +1,15 @@
+import { FINANCE } from '../pets/finance/config.js';
+
 /*
  * Financial integration for the backdrop pet (NOMOZ.EXE and any pet that
  * replaces it).
  *
  * This file is the only bridge between the finance store and the pet
  * subsystem (src/pets): the financial-mood derivation, a pure read of
- * existing store selectors, and the one-shot reaction table for store
- * events. Pets never write back: no animation outcome touches financial
- * data. Randomness, space, sprites and behaviors live in src/pets.
+ * existing store selectors, the visual-only budget proximity flag, and the
+ * one-shot reaction table for store events. Pets never write back: no
+ * animation outcome touches financial data. Randomness, space, sprites,
+ * behaviors and the financial reaction director live in src/pets.
  */
 
 /* ------------------------------------------------------------------ */
@@ -52,6 +55,24 @@ export function deriveNomozMood(state) {
   }
 
   return 'idle';
+}
+
+/*
+ * VISUAL-ONLY budget proximity: the existing budget utilisation (spent
+ * this month / monthly budget, the ratio the dashboard bar shows) has
+ * reached the pet's configurable approach ratio while the application still
+ * considers the budget intact. No new financial rule: over-budget and
+ * budget-reached remain exactly what deriveNomozMood reports as 'stressed',
+ * and a boolean keeps this safe as a zustand selector.
+ */
+export function deriveBudgetProximity(state) {
+  if (state.getIsOverBudgetThisMonth()) return false;
+
+  const budget = state.getMonthlyBudgetUZS();
+  if (budget === null || !(budget > 0)) return false;
+
+  const ratio = state.getSpentThisMonthInUZS() / budget;
+  return ratio >= FINANCE.approachRatio && ratio < 1;
 }
 
 /* ------------------------------------------------------------------ */
