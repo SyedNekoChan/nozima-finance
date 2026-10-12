@@ -4,10 +4,43 @@ import useFinanceStore from '../hooks/useFinanceStore.js';
 import usePet from '../pets/usePet.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import EnvProp from '../pets/EnvProp.jsx';
+import { easeCss } from '../pets/motion.js';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
 import { deriveBudgetProximity, deriveNomozMood } from '../lib/nomoz.js';
+
+/*
+ * View fields handed to the pet's sprite renderer. A pet's rig reads the
+ * ones it understands and ignores the rest; adding a rig detail is adding
+ * its name here (and a default in usePet).
+ */
+const SPRITE_FIELDS = [
+  'gaze',
+  'eyes',
+  'mouth',
+  'legs',
+  'pose',
+  'lean',
+  'facing',
+  'cue',
+  'item',
+  'book',
+  'crown',
+  'crownLift',
+  'coin',
+  'droop',
+  'glitch',
+  'pawL',
+  'pawR',
+  'ears',
+  'tail',
+  'focus',
+  'pupils',
+  'bookPaw',
+  'bookShift',
+  'fx',
+];
 
 /*
  * The backdrop pet (NOMOZ.EXE by default; see design.md and src/pets).
@@ -130,62 +163,24 @@ function Pet({ pet }) {
   // the art of the mood it was drawn for. A sprite error only stops the
   // drawing; it never reaches the rest of the application.
   const drawFailed = useRef(false);
+  const spriteValues = SPRITE_FIELDS.map((k) => view[k]);
 
   useEffect(() => {
     if (!canvasEl || canvasEl.dataset.mood !== mood || drawFailed.current) return;
     const ctx = canvasEl.getContext('2d');
     ctx.imageSmoothingEnabled = false;
+    const params = { mood, frame, light };
+    SPRITE_FIELDS.forEach((k, i) => {
+      params[k] = spriteValues[i];
+    });
     try {
-      pet.sprite.render(
-        ctx,
-        {
-          mood,
-          gaze: view.gaze,
-          eyes: view.eyes,
-          mouth: view.mouth,
-          legs: view.legs,
-          pose: view.pose,
-          lean: view.lean,
-          facing: view.facing,
-          cue: view.cue,
-          item: view.item,
-          book: view.book,
-          crown: view.crown,
-          crownLift: view.crownLift,
-          coin: view.coin,
-          droop: view.droop,
-          glitch: view.glitch,
-          frame,
-          light,
-        },
-        pet.vanity
-      );
+      pet.sprite.render(ctx, params, pet.vanity);
     } catch (err) {
       drawFailed.current = true;
       console.warn('[pets] sprite drawing stopped:', err);
     }
-  }, [
-    pet,
-    canvasEl,
-    mood,
-    view.gaze,
-    view.eyes,
-    view.mouth,
-    view.legs,
-    view.pose,
-    view.lean,
-    view.facing,
-    view.cue,
-    view.item,
-    view.book,
-    view.crown,
-    view.crownLift,
-    view.coin,
-    view.droop,
-    view.glitch,
-    frame,
-    light,
-  ]);
+    // the field list is fixed, so the dependency list keeps its length
+  }, [pet, canvasEl, mood, frame, light, ...spriteValues]);
 
   const visible = placed && geo !== null;
 
@@ -194,7 +189,9 @@ function Pet({ pet }) {
   // pet passes in front of or behind them like any object in the space.
   const propEntries =
     visible && view.props
-      ? Object.entries(view.props).filter(([, spec]) => pet.props?.[spec.kind])
+      ? Object.entries(view.props)
+          .filter(([, spec]) => pet.props?.[spec.kind])
+          .sort((a, b) => a[1].z - b[1].z)
       : [];
   const renderProp = ([id, spec]) => (
     <EnvProp
@@ -205,10 +202,11 @@ function Pet({ pet }) {
       geo={geo}
       scale={scale}
       frame={frame}
+      reduced={reduced}
     />
   );
   const moveMs = reduced ? 0 : view.transitionMs;
-  const ease = view.ease === 'linear' ? 'linear' : 'var(--motion-ease)';
+  const ease = easeCss(view.ease);
   const opacity = visible
     ? Math.min(
         world.config.alpha.ceiling,

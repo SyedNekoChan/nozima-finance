@@ -7,6 +7,7 @@ import {
   EQUIPPED,
   LIGHTING,
   REACTIONS_MAP,
+  REST_PATCH,
   SPRITE_SIZE,
   WORLD_OVERRIDES,
 } from './config.js';
@@ -39,6 +40,7 @@ function build() {
       reactions: REACTIONS_MAP,
       props: PROPS,
       financialReactions: FINANCIAL_REACTIONS,
+      rest: REST_PATCH,
       world: WORLD_OVERRIDES,
       initial: { poses: ['sit', 'sit', 'sit', 'stand'] },
     });

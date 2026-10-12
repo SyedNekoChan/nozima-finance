@@ -20,6 +20,32 @@ export const APPEARANCES = {
  */
 export const BEHAVIOR_OVERRIDES = {};
 
+/*
+ * The neutral rig an activity leaves behind when it ends or is cancelled
+ * (see core/activity.js): paws down, ears and tail at rest, pupils back
+ * on automatic, the book's paw and shift cleared, sitting. Never position.
+ */
+export const REST_PATCH = {
+  pose: 'sit',
+  legs: 0,
+  lean: 0,
+  gaze: 'c',
+  eyes: 'open',
+  mouth: 'idle',
+  droop: 0,
+  cue: null,
+  item: null,
+  pawL: null,
+  pawR: null,
+  ears: null,
+  tail: null,
+  focus: null,
+  pupils: null,
+  book: null,
+  bookPaw: null,
+  bookShift: 0,
+};
+
 /* World overrides for this pet (see WORLD in src/pets/config.js). */
 export const WORLD_OVERRIDES = {};
 
@@ -38,7 +64,7 @@ export const LIGHTING = {
     ['5', '6', '4'], // near
   ],
   pool: { cx: 27.5, rx: 23, ry: 3.6, solid: 0.45, dy: 1.5 },
-  shadow: { sitFeet: [14, 41], standFeet: [16, 39], sitY: 56, standY: 58 },
+  shadow: { sitFeet: [14, 41], standFeet: [16, 39], sitY: 56, standY: 58, lieFeet: [7, 48], lieY: 57 },
   auraFromLevel: 1,
 };
 

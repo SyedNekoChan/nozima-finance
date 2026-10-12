@@ -1,11 +1,29 @@
 import { defineBehavior } from '../../core/behaviors.js';
 import { clamp, int, pick, rnd } from '../../core/rng.js';
 import { gazeForX, travel } from '../../core/toolkit.js';
-import { W } from './util.js';
+import { W, weighted } from './util.js';
 
 /* Behaviors with something to do: props, objects, coin, crown, glitches. */
 
-/* F. Reading a book */
+/*
+ * F. Reading a book. It settles (sometimes walking to a nearby spot first),
+ * opens the book and reads in a varied rhythm of moments: turning pages,
+ * following the lines with a paw, nudging the book into place, comparing
+ * the two pages, looking up in thought, lifting a page into the air with a
+ * little magic, or becoming absorbed. It closes the book, dozes off over
+ * it (and wakes with a start), or stops at a sudden discovery.
+ */
+const READING_MOMENTS = {
+  pageTurn: 4,
+  lookUp: 2.5,
+  track: 2.5,
+  shift: 1,
+  compare: 1.5,
+  levitate: 1,
+  absorbed: 1.2,
+  thoughtful: 1.2,
+};
+
 export const read = defineBehavior({
   id: 'read',
   rarity: 'rare',
@@ -13,7 +31,7 @@ export const read = defineBehavior({
   cooldown: 70000,
   duration: [10000, 22000],
   requires: ['vanity:book'],
-  followOn: { stretch: 4, sit: 2, observe: 2 },
+  followOn: { stretch: 4, sit: 2, observe: 2, bookAntics: 1.5 },
   plan(c, S) {
     let t = 0;
 
@@ -32,21 +50,91 @@ export const read = defineBehavior({
     S.at(t, { pose: 'sit', gaze: 'c', eyes: 'open', mouth: 'idle', legs: 0, book: 0 });
     S.at(t + rnd(c.rng, 500, 900), { eyes: 'down' });
 
-    // varied rhythm: pages turn, and now and then it looks up
+    // varied rhythm of reading moments
     let u = t + rnd(c.rng, 1800, 3800);
+    let last = null;
     while (u < t + dur - 2500) {
-      if (c.rng() < 0.55) {
+      const m = weighted(c.rng, { ...READING_MOMENTS, [last]: 0 });
+      last = m;
+      if (m === 'pageTurn') {
         S.play('pageTurn', u);
         u += rnd(c.rng, 2500, 5500);
+      } else if (m === 'lookUp') {
+        u = S.play('lookUpFromBook', u) + rnd(c.rng, 1200, 3600);
+      } else if (m === 'track') {
+        // a paw follows the lines
+        const steps = int(c.rng, 4, 6);
+        for (let i = int(c.rng, 0, 1); i < steps; i++) {
+          S.at(u, { bookPaw: i, gaze: i % 2 ? 'r' : 'l' });
+          u += rnd(c.rng, 350, 650);
+        }
+        S.at(u, { bookPaw: null, gaze: 'c' });
+        u += rnd(c.rng, 800, 1600);
+      } else if (m === 'shift') {
+        u = S.play('adjustBook', u) + rnd(c.rng, 1000, 2000);
+      } else if (m === 'compare') {
+        // one page, the other, and back again
+        for (const g of ['l', 'r', 'l', 'r'].slice(0, int(c.rng, 3, 4))) {
+          S.at(u, { gaze: g });
+          u += rnd(c.rng, 550, 1000);
+        }
+        S.at(u, { gaze: 'c' });
+        u += rnd(c.rng, 600, 1200);
+      } else if (m === 'levitate') {
+        // a page lifts out with a little magic, flutters, settles back
+        S.at(u, { eyes: 'open', gaze: 'u', pupils: 0 });
+        for (let i = 0; i < 5; i++) {
+          S.fx(u + i * 200, 'page', { kind: 'page', x: 30 + (i % 2), y: 44 - i * 3, frame: i % 2 });
+        }
+        S.fx(u + 400, 'twinkle', { kind: 'spark', x: 35, y: 36, c: 'C' });
+        S.fx(u + 700, 'twinkle', null);
+        u += 1000 + rnd(c.rng, 500, 900);
+        for (let i = 0; i < 4; i++) S.fx(u + i * 180, 'page', { y: 32 + i * 3, frame: i % 2 });
+        u += 720;
+        S.fx(u, 'page', null);
+        S.at(u, { eyes: 'down', gaze: 'c', pupils: null });
+        S.play('pageTurn', u + 100);
+        u += rnd(c.rng, 1500, 2500);
+      } else if (m === 'absorbed') {
+        // deep in it: still, ears forward, narrow pupils, no blinking
+        S.at(u, { pupils: 0, ears: 'perk', eyes: 'down' });
+        u += rnd(c.rng, 3000, 6000);
+        S.at(u, { pupils: null, ears: null });
+        u += rnd(c.rng, 400, 900);
       } else {
-        const back = S.play('lookUpFromBook', u);
-        u = back + rnd(c.rng, 1200, 3600);
+        // looks up thoughtfully, then back to the page
+        S.at(u, { eyes: 'open', gaze: 'u', mouth: 'think' });
+        u += rnd(c.rng, 1200, 2400);
+        S.at(u, { eyes: 'down', gaze: 'c', mouth: 'idle' });
+        u += rnd(c.rng, 800, 1600);
       }
     }
 
-    S.at(t + dur, { eyes: 'open' });
-    S.at(t + dur + 450, { book: null });
-    return t + dur + 900;
+    let end = Math.max(t + dur, u);
+    const ending = weighted(c.rng, { close: 4, doze: c.mood === 'idle' ? 1.2 : 0, discovery: 1.5 });
+    if (ending === 'doze') {
+      // nods off over the open book, then wakes with a start
+      end = S.play('dropOff', end);
+      S.at(end, { book: 0 });
+      end += rnd(c.rng, 3000, 6000);
+      S.at(end, { cue: null, eyes: 'wide', droop: 0, ears: 'perk', mouth: 'idle' });
+      end = S.play('adjustBook', end + 400);
+      S.at(end, { ears: null, eyes: 'down' });
+      end += rnd(c.rng, 800, 1400);
+    } else if (ending === 'discovery') {
+      // something on the page: a sudden, delighted discovery
+      S.at(end, { bookPaw: int(c.rng, 0, 5), eyes: 'wide', ears: 'perk', cue: '!', lean: 0 });
+      end += rnd(c.rng, 700, 1100);
+      S.at(end, { cue: null });
+      end = S.play('ideaGlyph', end, { name: 'bulb' });
+      S.at(end, { bookPaw: null, eyes: 'happy', ears: null, gaze: 'c' });
+      end += rnd(c.rng, 600, 1000);
+    }
+
+    S.clearFx(end);
+    S.at(end, { eyes: 'open', bookPaw: null, pupils: null, bookShift: 0 });
+    S.at(end + 450, { book: null });
+    return end + 900;
   },
 });
 

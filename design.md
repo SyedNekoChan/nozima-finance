@@ -429,11 +429,11 @@ Personality behaviors:
 
 | Behavior     | Moods                 | What it does                                                                 |
 | ------------ | --------------------- | ---------------------------------------------------------------------------- |
-| read         | idle, content         | Settles (sometimes walks to a nearby spot), opens a pixel book in its lap, 10–22s of reading with varied page turns and glances up, closes it |
+| read         | idle, content         | Settles (sometimes walks to a nearby spot), opens a pixel book in its lap, 10–22s of reading in a varied rhythm: page turns, a paw following the lines, nudging the book, comparing pages, looking up in thought, a page lifted out with a little magic, absorbed stillness; closes it, dozes off over it and wakes with a start (idle), or stops at a sudden discovery |
 | glitch       | idle, content, stressed | Rare, brief: two or three row slips with a faint cyan ghost, then a startled look, a glance aside and back to normal; never a flicker |
 | coinInspect  | content               | Lifts the cyber-$ off its chest, turns it over (face, edge, back), puts it back |
 | idea         | idle, content         | Stops in a thinking pose; a tiny pixel bulb appears above its head, then goes. An environmental animation, not a UI overlay |
-| sleep        | idle                  | Eyes droop, a slow nod, the head sinks, `z` cues for 8–20s, wakes naturally |
+| sleep        | idle                  | Nods off sitting, lies down sphinx-like, or curls up with its head on its paws (sometimes after turning about and kneading); 9–24s of `z` cues with stirs, ear flicks, tail swishes, half-wakes, position changes and tiny dream symbols (rarely a faint magical shimmer); wakes naturally, often with a yawn and a stretch |
 | vanity       | content               | Rare and composed: adjusts its crown, admires its coin with sparkles, or checks itself over |
 
 Rare encounters (see "Rare environmental encounters"): `miniTerminal`,
@@ -455,11 +455,114 @@ Financial-context behaviors (see "Financial context"): `relax`, `budgetWatch`
 (flag-driven), `startle`, `unsettledLook` (stressed), and the reaction-only
 `incomeGlance`, `expenseGlance`, `transferNod`, `interest`, `relief`.
 
-Existing behaviors kept as they were: sit, observe, look, lookUp, ponder,
+Existing behaviors kept as they were: sit, observe, look, lookUp,
 ponderSymbol, stillness, tired, stretch, inspect, floatSymbol, followPixel,
-coinPolish, crown, glint, twitch, curious, walk, travel, retreat, approach,
-relocate, edgeExit, peek, and the stressed set (shuffle, pace, flinch,
-nervousLook, still). Their weights per state are unchanged.
+coinPolish, crown, glint, twitch, curious, travel, retreat, approach,
+relocate, edgeExit, and the stressed set (shuffle, pace, flinch,
+nervousLook, still). Their weights per state are unchanged. `walk`, `peek`,
+`ponder`, `read` and `sleep` keep their ids, moods and weights but were
+expanded (see "Activities and the extended rig").
+
+### Activities and the extended rig
+
+The behavior library adds multi-phase activities built from reusable
+primitives. Everything below is visual only: no prop or effect reads, shows
+or changes application data (the coins are toys, the terminal shows
+abstract pixel bars), and none of it is eligible in the stressed state.
+
+**The rig.** New view fields, all drawn from the same parts of the same cat
+(`nomoz/sprites.js`), so the sprite design never changes:
+
+- `pose`: besides `sit`, `stand` and `stretch`, `crouch` (lowered body,
+  shortened legs: stalking, eating), `low` (head down with the back and a
+  raised tail behind it: sniffing, eating), `loaf` (lying sphinx-like, front
+  paws forward, tail along the floor) and `curl` (curled up, head resting
+  low, tail wrapped in front). `legs: 3` lifts both forepaws mid-leap.
+- `pawL` / `pawR`: a raised forepaw (screen side) at a level: `low`,
+  `front`, `mid`, `out`, `high` (mouth), `face`, `ear`, `up`, `reach`. A
+  3-pixel forearm with an ink seam and a lit edge, so a black paw reads over
+  black fur; the lifted leg leaves a shadowed recess. Lying poses lift the
+  front paw instead.
+- `ears`: `perk`, `back`, `flick`, `flickL`, `flickR` (the ear is moved,
+  not redrawn). `tail`: `swish`, `still`, `up`.
+- `mouth`: adds `o` (yawn, gasp, cough), `chew` and `lick` (a small pink
+  tongue tip).
+- `focus` (a screen-space sprite x) draws the pupils toward a watched world
+  object; `pupils` (0–3) asks for a pupil size. Both go through the existing
+  eased pupil system, which still decides on its own when they are unset;
+  tracked or bright overlay effects also steer it.
+- `bookPaw` (a paw following the lines) and `bookShift` (the book nudged)
+  for reading.
+- `fx`: keyed sprite-space overlay effects (`FX_KINDS`: `spark`, `mote`,
+  `star`, `rune`, `trail`, `orb`, `smoke`, `dream`, `note`, `text`,
+  `glyph`, `obj`, `page`, `ring`), in screen orientation, optionally behind
+  the cat (`back`). Scripts set them with `S.fx(t, key, spec | null)`,
+  `S.fxMany` and `S.clearFx`.
+
+**World props** (`nomoz/props.js`, through the existing prop layer, now
+with optional glides `moveMs` / `ease` and fade speed `fadeMs`, instant
+under reduced motion, and drawn in depth order): `yarn`, `bowl`, `wisp`,
+`portal`, `ring` (a glyph circle in front and back halves), `trinket` (a
+table of small objects: coin, tome, page, gem, gear, spring, bolt, lens,
+crystal, vial, herb, mushroom, star, feather, key, fish, flower, moth, smoke
+puff, sparkle burst, sigils), `chart`, `sky`, `vessel`, `device`,
+`instrument`, and the `terminal`, which can now also show a session.
+
+**Primitives** (`nomoz/animations.js`): grooming (`lickPaw`, `rubFace`,
+`cleanEar`, `washFace`, `inspectPaw`, `shake`, `satisfied`), gestures
+(`pawTap`, `conjure`, `headTilt`, `nod`, `triumph`, `wiggle`, `knead`) and
+transitions (`stretchOut`, `yawn`, `survey`, `earFlick`, `tailSwish`,
+`pause`, `shakeParticles`, `adjustBook`, `lookToward`). Activities offer
+transitions only by chance (`maybeTransition` in `behaviors/util.js`), never
+as a mandatory ending.
+
+**Activities** (`defineActivity`, `src/pets/core/activity.js`) are
+ordinary behaviors with a stage: a planned actor (`core/choreo.js`: walks,
+glides, hops and looks composed from `travel`, sprite-space offsets turned
+into world points and back), namespaced props, effect helpers and
+`variant(key, table)` picks that avoid repeating the previous run's choice.
+The plan's last beat removes everything the activity made; `exit` (which
+also runs on cancellation: a mood change, a request, an unmount) removes any
+of its props still present, clears the overlays and applies the pet's `rest`
+patch (`REST_PATCH`: paws down, ears and tail at rest, pupils automatic).
+Activities never run while the pet is off-screen. Long performances set
+`performance: true`: after any of them, the others wait a shared quiet gap
+(`ACTIVITY.performanceGap`, 45–120s) on top of their own cooldowns.
+
+| Behavior      | Weight idle / content, cooldown | What it does |
+| ------------- | ------------------------------- | ------------ |
+| groom         | 6 / 5, 45s       | A chain of 2–6 grooming moves (paw licks, face rubs, ear cleaning, a two-paw face wash, paw inspection) whose order, sides and timing vary, ending with a shake and/or a satisfied pose. Stationary |
+| yarnPlay      | 4 / 2.5, 110s    | A red yarn ball rolls in, is conjured, or is found; two or three of: passing it between the paws, rolling it wide and following it with eyes and head, bat–track–rush–pounce, stalking it (creeping, freezing, a false start, a wiggle, a pounce), sending it across the world and running after it, losing it behind itself and finding it, lazy taps while lying down, catching it, holding it and letting it go; it is left behind, dissolves, or is swatted off into the distance |
+| eat           | 2.5 / 2, 4 min   | A small bowl (kibble, fish or cream) appears; the cat notices, approaches, sniffs, may hesitate and prod it, eats in 2–4 phases with pauses to look around or lick its lips, licks its mouth and leaves; the bowl fades |
+| spell         | 2.5 / 2, 2.5 min | One of: runes drawn in the air, an orb conjured between the paws (rolled, lifted, recoloured, popped or released to float off into depth), stars orbiting in front of and behind it, a miniature portal (eyes, a waving paw, a fish, a star that circles the cat, a moth), levitated objects rearranged with gestures (swapped, lined up, stacked, sent into depth), an unstable spell that puffs harmless pixel smoke before succeeding, a rehearsed spell rethought and retried, a protective glyph circle raised at its feet |
+| wispPlay      | 2 / 1.5, 3.3 min | A tiny wisp with its own wandering motion: noticed, tracked, reached for, chased through depth with dodged pounces; cupped and released, watched fading into the distance, or burst into sparkles |
+| alchemy       | 1.5 / 1.2, 5 min | A cauldron appears; ingredients float in, it is stirred, a floating vial is examined and recoloured; five recipes, and one brew in four surprises it (sparkles, a smoke puff, a floating star, overflowing foam, a moth or flower) |
+| constellation | 1.2 / 1, 6 min   | Unfolds a star chart and traces it, looks up at a patch of sky (beside it when there is no room above), points the stars bright, nudges strays into place, a star or two arrives from deep in the distance, the lines are drawn and a figure (cat, fish, crown, key, spiral) is recognised |
+| discovery     | 1.2 / 1, 5 min   | A strange floating sigil: a cautious crouched approach, examination from several sides, a touch, and a sparkle burst, a harmless transformation, an unexpected object or a vanishing |
+| tinker        | 1.5 / 1.2, 5 min | Assembles a small device (bot, clock, lamp, orrery) from parts, turns it around, tests it, a harmless spark, smoke or jitter, adjustments, success and a small celebration |
+| music         | 1.8 / 1.6, 4 min | A chiptune keyboard or crystal chimes: single test notes, then a randomized motif (or, sometimes, a long absorbed performance) in one of several rhythms with visual notes and head bobs, a pause to listen, a flourish |
+| treasure      | 1.4 / 2.6, 4 min | A few fantasy coins drift down; two or three of stacking, sorting by symbol, balancing one on a paw, studying a symbol, sending them into orbit; they dissolve or float away |
+| bookAntics    | 2 / 1.6, 3 min   | Stacks small books (which may topple), orders floating pages and swats one back, reaches and hops for a book drifting upward then fetches it with magic, or summons a book from across the floor, and reads it a moment |
+| terminalWork  | 1.5 / 1.2, 5 min | Conjures its terminal, inspects it, types in bursts (sometimes an exaggerated flurry), waits through a spinner, studies output, corrects a mistake, runs a task with a progress bar and reacts (a nod, a small triumph, or a puzzled tilt and a fix) |
+| pawCheck, survey, yawn | 4 / 3, 3 / 3, 3 / 2 | Short stationary connecting actions |
+| shakeOff      | 0.6 / 0.6, 30s   | Shakes off leftover magic; made likely by the magical activities' `followOn` |
+
+Expanded existing behaviors (same ids, moods, weights):
+
+- **walk** draws a route style: a stroll (the original), a meander with
+  pauses to look, sniff or listen, a brisk purposeful stride, cautious
+  crouched steps with freezes, a playful pounce on a glinting speck, or an
+  arc deep into the scene and across. Headings avoid doubling back on the
+  previous walk, so it does not shuttle along one line.
+- **peek** varies the edge (usually the nearer side, sometimes the farther
+  side or the bottom), how much shows, and how often (moving along the edge
+  while hidden), then withdraws, comes in cautiously, or comes in to
+  inspect a small object lying near the edge.
+- **ponder** works a thought over by pacing, weighing two imaginary
+  options, turning an object over in a paw, tapping a paw, glancing into
+  the book or at a conjured terminal, and ends in a decision (the bulb, a
+  nod) or lets it go.
+- **read** and **sleep**: see the table above.
 
 ### Pet subsystem architecture (`src/pets`)
 
@@ -469,7 +572,8 @@ src/pets/
   registry.js          registerPet / getPet / listPets / getActivePet
   usePet.js            hook: view state, placement, scheduler, frame clock
   PetErrorBoundary.jsx a pet error removes the pet, never the app
-  EnvProp.jsx          one world-anchored environmental prop (encounter objects)
+  EnvProp.jsx          one world-anchored environmental prop (encounter / activity objects)
+  motion.js            CSS easing for the pet layer's glides
   finance/
     config.js          FINANCE: approach ratio (visual only), queue, cooldowns
     director.js        FinancialDirector + defineFinancialReaction
@@ -482,6 +586,8 @@ src/pets/
     vanity.js          vanity / equipment registry
     interactions.js    future interaction API
     encounter.js       defineEncounter: rare environmental encounters
+    activity.js        defineActivity: behaviors with a stage (props, fx, cleanup)
+    choreo.js          planned actor: world <-> sprite offsets, walk, glide, hop, look
     space.js           createWorld: depth, bounds, spots, transform
     rng.js             seed, PRNG and small helpers
   nomoz/
@@ -489,8 +595,10 @@ src/pets/
     config.js          appearances, overrides, lighting, equipped items
     sprites.js         pixel art, pose / frame composition, prop drawers
     financial.js       NOMOZ.EXE's financial reactions (data)
-    props.js           world props: miniature terminal, depth anomaly
-    animations.js      shared animation sequences
+    props.js           world props: terminal, depth anomaly, yarn, bowl, wisp,
+                       portal, glyph ring, trinkets, chart, sky, vessel,
+                       device, instrument
+    animations.js      shared animation sequences and primitives
     vanity.js          slots and items (crown, coins, book)
     behaviors/         one module per group of behaviors
 src/lib/nomoz.js      financial mood, budget proximity, store reaction table (the bridge)
@@ -522,7 +630,11 @@ registered pet.
 #### Creating a behavior
 
 Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
-`index.js` there collects every export). Fields:
+`index.js` there collects every export, so behavior modules export
+behaviors only; shared helpers live in `behaviors/util.js`). For a
+multi-phase performance with props or effects use `defineActivity({...})`
+(same fields plus `performance`, and `plan(c, S, st)` receives a stage; see
+"Activities and the extended rig"). Fields:
 
 | Field                | Meaning                                                           |
 | -------------------- | ----------------------------------------------------------------- |
@@ -544,8 +656,9 @@ Add a `defineBehavior({...})` export to a file in `nomoz/behaviors/` (the
 | `enabled`            | `false` switches it off                                           |
 
 `c` holds `rng`, `pet`, `mood`, `compact`, `reduced`, `cur` (current view
-including `sx`, `sy`, `z`), `geo`, `pickSpot`, `apply`. `S.at(t, patch)`,
-`S.blink(t)`, `S.prop(t, id, spec | null)` and `S.play(animationId, t, opts)` build the script;
+including `sx`, `sy`, `z`), `geo`, `pickSpot`, `apply`, `has`, `memory`.
+`S.at(t, patch)`, `S.blink(t)`, `S.prop(t, id, spec | null)`,
+`S.fx(t, key, spec | null)`, `S.clearFx(t)` and `S.play(animationId, t, opts)` build the script;
 `travel`, `sweep`, `zBand` in `core/toolkit.js` handle movement (travel
 walks in X, Y and Z, one linear glide per step, optionally weighting depth
 so a pure Z move takes proportionally more steps). The scheduler plays the
@@ -563,10 +676,14 @@ frame art those fields select lives in `nomoz/sprites.js`:
 
 - View fields: `pose`, `gaze`, `eyes`, `mouth`, `legs`, `lean`, `droop`,
   `cue`, `item`, `book`, `crown`, `crownLift`, `coin`, `glitch`, `fade`,
-  plus position (`sx`, `sy`, `z`, `facing`, `transitionMs`).
+  `pawL`, `pawR`, `ears`, `tail`, `focus`, `pupils`, `bookPaw`,
+  `bookShift`, `fx`, plus position (`sx`, `sy`, `z`, `facing`,
+  `transitionMs`, `ease`). The shell hands the drawn ones to the sprite via
+  one field list (`SPRITE_FIELDS` in `Anomaly.jsx`).
 - New eye / pose / glyph frames are added to the template tables in
-  `sprites.js`; temporary overlays go in `ITEM_KINDS` (`text`, `block`
-  (the blue flame), `obj`, `crown`, `coin`, `sparkle`, `glyph`). Add a
+  `sprites.js` (poses in `POSES`, paw positions in `PAW_AT`); temporary
+  overlays go in `ITEM_KINDS` (`text`, `block` (the blue flame), `obj`,
+  `crown`, `coin`, `sparkle`, `glyph`) or `FX_KINDS` (keyed effects). Add a
   pixel-row table and one entry; each asset is defined once and shared.
 
 #### Vanity / equipment
@@ -605,6 +722,8 @@ never override the stressed or prosperous appearance.
 | Gaps, cooldown history, rarity weights, step timing, clocks   | `SCHEDULER` in `src/pets/config.js`    |
 | Active pet, enabled interactions                              | `src/pets/config.js`                   |
 | Encounter start delay and shared quiet gap                    | `ENCOUNTER` in `src/pets/config.js`    |
+| Quiet gap between long performances                           | `ACTIVITY` in `src/pets/config.js`     |
+| Neutral rig after an activity                                 | `REST_PATCH` in `src/pets/nomoz/config.js` |
 | Encounter weights, cooldowns, spawn, glyphs, timing           | `ENCOUNTERS` in `src/pets/nomoz/config.js` |
 | Approach ratio, queue size, settle / dedupe, ack cooldowns, priorities | `FINANCE` in `src/pets/finance/config.js` |
 | Financial reaction triggers, priorities, TTL, cooldowns, candidates | `src/pets/nomoz/financial.js`     |
@@ -632,6 +751,10 @@ With `prefers-reduced-motion: reduce` the initial placement is still
 random and the correct state is shown, but walking, peeking, depth drift,
 leans, glitches, the animation clock and all position / opacity
 transitions are disabled. Only stationary behaviors remain (sit, observe,
-look, watch beyond, long pause, sleep, read, idea, vanity, coin inspection
-and the like, plus the gaze-only financial reactions; the walking encounters are not offered), on a slower cadence; the coin turn collapses to a still
-face-and-back. State changes are instant.
+look, watch beyond, long pause, sleep, read, idea, vanity, coin inspection,
+grooming, paw checks, surveys, yawns, pondering without pacing and the
+like, plus the gaze-only financial reactions; the walking encounters and
+every activity that moves or conjures world props are not offered), on a
+slower cadence; the coin turn collapses to a still face-and-back. Sleep
+skips turning about, and prop glides and fades are instant. State changes
+are instant.

@@ -26,6 +26,17 @@ const INITIAL_VIEW = {
   droop: 0,
   glitch: 0,
   fade: 1,
+  // rig details: raised forepaws, ears, tail, the pupils' focus / size,
+  // the reading paw and book position, sprite-space overlay effects
+  pawL: null,
+  pawR: null,
+  ears: null,
+  tail: null,
+  focus: null,
+  pupils: null,
+  bookPaw: null,
+  bookShift: 0,
+  fx: {},
   props: {},
   offscreen: false,
   transitionMs: 0,
@@ -50,8 +61,27 @@ const RESET = {
   droop: 0,
   glitch: 0,
   fade: 1,
+  pawL: null,
+  pawR: null,
+  ears: null,
+  tail: null,
+  focus: null,
+  pupils: null,
+  bookPaw: null,
+  bookShift: 0,
+  fx: {}, // overlay effects and
   props: {}, // temporary environmental objects never outlive a cancelled behavior
 };
+
+// Applies keyed create / update / remove operations ([[id, spec | null]]).
+function mergeOps(base, ops) {
+  const out = { ...base };
+  for (const [id, spec] of ops) {
+    if (spec === null) delete out[id];
+    else out[id] = { ...out[id], ...spec };
+  }
+  return out;
+}
 
 /*
  * Owns the active pet's state. A runtime seed (new every page load) drives
@@ -104,17 +134,15 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
   modeRef.current = { mood, compact, reduced };
 
   // Patches merge into the view. `propOps` ([[id, spec | null], ...]) creates,
-  // updates or removes world-anchored environmental props by id.
+  // updates or removes world-anchored environmental props by id; `fxOps`
+  // does the same for sprite-space overlay effects.
   const commit = useCallback((patch) => {
     let next = patch;
-    if (patch.propOps) {
-      const { propOps, ...rest } = patch;
-      const props = { ...curRef.current.props };
-      for (const [id, spec] of propOps) {
-        if (spec === null) delete props[id];
-        else props[id] = { ...props[id], ...spec };
-      }
-      next = { ...rest, props };
+    if (patch.propOps || patch.fxOps) {
+      const { propOps, fxOps, ...rest } = patch;
+      next = rest;
+      if (propOps) next.props = mergeOps(rest.props ?? curRef.current.props, propOps);
+      if (fxOps) next.fx = mergeOps(rest.fx ?? curRef.current.fx, fxOps);
     }
     curRef.current = { ...curRef.current, ...next };
     setView(curRef.current);

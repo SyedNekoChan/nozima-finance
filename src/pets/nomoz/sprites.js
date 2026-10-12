@@ -11,9 +11,13 @@
  *
  *   HEAD     : one mirrored half-grid (ears, forehead "M", cheeks, muzzle, jaw)
  *   TORSO    : mirrored half-grids, sitting (the reference pose) and standing
- *   TAIL     : one shaded grid with a small sway
+ *   TAIL     : one shaded grid with a small sway (or lying along the floor)
  *   FACE     : eye / pupil / nose / mouth overlays (the expressions)
+ *   RIG      : raised forepaws, ear twitches, tail modes, crouching, lying
+ *              and head-down poses, all assembled from those same parts
  *   PROPS    : coin, crown, book, objects, glyphs, pixel font
+ *   FX       : sprite-space overlay effects (runes, sparks, orbs, smoke,
+ *              dream symbols, notes...) by kind, see FX_KINDS
  *
  * VISIBILITY. The cat is predominantly black, so it is revealed by light
  * rather than by recolouring it: a directional rim light on the upper-left
@@ -70,6 +74,13 @@ const PALETTE = {
   L: '#3d7dff', // blue flame: bright blue
   w: '#e2fbff', // blue flame: white-hot core
   b: '#0c2266', // blue flame: glow
+  V: '#b48cff', // arcane violet
+  D: '#5b3fa8', // arcane violet, deep
+  O: '#ff9a4a', // ember
+  r: '#d23c46', // yarn red
+  N: '#8fe3a0', // alchemical green
+  n: '#3f8f5a',
+  S: '#aab4bd', // smoke / silver
 };
 
 const FUR = new Set(['0', '1', '2', '3', '4']);
@@ -196,12 +207,15 @@ const TRACKED_ITEMS = new Set(['block', 'obj', 'text', 'glyph']);
  * resting middle depth is a relaxed slit.
  */
 function pupilTarget(p, kind, light) {
+  if (Number.isInteger(p.pupils)) return Math.max(0, Math.min(3, p.pupils));
   if (kind === 'wide') return 3;
   if (kind === 'panic') return 2; // tense, but the pale panic eyes stay pale
   if (kind === 'down' || p.mouth === 'think') return 0;
   const item = p.item?.kind;
   if (item === 'glyph' || item === 'sparkle') return 0;
   if (TRACKED_ITEMS.has(item)) return 2;
+  if (fxWith(p.fx, 'bright')) return 0;
+  if (fxWith(p.fx, 'track')) return 2;
   return 2 - light;
 }
 
@@ -299,8 +313,32 @@ function drawHead(g, p, hx, hy) {
     return;
   }
 
+  // a small open 'o' (a yawn, a gasp, a cough)
+  if (mouth === 'o') {
+    for (const [x, y] of [[15, 22], [16, 22], [14, 23], [17, 23], [14, 24], [17, 24], [15, 25], [16, 25]]) {
+      put(g, hx + x, hy + y, '0');
+    }
+    put(g, hx + 15, hy + 23, '1');
+    put(g, hx + 16, hy + 24, '1');
+    return;
+  }
+
+  // chewing: the jaw drops a pixel
+  if (mouth === 'chew') {
+    for (let x = 14; x <= 17; x++) put(g, hx + x, hy + 23, '0');
+    put(g, hx + 15, hy + 24, '0');
+    put(g, hx + 16, hy + 24, '0');
+    return;
+  }
+
   for (const [x, y, ch] of W_MOUTH) put(g, hx + x, hy + y, ch);
   if (mouth === 'happy') blit(g, SMILE, hx + 14, hy + 25);
+  // licking: the tip of a small pink tongue under the 'w'
+  if (mouth === 'lick') {
+    put(g, hx + 15, hy + 24, 'h');
+    put(g, hx + 16, hy + 24, 'h');
+    put(g, hx + 15, hy + 25, 'h');
+  }
 }
 
 // Three fine whiskers per side, rooted in the whisker pads and fanning
@@ -399,35 +437,6 @@ function drawSitTorso(g) {
   blitHalf(g, SIT_HALF, 30);
 }
 
-// Standing: used by the walk cycle. legs 1 lifts the left paw, 2 the right.
-function drawStandTorso(g, legs) {
-  blitHalf(g, STAND_HALF, 30);
-
-  const leg = (side, lifted) => {
-    const set = side === 'L' ? putL : putR;
-    const end = lifted ? 23 : 25;
-    for (let t = 14; t <= end; t++) {
-      for (let c = 8; c <= 12; c++) set(g, c, 30 + t, c === 8 ? '3' : c === 12 ? '1' : '2');
-    }
-    set(g, 10, 30 + 17, '3'); // fur clump on the foreleg
-    set(g, 11, 30 + 20, '1');
-    if (lifted) {
-      // paw tucked up and forward
-      for (let c = 8; c <= 13; c++) set(g, c, 30 + 24, c >= 9 && c <= 12 ? '3' : '2');
-      for (let c = 9; c <= 13; c++) set(g, c, 30 + 25, c === 11 ? '0' : '1');
-    } else {
-      // planted paw: knuckles, then toes and sole
-      for (let c = 7; c <= 12; c++) set(g, c, 30 + 26, c === 7 ? '2' : c === 12 ? '1' : '3');
-      for (let c = 7; c <= 12; c++) set(g, c, 30 + 27, c === 9 || c === 11 ? '1' : '2');
-    }
-  };
-
-  leg('L', legs === 1);
-  leg('R', legs === 2);
-
-  for (let t = 14; t <= 27; t++) for (let c = 13; c <= 15; c++) sym(g, c, 30 + t, '0');
-}
-
 // The tail, tip at the top: a rounded, slightly narrower tip, a lit left
 // edge, a shaded right edge, thin tabby rings, and a base that sweeps
 // into the haunch.
@@ -466,6 +475,302 @@ function drawTail(g, x0, y0, sway) {
     const shift = r < 10 ? sway : r < 14 ? Math.round(sway / 2) : 0;
     for (let c = 0; c < TAIL[r].length; c++) put(g, x0 + c + shift, y0 + r, TAIL[r][c]);
   }
+}
+
+// The same tail lying along the floor (lying poses): lit top, shaded
+// underside, the same thin rings, and a tip that curls up at the end.
+function drawFloorTail(g, x0, x1, y, sway) {
+  const dir = x1 > x0 ? 1 : -1;
+  for (let x = x0, i = 0; x !== x1 + dir; x += dir, i++) {
+    const ring = i % 4 === 3;
+    put(g, x, y, ring ? '1' : '3');
+    put(g, x, y + 1, ring ? '1' : '2');
+    put(g, x, y + 2, '1');
+  }
+  // the curled tip lifts a pixel when it sways
+  const lift = sway > 0 ? 1 : 0;
+  for (let k = 1; k <= 3; k++) {
+    put(g, x1, y - k - lift, k === 3 ? '2' : '3');
+    put(g, x1 + dir, y - k - lift, k === 3 ? '.' : '1');
+  }
+  put(g, x1 - dir, y - 1, '3');
+}
+
+/* ------------------------------------------------------------------ */
+/* Rig: crouching, head-down and lying poses                           */
+/* ------------------------------------------------------------------ */
+
+// The standing walk-cycle body, lowered by `drop` rows (crouching, head
+// down): the chest sinks and the legs shorten, the paws stay on the floor.
+// legs 1 / 2 lift one paw, 3 both (mid-leap); `omit` leaves out a leg
+// whose paw is raised ('L', 'R').
+function drawUprightTorso(g, legs, drop = 0, omit = '') {
+  blitHalf(g, STAND_HALF, 30 + drop);
+  const top = 44 + drop;
+
+  const leg = (side, lifted) => {
+    if (omit.includes(side)) return;
+    const set = side === 'L' ? putL : putR;
+    const end = lifted ? 53 : 55;
+    for (let y = top; y <= end; y++) {
+      for (let c = 8; c <= 12; c++) set(g, c, y, c === 8 ? '3' : c === 12 ? '1' : '2');
+    }
+    set(g, 10, top + 3, '3'); // fur clump on the foreleg
+    set(g, 11, top + 6, '1');
+    if (lifted) {
+      // paw tucked up and forward
+      for (let c = 8; c <= 13; c++) set(g, c, 54, c >= 9 && c <= 12 ? '3' : '2');
+      for (let c = 9; c <= 13; c++) set(g, c, 55, c === 11 ? '0' : '1');
+    } else {
+      // planted paw: knuckles, then toes and sole
+      for (let c = 7; c <= 12; c++) set(g, c, 56, c === 7 ? '2' : c === 12 ? '1' : '3');
+      for (let c = 7; c <= 12; c++) set(g, c, 57, c === 9 || c === 11 ? '1' : '2');
+    }
+  };
+
+  leg('L', legs === 1 || legs === 3);
+  leg('R', legs === 2 || legs === 3);
+
+  for (let y = top; y <= 57; y++) for (let c = 13; c <= 15; c++) sym(g, c, y, '0');
+}
+
+/*
+ * A low mound of the same fur for the lying poses (and the back seen
+ * behind a lowered head): an ellipse with a lit upper plane, a shadowed
+ * underside and curved flank stripes, symmetric about the centre.
+ */
+function drawMound(g, cx, cy, rx, ry) {
+  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+      const nx = (x + 0.5 - cx) / rx;
+      const ny = (y + 0.5 - cy) / ry;
+      if (nx * nx + ny * ny > 1) continue;
+      let ch = ny < -0.62 ? '3' : ny > 0.6 ? '1' : '2';
+      const side = Math.abs(x + 0.5 - cx);
+      if (Math.abs(nx) > 0.5 && ny > -0.62 && (Math.round(side) + Math.round(ny * ny * 5)) % 4 === 0) ch = '1';
+      put(g, x, y, ch);
+    }
+  }
+}
+
+// A front paw resting on the floor in front of a lying cat.
+const LIE_PAW = ['.2222.', '233332', '231312', '.1111.'];
+
+// Lying front paws; a raised one (pawL / pawR set) lifts off the floor.
+function drawLyingPaws(g, p, x0, y0) {
+  const lift = (lv) => (lv ? 3 : 0);
+  blit(g, LIE_PAW, x0 - (p.pawL ? 1 : 0), y0 - lift(p.pawL));
+  blit(g, LIE_PAW, 55 - x0 - LIE_PAW[0].length + 1 + (p.pawR ? 1 : 0), y0 - lift(p.pawR));
+}
+
+// Sphinx pose: lying with the head up, front paws forward, tail along the floor.
+function drawLoaf(g) {
+  drawMound(g, 27.5, 48, 22, 9.5);
+}
+function drawLoafFront(g, p, sway) {
+  drawLyingPaws(g, p, 15, 52);
+  drawFloorTail(g, 41, 52, 54, sway);
+}
+
+// Curled up: a round body, the head resting low, the tail wrapped in front.
+function drawCurl(g) {
+  drawMound(g, 27.5, 46, 25, 11);
+}
+function drawCurlFront(g, p, sway) {
+  drawLyingPaws(g, p, 14, 50);
+  drawFloorTail(g, 47, 8, 54, sway);
+}
+
+/*
+ * Poses. Every pose is the same cat: which torso parts are drawn, where
+ * the head sits (hy before expression offsets), where the tail goes and
+ * which floor shadow it casts. Unknown poses fall back to sitting.
+ *   tail: [x, y] upright tail grid position, or null (the pose draws its own)
+ */
+const POSES = {
+  sit: { hy: 4, tail: [42, 28], shadow: 'sit', torso: (g) => drawSitTorso(g) },
+  stretch: { hy: 9, tail: [42, 28], shadow: 'sit', torso: (g) => drawSitTorso(g), front: drawStretchPaws },
+  stand: { hy: 3, tail: [38, 31], shadow: 'stand', upright: 0, torso: (g, p, o) => drawUprightTorso(g, p.legs, 0, o) },
+  crouch: { hy: 7, tail: [38, 31], shadow: 'stand', upright: 4, torso: (g, p, o) => drawUprightTorso(g, p.legs, 4, o) },
+  low: {
+    hy: 20,
+    tail: [38, 4],
+    shadow: 'stand',
+    upright: 6,
+    torso: (g, p, o) => {
+      drawMound(g, 27.5, 25, 12, 7); // the back, seen behind the lowered head
+      drawUprightTorso(g, p.legs, 6, o);
+    },
+  },
+  loaf: { hy: 20, tail: null, shadow: 'lie', lying: true, torso: drawLoaf, front: drawLoafFront },
+  curl: { hy: 25, tail: null, shadow: 'lie', lying: true, torso: drawCurl, front: drawCurlFront },
+};
+
+function drawStretchPaws(g) {
+  // paws reach toward the viewer
+  for (let c = 4; c <= 13; c++) {
+    sym(g, c, 54, '2');
+    sym(g, c, 55, c % 3 ? '3' : '1');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Rig: raised forepaws                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Where a raised forepaw goes, for the cat's own left side in base space
+ * (the right side mirrors about the centre). Levels near the head follow
+ * the head as it moves (hx, hy = the head's anchor).
+ *   low    lifted just off the floor in front (taps, bats, holding down)
+ *   front  in front of the chest, toward the centre (cupping, holding)
+ *   mid    at chest height (inspecting a paw, gestures)
+ *   out    out to the side (reaching, swatting, typing on a side keyboard)
+ *   high   at the mouth (licking)
+ *   face   over the cheek (rubbing the face)
+ *   ear    over the ear (cleaning around it)
+ *   up     raised beside the head (casting, pointing up)
+ *   reach  high overhead (reaching for something above)
+ */
+const PAW_AT = {
+  low: () => [20, 50],
+  front: () => [25, 46],
+  mid: () => [22, 42],
+  out: () => [9, 46],
+  high: (hx, hy) => [hx + 12, hy + 23],
+  face: (hx, hy) => [hx + 3, hy + 19],
+  ear: (hx, hy) => [hx, hy + 7],
+  up: (hx, hy) => [hx - 3, hy + 14],
+  reach: (hx, hy) => [hx + 1, hy + 2],
+};
+
+// Paw positions while standing / crouching (the shoulder is lower).
+const PAW_UPRIGHT = {
+  low: () => [18, 52],
+  front: () => [23, 50],
+  mid: (d) => [19, 44 + d],
+  out: (d) => [9, 47 + Math.round(d / 2)],
+};
+
+const SHOULDER_IN = [23, 41];
+const SHOULDER_OUT = [19, 39];
+const OUTER_LEVELS = new Set(['out', 'up', 'reach', 'ear', 'face']);
+
+// A raised paw seen from the front: lit top edge, toe seams.
+const PAW = ['.555.', '53335', '31313', '.333.'];
+
+function line(x0, y0, x1, y1, fn) {
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    fn(x0, y0);
+    if (x0 === x1 && y0 === y1) return;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+// The sitting front leg a raised paw came from leaves a shadowed recess.
+function liftSitLeg(g, side) {
+  const set = side === 'L' ? putL : putR;
+  for (let y = 44; y <= 54; y++) for (let c = 9; c <= 13; c++) set(g, c, y, c === 9 ? '2' : '1');
+}
+
+/*
+ * Draws the raised forepaws (pawL / pawR in base space): a 3-pixel
+ * forearm from the shoulder to the paw, then an ink seam where it crosses
+ * the body and a lit upper edge, so a black paw still reads over black fur.
+ */
+function drawForepaws(g, p, hx, hy, pose) {
+  const sides = [['L', p.pawL], ['R', p.pawR]].filter(([, lv]) => lv && PAW_AT[lv]);
+  if (!sides.length) return;
+
+  const limb = new Set();
+  const key = (x, y) => y * SPRITE_W + x;
+  const drop = pose.upright ?? 0;
+
+  for (const [side, level] of sides) {
+    const mx = (x) => (side === 'L' ? x : 55 - x);
+    const mark = (x, y, ch) => {
+      const X = mx(x);
+      if (X < 0 || X >= SPRITE_W || y < 0 || y >= SPRITE_H) return;
+      g[y][X] = ch;
+      limb.add(key(X, y));
+    };
+    const upright = pose.upright !== undefined;
+    const [px, py] = (upright && PAW_UPRIGHT[level]?.(drop)) || PAW_AT[level](hx, hy);
+    const [sx, sy] = upright ? [21, 43 + drop] : OUTER_LEVELS.has(level) ? SHOULDER_OUT : SHOULDER_IN;
+    if (!upright) liftSitLeg(g, side);
+
+    line(sx, sy, px, py, (x, y) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) mark(x + dx, y + dy, '2');
+    });
+    PAW.forEach((row, r) => {
+      for (let i = 0; i < row.length; i++) if (row[i] !== '.') mark(px - 2 + i, py - 2 + r, row[i]);
+    });
+  }
+
+  for (const k of limb) {
+    const x = k % SPRITE_W;
+    const y = (k - x) / SPRITE_W;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= SPRITE_W || ny >= SPRITE_H || limb.has(key(nx, ny))) continue;
+      if (FUR.has(g[ny][nx])) g[ny][nx] = '0';
+    }
+  }
+  for (const k of limb) {
+    const x = k % SPRITE_W;
+    const y = (k - x) / SPRITE_W;
+    if (g[y][x] === '2' && (!limb.has(key(x, y - 1)) || !limb.has(key(x - 1, y)))) g[y][x] = '4';
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Rig: ears                                                           */
+/* ------------------------------------------------------------------ */
+
+// [outward dx, dy] per ear mode: a flick tips it out, back flattens it,
+// perk lifts it. The ear (head rows 0-6, above the skull) is cut out and
+// set down again, so it is the same ear, only moved.
+const EAR_SHIFT = { flick: [1, 1], back: [1, 2], perk: [0, -1] };
+
+function moveEar(g, hx, hy, side, mode) {
+  const [ox, dy] = EAR_SHIFT[mode] || [0, 0];
+  if (!ox && !dy) return;
+  const moved = [];
+  for (let y = hy; y <= hy + 6; y++) {
+    for (let x = hx - 1; x <= hx + 10; x++) {
+      const X = side === 'L' ? x : 2 * hx + 31 - x;
+      if (X < 0 || X >= SPRITE_W || y < 0 || y >= SPRITE_H || g[y][X] === '.') continue;
+      moved.push([X, y, g[y][X]]);
+      g[y][X] = '.';
+    }
+  }
+  const dx = side === 'L' ? -ox : ox;
+  for (const [X, y, ch] of moved) put(g, X + dx, y + dy, ch);
+}
+
+// ears: 'back' | 'perk' | 'flick' (both) | 'flickL' | 'flickR' (base space)
+function drawEars(g, ears, hx, hy) {
+  if (!ears) return;
+  if (ears === 'flickL' || ears === 'flickR') {
+    moveEar(g, hx, hy, ears === 'flickL' ? 'L' : 'R', 'flick');
+    return;
+  }
+  moveEar(g, hx, hy, 'L', ears);
+  moveEar(g, hx, hy, 'R', ears);
 }
 
 /* ------------------------------------------------------------------ */
@@ -700,12 +1005,25 @@ export function drawCoin(ctx, x, y, turn = 0) {
   ctx.fillRect(x + 3, y + 7, 2, 1);
 }
 
-export function drawBook(ctx, frame) {
+const BOOK_PAW = ['22222', '23332', '.222.'];
+
+/*
+ * The open book of the reading behaviors. p.bookShift (-1..1) nudges it
+ * sideways; p.bookPaw (0..5) lifts the left paw onto the page and follows
+ * the lines: line floor(i / 2), left or right half by i % 2.
+ */
+export function drawBook(ctx, frame, p = {}) {
   const rows = bookRows(frame);
-  fillPixels(ctx, rows, 16, 56 - rows.length, paletteColor);
-  // paws resting on the book
-  fillPixels(ctx, ['22222', '23332', '.222.'], 17, 52, paletteColor);
-  fillPixels(ctx, ['22222', '23332', '.222.'], 34, 52, paletteColor);
+  const dx = p.bookShift || 0;
+  fillPixels(ctx, rows, 16 + dx, 56 - rows.length, paletteColor);
+  // paws resting on the book, or one reading along the lines
+  if (Number.isInteger(p.bookPaw)) {
+    const i = Math.max(0, Math.min(5, p.bookPaw));
+    fillPixels(ctx, BOOK_PAW, 18 + dx + (i % 2) * 4, 45 + Math.floor(i / 2) * 2, paletteColor);
+  } else {
+    fillPixels(ctx, BOOK_PAW, 17 + dx, 52, paletteColor);
+  }
+  fillPixels(ctx, BOOK_PAW, 34 + dx, 52, paletteColor);
 }
 
 /*
@@ -740,43 +1058,297 @@ function drawItem(ctx, item, stressed, frame) {
 }
 
 /* ------------------------------------------------------------------ */
+/* FX: sprite-space overlay effects                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * view.fx is a keyed set of small temporary effects drawn on the cat's own
+ * canvas, in screen orientation (never mirrored), so they move with the
+ * cat. Each spec: { kind, x, y (the effect's centre), c (palette key),
+ * a (alpha), back (drawn behind the cat), ...kind fields }. A kind is
+ * { draw(ctx, f, frame), bright, track }: bright effects narrow the
+ * pupils, tracked ones draw the pupils toward them. Unknown kinds are
+ * ignored; add a kind by adding an entry here.
+ */
+
+const STAR5 = ['..#..', '.###.', '#####', '.###.', '.#.#.'];
+const SPARK_S = ['.#.', '###', '.#.'];
+const X_SPARK = ['#.#', '.#.', '#.#'];
+
+const RUNES = {
+  ka: ['..#..', '.#.#.', '#...#', '.#.#.', '..#..'],
+  ur: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],
+  sol: ['.###.', '#...#', '#.#.#', '#...#', '.###.'],
+  ix: ['#.#.#', '.#.#.', '..#..', '.#.#.', '#.#.#'],
+  om: ['.###.', '#...#', '..#..', '.#.#.', '#...#'],
+  ve: ['#...#', '.#.#.', '..#..', '..#..', '..#..'],
+  ar: ['..#..', '..#..', '#####', '..#..', '.#.#.'],
+  eh: ['###..', '#..#.', '###..', '#.#..', '#..#.'],
+};
+export const RUNE_NAMES = Object.keys(RUNES);
+
+// Orbs: 'o' rim, 'b' body, 'w' core, recoloured per tint.
+const ORBS = [
+  ['.o.', 'owo', '.o.'],
+  ['.ooo.', 'obwbo', 'owwbo', 'obbbo', '.ooo.'],
+  ['..ooo..', '.obbbo.', 'obwwbbo', 'obwbbbo', 'obbbbbo', '.obbbo.', '..ooo..'],
+];
+const TINTS = {
+  C: { o: 'c', b: 'C', w: 'W' },
+  V: { o: 'D', b: 'V', w: 'W' },
+  G: { o: 'g', b: 'G', w: 'W' },
+  O: { o: 'R', b: 'O', w: 'W' },
+  N: { o: 'n', b: 'N', w: 'W' },
+  L: { o: 'B', b: 'L', w: 'w' },
+};
+
+const DREAMS = {
+  fish: [['.##.#', '#####', '.##.#'], 'C'],
+  moon: [['.##.', '#...', '#...', '#...', '.##.'], 'G'],
+  star: [STAR5, 'W'],
+  yarn: [['.###.', '#.#.#', '##.##', '#.#.#', '.###.'], 'r'],
+  coin: [['.###.', '##.##', '#.#.#', '##.##', '.###.'], 'G'],
+  mouse: [['#.#..', '####.', '.####', '..#.#'], 'q'],
+};
+
+const NOTES = [
+  ['..##', '..#.', '..#.', '###.', '##..'],
+  ['.###', '.#.#', '.#.#', '##.#', '#...'],
+];
+
+const PAGE = [
+  ['pppq', 'pmmq', 'pppq', 'pmmq', 'qqqq'],
+  ['.ppq', 'pmmq', 'pppq', 'pmm.', 'qqq.'],
+];
+
+// glyph rows in one palette colour, centred on (x, y)
+function glyphAt(ctx, rows, x, y, col) {
+  fillPixels(ctx, rows, Math.round(x - rows[0].length / 2 + 0.5), Math.round(y - rows.length / 2 + 0.5), () => col);
+}
+
+// a restrained dithered halo just outside a glyph (the flame's glow)
+function haloAt(ctx, rows, x, y, col, frame) {
+  const x0 = Math.round(x - rows[0].length / 2 + 0.5);
+  const y0 = Math.round(y - rows.length / 2 + 0.5);
+  const h = rows.length;
+  const w = rows[0].length;
+  const lit = (c, r) => r >= 0 && r < h && c >= 0 && c < w && rows[r][c] !== '.';
+  ctx.save();
+  ctx.globalAlpha *= 0.45;
+  ctx.fillStyle = col;
+  for (let r = -1; r <= h; r++) {
+    for (let c = -1; c <= w; c++) {
+      if (lit(c, r) || (c + r + frame) % 2) continue;
+      if (lit(c - 1, r) || lit(c + 1, r) || lit(c, r - 1) || lit(c, r + 1)) ctx.fillRect(x0 + c, y0 + r, 1, 1);
+    }
+  }
+  ctx.restore();
+}
+
+const col = (key, fallback = 'W') => PALETTE[key] || PALETTE[fallback];
+
+export const FX_KINDS = {
+  // a tiny twinkle ('x' turns it diagonal, big uses the five-pixel spark)
+  spark: {
+    bright: true,
+    draw: (ctx, f) => glyphAt(ctx, f.big ? SPARK : f.x2 ? X_SPARK : SPARK_S, f.x, f.y, col(f.c)),
+  },
+  // a single mote of light or fur (size 1 or 2)
+  mote: {
+    draw: (ctx, f) => {
+      ctx.fillStyle = col(f.c, 'C');
+      const s = f.size || 1;
+      ctx.fillRect(Math.round(f.x), Math.round(f.y), s, s);
+    },
+  },
+  star: {
+    bright: true,
+    track: true,
+    draw: (ctx, f, frame) => {
+      const rows = f.small ? SPARK_S : STAR5;
+      if (!f.small) haloAt(ctx, rows, f.x, f.y, col(f.c, 'G'), frame);
+      glyphAt(ctx, rows, f.x, f.y, col(f.c, 'G'));
+    },
+  },
+  // a glowing rune (name from RUNES); dim runes have no halo
+  rune: {
+    bright: true,
+    draw: (ctx, f, frame) => {
+      const rows = RUNES[f.name] || RUNES.ka;
+      if (!f.dim) haloAt(ctx, rows, f.x, f.y, col(f.c, 'C'), frame);
+      glyphAt(ctx, rows, f.x, f.y, col(f.c, 'C'));
+    },
+  },
+  // the glowing path a paw draws: older points dimmer, the tip white
+  trail: {
+    bright: true,
+    draw: (ctx, f) => {
+      const pts = f.pts || [];
+      pts.forEach(([x, y], i) => {
+        ctx.fillStyle = i >= pts.length - 1 ? PALETTE.W : i < pts.length / 3 ? col(f.dimC || 'c') : col(f.c, 'C');
+        ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+      });
+    },
+  },
+  // a floating magical orb, size 0..2, tint C / V / G / O / N / L
+  orb: {
+    bright: true,
+    track: true,
+    draw: (ctx, f, frame) => {
+      const rows = ORBS[Math.max(0, Math.min(2, f.size ?? 1))];
+      const tint = TINTS[f.c] || TINTS.C;
+      haloAt(ctx, rows, f.x, f.y, col(tint.o), frame + (f.phase || 0));
+      const x0 = Math.round(f.x - rows[0].length / 2 + 0.5);
+      const y0 = Math.round(f.y - rows.length / 2 + 0.5);
+      fillPixels(ctx, rows, x0, y0, (ch) => col(tint[ch]));
+    },
+  },
+  // a pixel-smoke puff, frame 0..3 (grows, then thins out)
+  smoke: {
+    draw: (ctx, f) => {
+      const fr = Math.max(0, Math.min(3, f.frame || 0));
+      const r = [2, 3, 4, 4.5][fr];
+      const keep = [1, 0.95, 0.7, 0.4][fr];
+      for (let y = -5; y <= 5; y++) {
+        for (let x = -5; x <= 5; x++) {
+          const d = Math.hypot(x, y * 1.15);
+          if (d > r) continue;
+          const h = ((x * 73856093) ^ (y * 19349663) ^ (fr * 83492791)) >>> 0;
+          if ((h % 100) / 100 > keep) continue;
+          ctx.fillStyle = d < r * 0.45 ? PALETTE.p : d < r * 0.8 ? PALETTE.S : PALETTE.q;
+          ctx.fillRect(Math.round(f.x + x), Math.round(f.y + y), 1, 1);
+        }
+      }
+    },
+  },
+  // a small dream symbol above the sleeping head
+  dream: {
+    draw: (ctx, f) => {
+      const [rows, c] = DREAMS[f.name] || DREAMS.star;
+      glyphAt(ctx, rows, f.x, f.y, col(f.c || c));
+    },
+  },
+  // a music note (n: 0 single, 1 double)
+  note: { draw: (ctx, f) => glyphAt(ctx, NOTES[f.n ? 1 : 0], f.x, f.y, col(f.c, 'C')) },
+  text: { draw: (ctx, f) => drawText(ctx, f.text, Math.round(f.x - textWidth(f.text) / 2), Math.round(f.y - 2), col(f.c, 'C')) },
+  glyph: {
+    bright: true,
+    draw: (ctx, f) => {
+      const frames = GLYPHS[f.name];
+      if (frames) {
+        const rows = frames[(f.frame || 0) % frames.length];
+        fillPixels(ctx, rows, Math.round(f.x - rows[0].length / 2), Math.round(f.y - rows.length / 2), paletteColor);
+      }
+    },
+  },
+  // a small object held or examined (box / gem / disk)
+  obj: {
+    track: true,
+    draw: (ctx, f) => {
+      const rows = OBJECTS[f.name] || OBJECTS.gem;
+      fillPixels(ctx, rows, Math.round(f.x - rows[0].length / 2), Math.round(f.y - rows.length / 2), paletteColor);
+    },
+  },
+  // a loose page (frame 0 flat, 1 fluttering)
+  page: {
+    track: true,
+    draw: (ctx, f) => {
+      const rows = PAGE[(f.frame || 0) % 2];
+      fillPixels(ctx, rows, Math.round(f.x - 2), Math.round(f.y - 2), paletteColor);
+    },
+  },
+  // a dotted circle of light (radius r), turning with `phase`
+  ring: {
+    bright: true,
+    draw: (ctx, f) => {
+      const r = f.r || 4;
+      const n = Math.max(6, Math.round(r * 3));
+      ctx.fillStyle = col(f.c, 'C');
+      for (let i = 0; i < n; i++) {
+        if ((i + (f.phase || 0)) % 3 === 2) continue;
+        const a = (i / n) * Math.PI * 2;
+        ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * (f.flat ?? 1)), 1, 1);
+      }
+    },
+  },
+};
+
+function drawFx(ctx, fx, back, stressed, frame) {
+  if (!fx) return;
+  for (const f of Object.values(fx)) {
+    if (!f || !!f.back !== back || (stressed && !f.safe)) continue;
+    const kind = FX_KINDS[f.kind];
+    if (!kind) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, f.a ?? 1));
+    try {
+      kind.draw(ctx, f, frame);
+    } finally {
+      ctx.restore();
+    }
+  }
+}
+
+// The first effect of a kind the pupils react to.
+function fxWith(fx, flag) {
+  if (!fx) return null;
+  for (const f of Object.values(fx)) if (f && FX_KINDS[f.kind]?.[flag]) return f;
+  return null;
+}
+
+/*
+ * Screen-space centre of a raised forepaw while sitting (for an effect that
+ * rides on the paw: a rune, a spark, a held object). side 'l' | 'r'; hy is
+ * the head's row (4 at rest, 6 with the eyes lowered).
+ */
+export function pawSpot(level, side = 'l', hy = 4) {
+  const at = PAW_AT[level];
+  if (!at) return [28, 50];
+  const [x, y] = at(HX, hy);
+  return [side === 'l' ? x : 55 - x, y];
+}
+
+/* ------------------------------------------------------------------ */
 /* Cat composition                                                     */
 /* ------------------------------------------------------------------ */
 
 function buildCat(p) {
   const cat = makeGrid();
   const over = makeGrid();
-  const stand = p.pose === 'stand';
-  const stretch = p.pose === 'stretch';
+  const poseName = POSES[p.pose] ? p.pose : 'sit';
+  const pose = POSES[poseName];
+  const stand = poseName === 'stand';
+  const upright = pose.upright !== undefined;
   const stressed = p.mood === 'stressed';
   const lowered = p.book != null || p.eyes === 'down' || (p.eyes === 'closed' && !stand);
-  const walkBob = stand && p.legs !== 0 ? (p.legs === 1 ? 0 : 1) : p.frame % 2;
+  const walkBob = upright && p.legs !== 0 ? (p.legs === 1 ? 0 : 1) : p.frame % 2;
 
   const hx = HX + p.lean + (stressed ? (p.frame % 2 ? -1 : 1) : 0);
   const droop = stressed ? 0 : p.droop || 0;
-  const hy =
-    4 + (stand ? -1 : 0) + walkBob + (stretch ? 5 : 0) + (lowered ? 2 : 0) + droop + (stressed ? 1 : 0);
+  const hy = pose.hy + walkBob + (lowered ? 2 : 0) + droop + (stressed ? 1 : 0);
 
-  // tail (behind), torso, head
-  const sway = stressed ? (p.frame % 2 ? 2 : -1) : p.frame % 3 === 2 ? 1 : 0;
-  if (stand) drawTail(cat, 38, 31, sway);
-  else drawTail(cat, 42, 28, sway);
+  // tail (behind), torso, head, then what lies in front of it
+  const tail = stressed ? null : p.tail;
+  const sway =
+    stressed || tail === 'swish' ? (p.frame % 2 ? 2 : -1) : tail === 'still' ? 0 : p.frame % 3 === 2 ? 1 : 0;
+  if (pose.tail) drawTail(cat, pose.tail[0], pose.tail[1] - (tail === 'up' ? 2 : 0), sway);
 
-  if (stand) drawStandTorso(cat, p.legs);
-  else drawSitTorso(cat);
-
-  if (stretch) {
-    // paws reach toward the viewer
-    for (let c = 4; c <= 13; c++) {
-      sym(cat, c, 54, '2');
-      sym(cat, c, 55, c % 3 ? '3' : '1');
-    }
-  }
+  // a raised paw while standing lifts that leg off the floor
+  const omit = upright ? `${p.pawL ? 'L' : ''}${p.pawR ? 'R' : ''}` : '';
+  pose.torso(cat, p, omit);
 
   drawHead(cat, p, hx, hy);
+  drawEars(cat, stressed ? null : p.ears, hx, hy);
+  if (pose.front) pose.front(cat, p, sway);
+  if (!pose.lying && poseName !== 'stretch') drawForepaws(cat, p, hx, hy, pose);
   drawWhiskers(over, hx, hy, stressed, p.frame % 2);
 
-  return { cat, over, hx, hy, footY: stand ? LIGHTING.shadow.standY : LIGHTING.shadow.sitY };
+  const shadow = LIGHTING.shadow;
+  const footY = pose.shadow === 'lie' ? shadow.lieY : pose.shadow === 'stand' ? shadow.standY : shadow.sitY;
+  const feet = pose.shadow === 'lie' ? shadow.lieFeet : pose.shadow === 'stand' ? shadow.standFeet : shadow.sitFeet;
+  // cues ride above the head when it is low (lying, head down)
+  const cueY = pose.lying || poseName === 'low' ? Math.max(0, hy - 7) : 0;
+  return { cat, over, hx, hy, footY, feet, cueY };
 }
 
 // Worn and held items render through the pet's vanity registry, after the
@@ -837,7 +1409,8 @@ function paintGrid(ctx, g) {
 
 /*
  * p: { mood, gaze, eyes, mouth, legs, pose, lean, facing, cue, item,
- *      book, crown, crownLift, coin, droop, glitch, frame, light }
+ *      book, crown, crownLift, coin, droop, glitch, frame, light,
+ *      pawL, pawR, ears, tail, focus, pupils, bookPaw, bookShift, fx }
  * vanity: the pet's vanity registry (worn items).
  * The caller's ctx is a SPRITE_W x SPRITE_H canvas context. The base art
  * has its tail on the right (as in the concept art); facing > 0 mirrors it.
@@ -848,27 +1421,36 @@ export function renderSprite(ctx, p, vanity) {
   const stressed = p.mood === 'stressed';
   const light = Math.max(0, Math.min(2, p.light ?? 1));
 
-  // gaze / lean are screen-space; the base art is unmirrored
+  // gaze, lean, paws, ears and the book's shift are screen-space; the base
+  // art is unmirrored
   const q = {
     ...p,
     gaze: flip ? { l: 'r', r: 'l' }[p.gaze] || p.gaze : p.gaze,
-    lean: flip ? -p.lean : p.lean,
+    lean: flip ? -(p.lean || 0) : p.lean || 0,
+    pawL: flip ? p.pawR : p.pawL,
+    pawR: flip ? p.pawL : p.pawR,
+    ears: flip ? { flickL: 'flickR', flickR: 'flickL' }[p.ears] || p.ears : p.ears,
+    bookShift: flip ? -(p.bookShift || 0) : p.bookShift || 0,
   };
 
-  // pupil size (eased per canvas) and the watched item's x in base space
+  // pupil size (eased per canvas) and the watched thing's x in base space:
+  // a tracked item, else the behavior's focus point, else a tracked effect
   const kind = eyeKind(q);
   q.pupil = easePupil(ctx, kind, pupilTarget(q, kind, light));
   const it = p.item;
+  const tracked = fxWith(p.fx, 'track');
   if (it && TRACKED_ITEMS.has(it.kind) && typeof it.x === 'number') {
     q.focusX = flip ? SPRITE_W - 2 - it.x : it.x + 1;
+  } else if (typeof p.focus === 'number') {
+    q.focusX = flip ? SPRITE_W - 1 - p.focus : p.focus;
+  } else if (tracked && typeof tracked.x === 'number') {
+    q.focusX = flip ? SPRITE_W - 1 - tracked.x : tracked.x;
   }
 
-  const { cat, over, hx, hy, footY } = buildCat(q);
+  const { cat, over, hx, hy, footY, feet, cueY } = buildCat(q);
   const lit = rimLight(cat, light);
   const under = makeGrid();
-  const stand = q.pose === 'stand';
-  const [f0, f1] = stand ? LIGHTING.shadow.standFeet : LIGHTING.shadow.sitFeet;
-  drawUnder(under, lit, light, footY, f0, f1);
+  drawUnder(under, lit, light, footY, feet[0], feet[1]);
 
   ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
   paintGrid(ac, under);
@@ -886,6 +1468,9 @@ export function renderSprite(ctx, p, vanity) {
   bc.restore();
 
   ctx.clearRect(0, 0, SPRITE_W, SPRITE_H);
+
+  // effects behind the cat (an orbiting star passing behind it...)
+  drawFx(ctx, p.fx, true, stressed, p.frame || 0);
 
   const plan = [];
   if (stressed) plan.push(...STRESS_SHIFTS[p.frame % 2]);
@@ -927,7 +1512,8 @@ export function renderSprite(ctx, p, vanity) {
   // unmirrored overlays: cue text and held items
   if (p.cue) {
     const w = textWidth(p.cue);
-    drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, 0, stressed ? PALETTE.R : PALETTE.C);
+    drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, stressed ? 0 : cueY, stressed ? PALETTE.R : PALETTE.C);
   }
   drawItem(ctx, p.item, stressed, p.frame || 0);
+  drawFx(ctx, p.fx, false, stressed, p.frame || 0);
 }

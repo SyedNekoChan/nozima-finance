@@ -1,7 +1,9 @@
+import { defineActivity } from '../../core/activity.js';
 import { defineBehavior } from '../../core/behaviors.js';
+import { clampPoint } from '../../core/choreo.js';
 import { int, pick, rnd } from '../../core/rng.js';
 import { sweep } from '../../core/toolkit.js';
-import { textWidth } from '../sprites.js';
+import { pawSpot, textWidth } from '../sprites.js';
 import { W } from './util.js';
 
 /* Stationary behaviors: watching, thinking, holding still. */
@@ -65,17 +67,134 @@ export const lookUp = defineBehavior({
   },
 });
 
-export const ponder = defineBehavior({
+/*
+ * Pondering: a thought arrives, is worked over in one to three ways, and
+ * ends in a decision or is let go.
+ *   pace          a few thoughtful steps away and back
+ *   alternatives  two imaginary options float either side; the gaze weighs them
+ *   examine       a small object turned over in a raised paw
+ *   tap           a paw taps out the thinking
+ *   book          a quick look in the book
+ *   terminal      a glance at a little terminal conjured for the purpose
+ */
+const OPTIONS = [['+', '-'], ['1', '2'], ['o', '*'], ['=', '~'], ['?', '!']];
+
+export const ponder = defineActivity({
   id: 'ponder',
   weights: W(6),
-  cooldown: 12000,
+  cooldown: 18000,
+  duration: [5000, 16000],
   flagWeights: { approaching: 2 }, // more thoughtful near the budget limit
-  plan(c, S) {
-    S.at(0, { pose: 'sit', gaze: pick(c.rng, ['l', 'r', 'u']), mouth: 'think', cue: '.o?' });
-    S.at(rnd(c.rng, 1200, 1800), { cue: '?' });
-    const hold = rnd(c.rng, 3000, 4800);
-    S.at(hold, { cue: null, mouth: 'idle', gaze: 'c' });
-    return hold + 500;
+  followOn: { idea: 1.5, sit: 2, walk: 1.5 },
+  plan(c, S, st) {
+    const A = st.A;
+    S.at(0, { pose: 'sit', legs: 0, gaze: pick(c.rng, ['l', 'r', 'u']), mouth: 'think', cue: '.o?' });
+    let t = rnd(c.rng, 1200, 1800);
+    S.at(t, { cue: '?' });
+    t += rnd(c.rng, 700, 1300);
+    S.at(t, { cue: null });
+
+    const ways = st.some(
+      'way',
+      {
+        pace: c.reduced ? 0 : 2,
+        alternatives: 3,
+        examine: 2,
+        tap: 3,
+        book: c.has('vanity:book') ? 1.5 : 0,
+        terminal: c.reduced ? 0 : 0.8,
+      },
+      int(c.rng, 1, 3)
+    );
+
+    for (const way of ways) {
+      if (way === 'pace') {
+        const home = A.pos;
+        const s = c.rng() < 0.5 ? -1 : 1;
+        for (let lap = int(c.rng, 1, 2); lap > 0; lap--) {
+          t = A.walk(t, A.world(s * rnd(c.rng, 12, 18), rnd(c.rng, -2, 2), rnd(c.rng, -15, 15)), {
+            stepMs: rnd(c.rng, 540, 620),
+            endPose: 'stand',
+            gaze: 'c',
+          });
+          S.at(t, { eyes: 'down', mouth: 'think' });
+          t += rnd(c.rng, 300, 700);
+          t = A.walk(t, home, { stepMs: rnd(c.rng, 540, 620), endPose: lap > 1 ? 'stand' : 'sit', gaze: 'c' });
+        }
+        S.at(t, { eyes: 'open' });
+      } else if (way === 'alternatives') {
+        const [a, b] = pick(c.rng, OPTIONS);
+        S.fx(t, 'optA', { kind: 'text', text: a, x: 6, y: 14, c: 'C' });
+        S.fx(t + 200, 'optB', { kind: 'text', text: b, x: 49, y: 14, c: 'G' });
+        let g = 'l';
+        for (let i = int(c.rng, 3, 5); i > 0; i--) {
+          S.at(t, { gaze: g, lean: g === 'l' ? -1 : 1 });
+          t += rnd(c.rng, 500, 1000);
+          g = g === 'l' ? 'r' : 'l';
+        }
+        S.at(t, { lean: 0, gaze: 'c' });
+        // one fades, or both do
+        const drop = pick(c.rng, ['optA', 'optB', 'both']);
+        if (drop !== 'optB') S.fx(t, 'optA', { a: 0.4 });
+        if (drop !== 'optA') S.fx(t, 'optB', { a: 0.4 });
+        t += 400;
+        S.fx(t, 'optA', null);
+        S.fx(t + (drop === 'both' ? 0 : 500), 'optB', null);
+        t += 500;
+      } else if (way === 'examine') {
+        const s = c.rng() < 0.5 ? 'l' : 'r';
+        const name = pick(c.rng, ['gem', 'box', 'disk']);
+        const [px, py] = pawSpot('mid', s);
+        S.at(t, { [s === 'l' ? 'pawL' : 'pawR']: 'mid', eyes: 'down', pupils: 0 });
+        S.fx(t + 100, 'obj', { kind: 'obj', name, x: px, y: py - 6 });
+        S.fx(t + 900, 'obj', { x: px + 1 });
+        S.fx(t + 1500, 'obj', { x: px - 1 });
+        t += rnd(c.rng, 1900, 2600);
+        S.fx(t, 'obj', null);
+        S.at(t, { pawL: null, pawR: null, pupils: null, eyes: 'open' });
+        t += 300;
+      } else if (way === 'tap') {
+        S.at(t, { gaze: 'u', mouth: 'think' });
+        t = S.play('pawTap', t + 200, { side: c.rng() < 0.5 ? 'l' : 'r' });
+        S.at(t, { gaze: 'c' });
+      } else if (way === 'book') {
+        S.at(t, { book: 0, eyes: 'open', mouth: 'idle' });
+        S.at(t + 400, { eyes: 'down' });
+        t = S.play('pageTurn', t + rnd(c.rng, 1000, 1600)) + rnd(c.rng, 800, 1400);
+        t = S.play('lookUpFromBook', t);
+        S.at((t += 300), { book: null, eyes: 'open', mouth: 'think' });
+        t += 400;
+      } else if (way === 'terminal') {
+        const s = c.rng() < 0.5 ? 'l' : 'r';
+        const spot = clampPoint(c, A.world(s === 'l' ? -24 : 24, 14, -8), 24);
+        st.prop(t, 'term', { kind: 'terminal', ...spot, lit: 3, lines: 2, seed: int(c.rng, 1, 999), fade: 0 });
+        st.prop(t + 40, 'term', { fade: 1 });
+        A.look(t + 300, spot, { eyes: 'down', lean: s === 'l' ? -1 : 1 });
+        st.prop(t + 1200, 'term', { mode: 'busy' });
+        st.prop(t + 1700, 'term', { mode: null, lines: 3 });
+        t += 2200;
+        S.at(t, { lean: 0, focus: null, gaze: 'c' });
+        st.prop(t, 'term', { fade: 0, fadeMs: 500 });
+        t += 600;
+      }
+      t += rnd(c.rng, 200, 600);
+    }
+
+    // a decision, or the thought is let go
+    if (c.rng() < 0.6) {
+      t = S.play('ideaGlyph', t, { name: 'bulb' });
+      S.at(t, { eyes: 'wide', mouth: 'idle', gaze: 'c' });
+      t = S.play('nod', t + 300);
+      S.at(t + 400, { eyes: 'open' });
+      t += 500;
+    } else {
+      S.at(t, { cue: '~', mouth: 'idle', lean: c.rng() < 0.5 ? -1 : 1, ears: 'back' });
+      S.at((t += rnd(c.rng, 800, 1200)), { cue: null, lean: 0, ears: null, eyes: 'closed' });
+      S.at((t += 400), { eyes: 'open', gaze: pick(c.rng, ['l', 'r']) });
+      t += rnd(c.rng, 500, 900);
+    }
+    S.at(t, { mouth: 'idle', gaze: 'c', cue: null });
+    return t + 500;
   },
 });
 

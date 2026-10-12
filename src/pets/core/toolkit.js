@@ -27,6 +27,18 @@ export function makeScript(c, animations) {
     prop(t, id, spec) {
       return S.at(t, { propOps: [[id, spec]] });
     },
+    // create / update / remove (spec = null) a sprite-space overlay effect
+    fx(t, key, spec) {
+      return S.at(t, { fxOps: [[key, spec]] });
+    },
+    // several overlay effects in one beat: { key: spec | null }
+    fxMany(t, map) {
+      return S.at(t, { fxOps: Object.entries(map) });
+    },
+    // remove every overlay effect at once
+    clearFx(t) {
+      return S.at(t, { fx: {} });
+    },
     // play a named animation from the pet's animation registry
     play(id, t0 = 0, opts) {
       return animations ? animations.play(S, c, id, t0, opts) : t0;
@@ -53,8 +65,14 @@ export function flick(S, t0, ms) {
  * Continuous walk from one spot to another: one step per stepMs, each a
  * short linear glide, so it reads as walking. Works in all three axes
  * (depth interpolates with the screen position). Never a jump.
+ *
+ * opts (all optional):
+ *   pose     the gait's body pose (default 'stand'; 'crouch' creeps)
+ *   endPose  the pose it arrives in (default 'sit')
+ *   gaze     a fixed gaze while walking (default: the walking direction)
  */
-export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps = 30, depthWeight = 0) {
+export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps = 30, depthWeight = 0, opts = {}) {
+  const { pose = 'stand', endPose = 'sit', gaze = null } = opts;
   const dx = dest.sx - from.sx;
   // depthWeight > 0 lets a mostly-in-depth move take proportionally more steps
   const dist = Math.hypot(dx, dest.sy - from.sy) + Math.abs(dest.z - from.z) * depthWeight;
@@ -68,8 +86,8 @@ export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps
       sy: lerp(from.sy, dest.sy, f),
       z: lerp(from.z, dest.z, f),
       legs: i % 2 ? 2 : 1,
-      gaze: dx < -4 ? 'l' : dx > 4 ? 'r' : 'c',
-      pose: 'stand',
+      gaze: gaze ?? (dx < -4 ? 'l' : dx > 4 ? 'r' : 'c'),
+      pose,
       transitionMs: stepMs,
       ease: 'linear',
       ...(Math.abs(dx) > 4 ? { facing: dx < 0 ? -1 : 1 } : {}),
@@ -77,7 +95,7 @@ export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps
   }
 
   const end = t0 + n * stepMs;
-  S.at(end, { legs: 0, gaze: 'c', pose: 'sit' });
+  S.at(end, { legs: 0, gaze: gaze ?? 'c', pose: endPose });
   return end;
 }
 
