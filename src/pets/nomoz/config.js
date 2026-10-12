@@ -26,6 +26,7 @@ export const BEHAVIOR_OVERRIDES = {};
  * on automatic, the book's paw and shift cleared, sitting. Never position.
  */
 export const REST_PATCH = {
+  view: 'front',
   pose: 'sit',
   legs: 0,
   lean: 0,

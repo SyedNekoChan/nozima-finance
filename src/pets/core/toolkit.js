@@ -64,7 +64,9 @@ export function flick(S, t0, ms) {
 /*
  * Continuous walk from one spot to another: one step per stepMs, each a
  * short linear glide, so it reads as walking. Works in all three axes
- * (depth interpolates with the screen position). Never a jump.
+ * (depth interpolates with the screen position). Never a jump. The cat
+ * turns (view) to show the side it walks on, and back to the front when
+ * it arrives, always through the in-between views.
  *
  * opts (all optional):
  *   pose     the gait's body pose (default 'stand'; 'crouch' creeps)
@@ -74,6 +76,11 @@ export function flick(S, t0, ms) {
 export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps = 30, depthWeight = 0, opts = {}) {
   const { pose = 'stand', endPose = 'sit', gaze = null } = opts;
   const dx = dest.sx - from.sx;
+  const face = Math.abs(dx) > 4 ? { facing: dx < 0 ? -1 : 1 } : {};
+
+  // turn to show the side it walks on, through the in-between views
+  const view = walkView(dx, dest.sy - from.sy + (dest.z - from.z) * 0.8);
+  turnPath('front', view).forEach((v, k) => S.at(t0 + k * TURN_MS, { view: v, ...face }));
   // depthWeight > 0 lets a mostly-in-depth move take proportionally more steps
   const dist = Math.hypot(dx, dest.sy - from.sy) + Math.abs(dest.z - from.z) * depthWeight;
   const sAvg = (c.geo.scaleAt(from.z) + c.geo.scaleAt(dest.z)) / 2;
@@ -90,13 +97,46 @@ export function travel(S, c, from, dest, t0, stepMs = SCHEDULER.stepMs, maxSteps
       pose,
       transitionMs: stepMs,
       ease: 'linear',
-      ...(Math.abs(dx) > 4 ? { facing: dx < 0 ? -1 : 1 } : {}),
+      ...face,
     });
   }
 
+  // arrives, then turns back to face the room the same way
   const end = t0 + n * stepMs;
   S.at(end, { legs: 0, gaze: gaze ?? 'c', pose: endPose });
-  return end;
+  const back = turnPath(view, 'front');
+  back.forEach((v, k) => S.at(end + k * TURN_MS, { view: v }));
+  return end + Math.max(0, back.length - 1) * TURN_MS;
+}
+
+/*
+ * Which side of the cat a walk shows (view.view): the front walking toward
+ * the viewer, the rear walking away, the profile walking across, and the
+ * three-quarter views in between. `toward` is the movement toward the
+ * viewer (down the screen and nearer in depth).
+ */
+const VIEW_RING = ['front', 'frontQ', 'side', 'rearQ', 'rear'];
+export const TURN_MS = 110;
+
+export function walkView(dx, toward) {
+  const ax = Math.abs(dx);
+  const at = Math.abs(toward);
+  if (ax < 4 && at < 4) return 'front';
+  if (ax >= at * 2.2) return 'side';
+  if (at >= ax * 2.2) return toward > 0 ? 'front' : 'rear';
+  return toward > 0 ? 'frontQ' : 'rearQ';
+}
+
+// The views a turn passes through (excluding where it starts).
+export function turnPath(from, to) {
+  const a = VIEW_RING.indexOf(from);
+  const b = VIEW_RING.indexOf(to);
+  const out = [];
+  for (let i = a; i !== b; ) {
+    i += Math.sign(b - a);
+    out.push(VIEW_RING[i]);
+  }
+  return out;
 }
 
 // Stay put and take in the surroundings with a few dwelling glances.

@@ -11,10 +11,13 @@
  *
  *   HEAD     : one mirrored half-grid (ears, forehead "M", cheeks, muzzle, jaw)
  *   TORSO    : mirrored half-grids, sitting (the reference pose) and standing
- *   TAIL     : one shaded grid with a small sway (or lying along the floor)
+ *   TAIL     : a tapered, curved tail drawn along a procedural spine (or lying
+ *              along the floor), posed and animated per pose, view and moment
  *   FACE     : eye / pupil / nose / mouth overlays (the expressions)
  *   RIG      : raised forepaws, ear twitches, tail modes, crouching, lying
  *              and head-down poses, all assembled from those same parts
+ *   VIEWS    : front (the reference), three-quarter front, side profile,
+ *              three-quarter rear and rear, chosen by the walking direction
  *   PROPS    : coin, crown, book, objects, glyphs, pixel font
  *   FX       : sprite-space overlay effects (runes, sparks, orbs, smoke,
  *              dream symbols, notes...) by kind, see FX_KINDS
@@ -436,44 +439,123 @@ function drawSitTorso(g) {
   blitHalf(g, SIT_HALF, 30);
 }
 
-// The tail, tip at the top: a rounded, slightly narrower tip, a lit left
-// edge, a shaded right edge, thin tabby rings, and a base that sweeps
-// into the haunch.
-const TAIL = [
-  '.......22.',
-  '......3222',
-  '......3221',
-  '.....32221',
-  '.....31111',
-  '.....32221',
-  '.....32221',
-  '.....31111',
-  '.....32221',
-  '.....32221',
-  '.....31111',
-  '.....32221',
-  '.....32221',
-  '.....31111',
-  '.....32221',
-  '.....32221',
-  '....322221',
-  '...3222221',
-  '..32222211',
-  '.322222211',
-  '3222222211',
-  '2222222211',
-  '2222222221',
-  '222222221.',
-  '22222221..',
-  '2222221...',
-];
+/*
+ * The tail: a tapered, curved spine drawn as pixels, never a stretched
+ * grid. The spine starts at `x, y` heading `a` degrees (screen space, 0 =
+ * right, -90 = up), turns `k` degrees per pixel along its `len`, and hooks
+ * a further `hook` degrees over its last third. It is about five pixels
+ * thick at the root and two at the tip, with a lit upper-left edge, a
+ * shaded edge, thin tabby rings and a lit, rounded tip; the rim-light pass
+ * then lights its silhouette like the rest of the cat.
+ */
+const TAIL_LIGHT = [-0.68, -0.73];
 
-function drawTail(g, x0, y0, sway) {
-  for (let r = 0; r < TAIL.length; r++) {
-    // the tip sways; the base stays attached
-    const shift = r < 10 ? sway : r < 14 ? Math.round(sway / 2) : 0;
-    for (let c = 0; c < TAIL[r].length; c++) put(g, x0 + c + shift, y0 + r, TAIL[r][c]);
+function tailSpine(x, y, a, len, k, hook, r0, r1) {
+  const pts = [];
+  let px = x;
+  let py = y;
+  let ang = (a * Math.PI) / 180;
+  const hookFrom = len * 0.62;
+  for (let d = 0; d <= len; d += 0.5) {
+    pts.push([px, py, ang, d, r0 + (r1 - r0) * (d / len)]);
+    const turn = k + (d > hookFrom ? hook / (len - hookFrom) : 0);
+    ang += (turn * Math.PI) / 180 * 0.5;
+    px += Math.cos(ang) * 0.5;
+    py += Math.sin(ang) * 0.5;
   }
+  return pts;
+}
+
+const inBox = (pts) => pts.every(([px, py, , , r]) => px - r >= 0.5 && px + r <= SPRITE_W - 2.5 && py - r >= 1.5);
+
+function drawTailCurve(g, { x, y, a, len, k, hook = 0, r0 = 2.4, r1 = 1.05 }) {
+  // a tail that would leave the sprite box curls in on itself instead
+  let pts = tailSpine(x, y, a, len, k, hook, r0, r1);
+  for (let i = 1; i <= 6 && !inBox(pts); i++) {
+    const dir = k + hook / len < 0 ? -1 : 1;
+    len *= 0.93;
+    pts = tailSpine(x, y, a, len, k + dir * 0.7 * i, hook, r0, r1);
+  }
+  const xs = pts.map((q) => q[0]);
+  const ys = pts.map((q) => q[1]);
+  const x0 = Math.floor(Math.min(...xs) - r0 - 1);
+  const x1 = Math.ceil(Math.max(...xs) + r0 + 1);
+  const y0 = Math.floor(Math.min(...ys) - r0 - 1);
+  const y1 = Math.ceil(Math.max(...ys) + r0 + 1);
+
+  for (let gy = y0; gy <= y1; gy++) {
+    for (let gx = x0; gx <= x1; gx++) {
+      const cx = gx + 0.5;
+      const cy = gy + 0.5;
+      let best = null;
+      let margin = 0;
+      for (const q of pts) {
+        const m = q[4] - Math.hypot(cx - q[0], cy - q[1]);
+        if (m >= 0 && (!best || m > margin)) {
+          best = q;
+          margin = m;
+        }
+      }
+      if (!best) continue;
+      const [qx, qy, qa, d, r] = best;
+      const dx = Math.cos(qa);
+      const dy = Math.sin(qa);
+      const side = dx * (cy - qy) - dy * (cx - qx); // across the spine
+      const lit = -dy * TAIL_LIGHT[0] + dx * TAIL_LIGHT[1] > 0 ? 1 : -1;
+      const u = (side * lit) / r;
+      let ch = u > 0.3 ? '3' : u < -0.4 ? '1' : '2';
+      if (d > 3 && d < len - 3 && Math.floor(d) % 5 === 3 && u < 0.6) ch = '1';
+      if (d > len - 1.6) ch = '3';
+      put(g, gx, gy, ch);
+    }
+  }
+}
+
+// Smooth, slowly wandering values on the animation clock (no fixed loop).
+function hash(n) {
+  const v = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return v - Math.floor(v);
+}
+function wander(t, period, seed) {
+  const u = t / period;
+  const i = Math.floor(u);
+  const f = u - i;
+  const e = f * f * (3 - 2 * f);
+  return hash(i + seed) * (1 - e) + hash(i + 1 + seed) * e;
+}
+
+const TAIL_SWAY = [0, 1, 0.4, -1, -0.4];
+
+/*
+ * How the tail sits this frame, from the pose, the view and the moment:
+ * its rest carriage drifts slowly (higher or lower, more or less curled),
+ * it sways gently, swishes or lashes (swish / stressed), holds still
+ * (still), stands up with a hooked tip (up), balances out behind on each
+ * step while walking, sinks while crouching and rises behind a lowered head.
+ */
+function tailSpec(p, poseName, view) {
+  const t = p.frame || 0;
+  const stressed = p.mood === 'stressed';
+  const mode = stressed ? 'lash' : p.tail;
+  const walking = p.legs === 1 || p.legs === 2;
+  const amp = mode === 'still' ? 0 : mode === 'lash' ? 16 : mode === 'swish' ? 13 : walking ? 3 : 5;
+  const sway = TAIL_SWAY[t % TAIL_SWAY.length] * amp + (walking ? (p.legs === 1 ? 6 : -6) : 0);
+  const lift = mode === 'up' ? 1 : poseName === 'crouch' ? 0.05 : 0.2 + 0.65 * wander(t, 7, 3);
+  const curl = mode === 'up' ? 1 : wander(t, 9, 11);
+  const drop = poseName === 'crouch' ? 3 : 0;
+
+  if (view === 'side' || view === 'frontQ' || view === 'rearQ') {
+    return { x: 42, y: 34 + drop, a: 5 - 70 * lift + sway, len: 17, k: -1.2 - curl, hook: -(25 + 50 * curl) };
+  }
+  if (view === 'rear') {
+    return { x: 28, y: 45 + drop, a: -90 + sway, len: 20, k: 0.6 + curl * 0.8, hook: 40 + 50 * curl };
+  }
+  if (poseName === 'low') return { x: 40, y: 29, a: -80 + sway, len: 19, k: -1, hook: -40 * (1 + curl) };
+  if (poseName === 'stand' || poseName === 'crouch') {
+    return { x: 41, y: 49 + drop, a: -40 - 40 * lift + sway, len: 20, k: -1.4 - curl, hook: -(30 + 40 * curl) };
+  }
+  // sitting (and stretching): curled up beside the haunch, never bolt upright
+  return { x: 44, y: 51, a: -12 - 58 * lift + sway, len: 24, k: -1.6 - curl * 1.2, hook: -(30 + 70 * curl) };
 }
 
 // The same tail lying along the floor (lying poses): lit top, shaded
@@ -584,16 +666,17 @@ function drawCurlFront(g, p, sway) {
  * Poses. Every pose is the same cat: which torso parts are drawn, where
  * the head sits (hy before expression offsets), where the tail goes and
  * which floor shadow it casts. Unknown poses fall back to sitting.
- *   tail: [x, y] upright tail grid position, or null (the pose draws its own)
+ *   tail: true when the pose carries the upright tail (see tailSpec), or null
+ *   (the pose draws its own along the floor)
  */
 const POSES = {
-  sit: { hy: 4, tail: [42, 28], shadow: 'sit', torso: (g) => drawSitTorso(g) },
-  stretch: { hy: 9, tail: [42, 28], shadow: 'sit', torso: (g) => drawSitTorso(g), front: drawStretchPaws },
-  stand: { hy: 3, tail: [38, 31], shadow: 'stand', upright: 0, torso: (g, p, o) => drawUprightTorso(g, p.legs, 0, o) },
-  crouch: { hy: 7, tail: [38, 31], shadow: 'stand', upright: 4, torso: (g, p, o) => drawUprightTorso(g, p.legs, 4, o) },
+  sit: { hy: 4, tail: true, shadow: 'sit', torso: (g) => drawSitTorso(g) },
+  stretch: { hy: 9, tail: true, shadow: 'sit', torso: (g) => drawSitTorso(g), front: drawStretchPaws },
+  stand: { hy: 3, tail: true, shadow: 'stand', upright: 0, torso: (g, p, o) => drawUprightTorso(g, p.legs, 0, o) },
+  crouch: { hy: 7, tail: true, shadow: 'stand', upright: 4, torso: (g, p, o) => drawUprightTorso(g, p.legs, 4, o) },
   low: {
     hy: 20,
-    tail: [38, 4],
+    tail: true,
     shadow: 'stand',
     upright: 6,
     torso: (g, p, o) => {
@@ -1311,10 +1394,216 @@ export function pawSpot(level, side = 'l', hy = 4) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Rig: directional views                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * While it walks the cat is seen from the side it actually shows: the
+ * front (the reference art), three-quarter front, side profile,
+ * three-quarter rear or rear (view.view). Every view is assembled from
+ * the same cat: the reference head (its face, expressions and pupils
+ * intact) or that head seen from behind, a profile head built from the
+ * same fur planes with the same eye templates, the same torso seen from
+ * behind, and a side body from the same fur mound. Base space walks to the
+ * left (head on the left); facing > 0 mirrors it like every other frame.
+ * Only upright poses turn; sitting still, lying and the rest face front.
+ */
+const TURN_VIEWS = new Set(['frontQ', 'side', 'rearQ', 'rear']);
+const TURN_POSES = new Set(['sit', 'stand', 'crouch']);
+
+// The reference head seen from behind: the same silhouette, ears showing
+// their furred backs, no face.
+const REAR_HEAD = HEAD.map((r) => r.replace(/I/g, '3').replace(/i/g, '2'));
+
+// The upright torso seen from behind: no bib, a darker line down the spine.
+function drawRearTorso(g, p, drop) {
+  const tmp = makeGrid();
+  drawUprightTorso(tmp, p.legs, drop);
+  for (let y = 0; y < SPRITE_H; y++) {
+    for (let x = 0; x < SPRITE_W; x++) {
+      const ch = tmp[y][x];
+      if (ch !== '.') put(g, x, y, ch === '4' ? '2' : ch);
+    }
+  }
+  for (let y = 31 + drop; y <= 42 + drop; y++) {
+    put(g, 27, y, '1');
+    put(g, 28, y, y % 3 ? '1' : '2');
+  }
+}
+
+/*
+ * A leg seen from the side: a 3-pixel column from the body to the floor,
+ * its foot `s` pixels forward (-) or back (+) of the hip, lifted `lift`
+ * rows; near legs lit on their leading edge, far legs in shadow.
+ */
+function drawSideLeg(g, x0, top, s, lift, near) {
+  const foot = 55 - lift;
+  for (let y = top; y <= foot; y++) {
+    const x = x0 + Math.round((s * (y - top)) / Math.max(1, foot - top));
+    if (near) {
+      put(g, x, y, '3');
+      put(g, x + 1, y, '2');
+      put(g, x + 2, y, '2');
+      put(g, x + 3, y, '1');
+    } else {
+      put(g, x, y, '2');
+      put(g, x + 1, y, '1');
+      put(g, x + 2, y, '1');
+    }
+  }
+  const fx = x0 + s - 1;
+  for (let c = 0; c < 5; c++) {
+    put(g, fx + c, foot + 1, near ? (c === 0 ? '3' : c === 4 ? '1' : '2') : c < 4 ? '1' : '.');
+    put(g, fx + c, foot + 2, near ? (c === 1 || c === 3 ? '1' : '2') : c < 4 ? '1' : '.');
+  }
+}
+
+/*
+ * The four legs in a trot: legs 1 and 2 swing the diagonal pairs forward
+ * (lifted) and back, legs 3 tucks them for a leap, legs 0 stands square.
+ * `layer` draws the far pair (behind the body) or the near pair.
+ */
+function drawSideLegs(g, legs, drop, layer) {
+  const top = 44 + drop;
+  const step = legs === 1 ? 1 : legs === 2 ? -1 : 0;
+  const leap = legs === 3;
+  const near = layer === 'near';
+  const legsAt = near
+    ? [[16, step, 'f'], [36, -step, 'h']]
+    : [[20, -step, 'f'], [40, step, 'h']];
+  for (const [x, dir, end] of legsAt) {
+    const s = leap ? (end === 'f' ? -3 : 3) : dir * -2;
+    const lift = leap ? (end === 'f' ? 3 : 1) : dir > 0 ? 2 : 0;
+    drawSideLeg(g, x, top, s, lift, near);
+  }
+}
+
+// The body from the side: chest, barrel and haunch from the same fur mound.
+function drawSideBody(g, drop) {
+  drawMound(g, 30, 38.5 + drop, 13.5, 8);
+  drawMound(g, 39, 38 + drop, 7.5, 8.5); // haunch
+  drawMound(g, 19.5, 35.5 + drop, 6.5, 8); // chest and neck
+  for (const [x, y] of [[14, 37], [14, 38], [15, 39], [14, 39], [15, 40], [15, 41]]) put(g, x, y + drop, '4'); // bib
+}
+
+// Profile ears: the reference ear itself (head rows 0-6), and the far ear
+// behind it in shadow.
+const EAR_NEAR = HEAD_HALF.slice(0, 7).map((r) => r.slice(2, 13));
+const EAR_FAR = EAR_NEAR.map((r) => r.replace(/[Ii4]/g, '1').replace(/3/g, '2'));
+
+/*
+ * The profile head, facing left, at the reference head's size: built from
+ * the same fur mounds (cranium, cheek and muzzle), the reference ears and
+ * the same eye and pupil templates, so every expression and pupil reaction
+ * still shows. (ox, hy) is its left edge and its top row (the ear tips).
+ */
+function drawSideHead(g, over, p, ox, hy, kind) {
+  blit(g, EAR_FAR, ox + 13, hy + 1);
+  drawMound(g, ox + 15, hy + 13, 11, 8.5);
+  drawMound(g, ox + 14, hy + 18, 10, 7);
+  drawMound(g, ox + 5.5, hy + 18.5, 5.5, 4.5);
+  blit(g, EAR_NEAR, ox + 7, hy);
+
+  // the eye, one of the same templates, its pupil looking ahead
+  drawEye(g, EYES[kind], ox + 4, hy + 10);
+  if (PUPIL_EYES.has(kind)) {
+    const look = p.gaze === 'l' ? -1 : p.gaze === 'r' ? 1 : 0;
+    drawPupil(g, EYES[kind], p.pupil ?? 1, ox + 4, hy + 10, look);
+  }
+
+  // nose, mouth and chin
+  put(g, ox, hy + 16, '5');
+  put(g, ox + 1, hy + 16, '4');
+  put(g, ox, hy + 17, '0');
+  put(g, ox + 1, hy + 17, '1');
+  const mouth = p.mood === 'stressed' ? 'panic' : p.mouth;
+  if (mouth === 'o' || mouth === 'panic') {
+    for (const [x, y] of [[1, 19], [2, 19], [1, 20], [2, 20], [3, 20]]) put(g, ox + x, hy + y, '0');
+  } else if (mouth === 'chew') {
+    for (const [x, y] of [[1, 19], [2, 19], [3, 20], [2, 21]]) put(g, ox + x, hy + y, '0');
+  } else {
+    for (const [x, y, ch] of [[1, 19, '0'], [2, 19, '0'], [3, 19, '1'], [4, 20, '1'], [2, 20, '1']]) put(g, ox + x, hy + y, ch);
+    if (mouth === 'lick') {
+      put(g, ox, hy + 19, 'h');
+      put(g, ox, hy + 20, 'h');
+    }
+  }
+
+  // whiskers fanning forward from the muzzle
+  const whiskers = [
+    [17, [[5, 0], [4, 0], [3, 0], [2, -1], [1, -1], [0, -1], [-1, -2]]],
+    [18, [[5, 0], [4, 0], [3, 0], [2, 0], [1, 0], [0, 0], [-1, 0]]],
+    [19, [[5, 0], [4, 1], [3, 1], [2, 1], [1, 1], [0, 2]]],
+  ];
+  for (const [y, run] of whiskers) {
+    run.forEach(([c, dy], i) => put(over, ox + c, hy + y + dy, i >= run.length - 2 ? '3' : '4'));
+  }
+}
+
+/*
+ * Composes a turned view (anything but the front). Returns the same
+ * shape as buildCat, plus where the worn coin sits (chest, null when the
+ * chest faces away) and how far the coin is turned (chestTurn).
+ */
+function buildTurned(p, poseName, view) {
+  const cat = makeGrid();
+  const over = makeGrid();
+  const stressed = p.mood === 'stressed';
+  const drop = poseName === 'crouch' ? 3 : 0;
+  const bob = p.legs === 1 || p.legs === 2 ? p.legs - 1 : p.frame % 2;
+  const jit = stressed ? (p.frame % 2 ? -1 : 1) : 0;
+  const lift = stressed ? 1 : 0;
+  const kind = eyeKind(p);
+  const tail = tailSpec(p, poseName, view);
+  const shadow = LIGHTING.shadow;
+  const out = { cat, over, footY: shadow.standY, feet: shadow.standFeet, cueY: 0, chest: null, chestTurn: 0 };
+
+  if (view === 'rear') {
+    const hx = HX + jit;
+    const hy = 3 + bob + drop + lift;
+    drawRearTorso(cat, p, drop);
+    blit(cat, REAR_HEAD, hx - HEAD_PAD, hy);
+    drawEars(cat, stressed ? null : p.ears, hx, hy);
+    drawTailCurve(cat, tail);
+    return { ...out, hx, hy };
+  }
+
+  if (view !== 'rearQ') drawTailCurve(cat, tail);
+  drawSideLegs(cat, p.legs, drop, 'far');
+  drawSideBody(cat, drop);
+  drawSideLegs(cat, p.legs, drop, 'near');
+  const feet = [14, 45];
+
+  if (view === 'side') {
+    const ox = 2 + jit;
+    const hy = 4 + bob + drop + lift;
+    drawSideHead(cat, over, p, ox, hy, kind);
+    return { ...out, feet, hx: ox + 2, hy: hy - 1, chest: { x: ox + 11, y: hy + 25 }, chestTurn: 1 };
+  }
+
+  // three-quarter views: the head turned toward (or away from) the viewer
+  const hx = 9 + jit;
+  const hy = 6 + bob + drop + lift;
+  if (view === 'frontQ') {
+    drawHead(cat, p, hx, hy);
+    drawEars(cat, stressed ? null : p.ears, hx, hy);
+    drawWhiskers(over, hx, hy, stressed, p.frame % 2);
+    return { ...out, feet, hx, hy, chest: { x: hx + 12, y: Math.min(hy + 28, SPRITE_H - 8) } };
+  }
+  blit(cat, REAR_HEAD, hx - HEAD_PAD, hy);
+  drawEars(cat, stressed ? null : p.ears, hx, hy);
+  drawTailCurve(cat, tail);
+  return { ...out, feet, hx, hy };
+}
+
+/* ------------------------------------------------------------------ */
 /* Cat composition                                                     */
 /* ------------------------------------------------------------------ */
 
 function buildCat(p) {
+  const poseName0 = POSES[p.pose] ? p.pose : 'sit';
+  if (TURN_VIEWS.has(p.view) && TURN_POSES.has(poseName0)) return buildTurned(p, poseName0, p.view);
+
   const cat = makeGrid();
   const over = makeGrid();
   const poseName = POSES[p.pose] ? p.pose : 'sit';
@@ -1333,7 +1622,7 @@ function buildCat(p) {
   const tail = stressed ? null : p.tail;
   const sway =
     stressed || tail === 'swish' ? (p.frame % 2 ? 2 : -1) : tail === 'still' ? 0 : p.frame % 3 === 2 ? 1 : 0;
-  if (pose.tail) drawTail(cat, pose.tail[0], pose.tail[1] - (tail === 'up' ? 2 : 0), sway);
+  if (pose.tail) drawTailCurve(cat, tailSpec(p, poseName, 'front'));
 
   // a raised paw while standing lifts that leg off the floor
   const omit = upright ? `${p.pawL ? 'L' : ''}${p.pawR ? 'R' : ''}` : '';
@@ -1358,11 +1647,13 @@ function buildCat(p) {
  * base space: on the bib of the sitting and standing body, lower with the
  * crouching torso and the stretch, and always just under the chin when the
  * head is lower than that (head down, lying, curled up), inside the box.
- * p.pose is the requested pose, p.hy the head's row in this frame.
+ * p.pose is the requested pose, p.hy the head's row in this frame; a turned
+ * view passes its own spot (p.chest), or null when the chest faces away.
  */
 const CHEST_Y = { sit: 34, stand: 34, stretch: 38, crouch: 38 };
 
 export function chestSpot(p) {
+  if (p.chest !== undefined) return p.chest; // a turned view placed it
   const y = Math.max(CHEST_Y[p.pose] ?? CHEST_Y.sit, p.hy + 28);
   return { x: 24, y: Math.min(y, SPRITE_H - 8) };
 }
@@ -1463,7 +1754,7 @@ export function renderSprite(ctx, p, vanity) {
     q.focusX = flip ? SPRITE_W - 1 - tracked.x : tracked.x;
   }
 
-  const { cat, over, hx, hy, footY, feet, cueY } = buildCat(q);
+  const { cat, over, hx, hy, footY, feet, cueY, chest, chestTurn = 0 } = buildCat(q);
   const lit = rimLight(cat, light);
   const under = makeGrid();
   drawUnder(under, lit, light, footY, feet[0], feet[1]);
@@ -1472,7 +1763,7 @@ export function renderSprite(ctx, p, vanity) {
   paintGrid(ac, under);
   paintGrid(ac, lit);
   paintGrid(ac, over);
-  drawProps(ac, q, hx, hy, vanity);
+  drawProps(ac, { ...q, chest, chestTurn }, hx, hy, vanity);
 
   bc.clearRect(0, 0, SPRITE_W, SPRITE_H);
   bc.save();

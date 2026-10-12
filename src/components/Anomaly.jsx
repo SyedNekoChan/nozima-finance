@@ -41,6 +41,7 @@ const SPRITE_FIELDS = [
   'bookPaw',
   'bookShift',
   'fx',
+  'view',
 ];
 
 /*

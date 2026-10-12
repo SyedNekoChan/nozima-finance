@@ -2,7 +2,7 @@ import { defineActivity } from '../../core/activity.js';
 import { defineBehavior } from '../../core/behaviors.js';
 import { clampPoint, createActor } from '../../core/choreo.js';
 import { clamp, int, lerp, pick, rnd } from '../../core/rng.js';
-import { flick, sweep, travel, zBand } from '../../core/toolkit.js';
+import { TURN_MS, flick, sweep, travel, zBand } from '../../core/toolkit.js';
 import { SCHEDULER } from '../../config.js';
 import { SIGN, W, weighted } from './util.js';
 
@@ -296,7 +296,9 @@ export const edgeExit = defineBehavior({
       transitionMs: out,
       ease: 'out',
       offscreen: true,
+      view: 'frontQ',
     });
+    S.at(TURN_MS, { view: 'side' });
     flick(S, 0, out);
 
     const hide = out + rnd(c.rng, 2200, 5500);
@@ -313,7 +315,8 @@ export const edgeExit = defineBehavior({
     const inn = rnd(c.rng, 2200, 3200);
     S.at(hide + 80, { sx: dest.sx, transitionMs: inn, ease: 'out' });
     flick(S, hide + 80, inn);
-    S.at(hide + 80 + inn, { offscreen: false, gaze: 'c' });
+    S.at(hide + 80 + inn, { offscreen: false, gaze: 'c', view: 'frontQ' });
+    S.at(hide + 80 + inn + TURN_MS, { view: 'front' });
     return hide + inn + 700;
   },
   exit(c, why) {

@@ -11,6 +11,7 @@ const INITIAL_VIEW = {
   sy: null,
   z: 0,
   facing: 1,
+  view: 'front', // which side of the cat shows (see travel)
   pose: 'sit',
   gaze: 'c',
   eyes: 'open',
@@ -46,6 +47,7 @@ const INITIAL_VIEW = {
 // Posture reset when the financial mood (or breakpoint) changes, or a
 // behavior is cancelled. Position and depth are never part of it.
 const RESET = {
+  view: 'front',
   pose: 'sit',
   gaze: 'c',
   eyes: 'open',
