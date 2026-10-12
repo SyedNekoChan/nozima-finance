@@ -56,13 +56,23 @@ content. It is the first pet of a small, moddable pet subsystem
 The "lonely black cat" pixel-art image is the source of truth for the
 character. Every frame, pose and state is that same cat:
 
-- A solid-black, front-facing, sitting cat with a wide head and a flat
-  crown between two pointed ears, each with a white inner ear.
-- Half-lidded amber eyes: a pale gold crescent with a small bright
-  highlight pixel, on black.
-- Long thin whiskers extending past the head on both sides.
-- A tall narrow sitting body and a tail curling up on the right (mirrored
-  when it faces the other way).
+- A solid-black, front-facing, sitting cat with a wide, domed head and a
+  flat crown between two pointed ears, each with a white inner ear shaded
+  with a few mid-grey fur tufts.
+- Half-lidded amber eyes: a heavy dark upper lid, an iris shaded under the
+  lid, a slit pupil and one small bright highlight pixel, on black.
+- A faint "M" tabby mark on the forehead, soft lit brows, full cheeks that
+  end in small fur tufts with tabby strokes, whisker pads with root dots,
+  a small nose with a dim sheen, a `w` mouth with soft corners, and a
+  rounded jaw and chin.
+- Three fine whiskers per side, fanning out from the whisker pads (upper
+  lifts, middle level, lower droops) and fading at the tips.
+- A tall narrow sitting body: a shadow under the jaw, rounded shoulders, a
+  fluffy-edged chest bib with darker V fur strands, curved flank stripes,
+  rounded haunches with a lit upper curve, front legs with a lit and a
+  shaded edge, knuckled paws with toe seams and small hind paws.
+- A tail curling up on the right (mirrored when it faces the other way)
+  with a rounded tip, a lit edge, a shaded edge and thin tabby rings.
 - Near-black internal planes only (chest bib, haunch, leg and stripe
   tones), so it reads as black, never as a grey or generic cat.
 
@@ -72,12 +82,33 @@ Pixel-art rules, for every future frame:
   reinterpretation. Frames are built from the shared parts of the same cat
   (head, torso, tail, eye overlays); poses are expression, lean, head
   offset and leg frames, never a redrawn or distorted character.
+- Detail comes from small, deliberate pixel clusters at the sprite's own
+  pixel density (stepped contours, 1–3 pixel fur strokes and tufts), never
+  from a higher resolution, smoothing or anti-aliasing. The head, torso
+  and tail are hand-placed half-grids mirrored about the centre, so both
+  sides and every frame share exactly the same face and markings.
 - No bright outlines, neon edges, glossy highlights or extra colours. The
   only bright pixels are the eye highlights, white inner ears, the gold of
-  the prosperous state, and the cyan / red cues.
-- Eye states: resting amber crescent, wide ring (surprise), lowered crescent
-  (reading), closed arc (blink / sleep), `^ ^` (content), pale panic eyes
-  (stressed).
+  the prosperous state, the cyan / red cues and the drifting blue flame.
+- Eye states (all in the same 6×6 box and anchor, so nothing shifts between
+  frames): resting half-lidded amber eye, wide round eye (surprise),
+  lowered lid (reading), closed arc (blink / sleep), `^ ^` (content), pale
+  panic eyes (stressed).
+- Pupils are drawn over the iris of every open eye state (clipped by the
+  lids, under the highlight) from four masks: a constricted vertical slit,
+  a slit with darkened iris either side, an oval, and a dilated round
+  pupil with a faint second reflection. The level eases one step per
+  redraw (the slow animation clock or a view change), so every dilation
+  and constriction passes through the intermediate frames; it is kept per
+  canvas, and closed eyes keep their size. The target comes only from
+  fields behaviors already set: wide eyes (surprise, curiosity, noticing an
+  encounter) dilate fully; watching the blue flame or another drifting
+  object dilates; the stressed eyes take the oval and stay pale; reading,
+  pondering and bright glyphs or sparkles constrict to a slit; otherwise
+  the depth light decides (deeper and dimmer: oval; middle: relaxed slit;
+  near and lit: thin slit). Both pupils shift together one pixel toward
+  the gaze, and follow a watched item's position (the flame, a floating
+  object, a star, a glyph) only while the cat looks its way.
 
 ### Lighting, shading, shadows, depth
 
@@ -388,7 +419,7 @@ Environmental behaviors (new in this system unless noted):
 
 | Behavior           | Moods            | What it does                                                                 |
 | ------------------ | ---------------- | ---------------------------------------------------------------------------- |
-| investigatePixel   | idle, content    | A tiny block drifts across; it notices, watches, follows a few steps, loses interest |
+| investigatePixel   | idle, content    | A small blue flame drifts across; it notices, watches, follows a few steps, loses interest |
 | watchBeyond        | idle, content    | Looks up / toward a distant point with no object, tracks it slowly, resumes  |
 | floatingObject     | idle, content    | Finds a small bobbing object, examines it from several angles, nudges it, walks away leaving it behind |
 | longPause          | idle, content    | Extremely rare 28–55s stillness with sparse blinks, gaze shifts and tiny leans / nods |
@@ -407,6 +438,18 @@ Personality behaviors:
 
 Rare encounters (see "Rare environmental encounters"): `miniTerminal`,
 `depthAnomaly`.
+
+**The drifting blue flame.** The small object that drifts past the cat in
+`investigatePixel` and `followPixel` (the `block` item) is a mysterious
+glowing blue pixel flame: about 5×7 sprite pixels with a deep-blue outer
+rim, bright-blue and cyan layers and a white-hot core, an irregular tip and
+a rounded base, and a dithered ring of dim blue glow at partial opacity. It
+flickers between three frames (tongue and lean of the tip change, the base
+stays put), keyed to its own position and the slow animation clock, so it
+needs no timer of its own. Only its appearance changed: its path, timing,
+frequency, depth and scaling are those of the cat's sprite canvas, it stays
+behind all foreground UI and never takes the pointer, and the cat watches
+it through the same behaviors as before.
 
 Financial-context behaviors (see "Financial context"): `relax`, `budgetWatch`
 (flag-driven), `startle`, `unsettledLook` (stressed), and the reaction-only
@@ -522,9 +565,9 @@ frame art those fields select lives in `nomoz/sprites.js`:
   `cue`, `item`, `book`, `crown`, `crownLift`, `coin`, `glitch`, `fade`,
   plus position (`sx`, `sy`, `z`, `facing`, `transitionMs`).
 - New eye / pose / glyph frames are added to the template tables in
-  `sprites.js`; temporary overlays go in `ITEM_KINDS` (`text`, `block`,
-  `obj`, `crown`, `coin`, `sparkle`, `glyph`). Add a pixel-row table and one
-  entry; each asset is defined once and shared.
+  `sprites.js`; temporary overlays go in `ITEM_KINDS` (`text`, `block`
+  (the blue flame), `obj`, `crown`, `coin`, `sparkle`, `glyph`). Add a
+  pixel-row table and one entry; each asset is defined once and shared.
 
 #### Vanity / equipment
 

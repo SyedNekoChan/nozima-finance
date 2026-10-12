@@ -1,16 +1,18 @@
 /*
  * NOMOZ.EXE — 16-bit pixel-art sprite of the lonely black cat (the
  * canonical reference art, see design.md): a front-facing, sitting,
- * solid-black cat with pointed ears (white inner ear), half-lidded amber
- * eyes (a pale crescent with a bright highlight), long whiskers, a lighter
- * chest bib, a haunch / front-leg stack and a tail curling up on one side.
- * Every pose is built from the SAME shared parts so the cat never changes
- * design between frames:
+ * solid-black cat with pointed ears (white, tufted inner ear), half-lidded
+ * amber eyes (dark lid, dilating slit pupils, a bright highlight), fine
+ * whiskers, a lighter chest bib, a haunch / front-leg stack and a tail
+ * curling up on one side. Detail is small, hand-placed pixel clusters at
+ * the sprite's own density (stepped contours, fur tufts and strokes),
+ * never a higher resolution or smoothing. Every pose is built from the
+ * SAME shared parts so the cat never changes design between frames:
  *
- *   HEAD     : one mirrored half-grid (ears, forehead stripes, cheek stripes)
- *   TORSO    : sitting (the reference pose) and standing (walk cycle)
- *   TAIL     : one grid with a small sway
- *   FACE     : eye / nose / mouth overlays (the expressions)
+ *   HEAD     : one mirrored half-grid (ears, forehead "M", cheeks, muzzle, jaw)
+ *   TORSO    : mirrored half-grids, sitting (the reference pose) and standing
+ *   TAIL     : one shaded grid with a small sway
+ *   FACE     : eye / pupil / nose / mouth overlays (the expressions)
  *   PROPS    : coin, crown, book, objects, glyphs, pixel font
  *
  * VISIBILITY. The cat is predominantly black, so it is revealed by light
@@ -26,8 +28,9 @@
  *
  * Worn items (crown, chest coin, held coin, book) are not drawn here: they
  * are vanity items (./vanity.js) rendered through the pet's vanity
- * registry. Temporary overlays (cues, drifting pixels, objects, glyphs)
- * are drawn by the ITEM_KINDS table below; add a kind there to add a prop.
+ * registry. Temporary overlays (cues, the drifting blue flame, objects,
+ * glyphs) are drawn by the ITEM_KINDS table below; add a kind there to add
+ * a prop.
  */
 import { LIGHTING, SPRITE_SIZE } from './config.js';
 
@@ -46,6 +49,7 @@ const PALETTE = {
   Y: '#f0cd80', // amber eye
   y: '#c99a4a', // amber eye, shaded
   I: '#d6dde3', // inner ear
+  i: '#8d98a2', // inner ear, shaded tufts
   e: '#8d9ba5', // eye highlight (dim)
   a: '#0e1114', // backlight aura
   f: '#0b0e11', // floor pool
@@ -62,6 +66,10 @@ const PALETTE = {
   u: '#243038', // book cover
   v: '#3a4a56',
   W: '#f4f4f4', // sparkle
+  B: '#1a3fb0', // blue flame: deep outer
+  L: '#3d7dff', // blue flame: bright blue
+  w: '#e2fbff', // blue flame: white-hot core
+  b: '#0c2266', // blue flame: glow
 };
 
 const FUR = new Set(['0', '1', '2', '3', '4']);
@@ -96,60 +104,145 @@ const sym = (g, c, y, ch) => {
 /* Head                                                                */
 /* ------------------------------------------------------------------ */
 
-// Left half (16 cols), centre at the right edge. Ears rows 0-8, forehead
-// tabby stripes rows 8-10, cheek stripes rows 14-16, then a wide, rounded
-// cat face (rows 19-26) with a short chin — no long jaw, no light muzzle patch.
+// Left half (17 cols: one spare column on the outside for the cheek fur,
+// so the head is blitted one pixel left of its anchor), centre at the
+// right edge. Pointed ears with a pale, tufted inner ear (rows 0-7); a
+// domed skull with an "M" tabby mark (rows 7-11); lit brows; full cheeks
+// ending in small fur tufts (rows 15-21); whisker pads, a chin and a
+// rounded jaw (rows 21-26). Near-black planes only: no light muzzle patch.
 const HEAD_HALF = [
-  '.....22.........',
-  '....2222........',
-  '...22222........',
-  '...23I22........',
-  '..223II22.......',
-  '..223III2222....',
-  '..223III22222...',
-  '.222344222222222',
-  '2222222222212121',
-  '2222222222212121',
-  '2222222222222121',
-  '2222222222222222',
-  '2222222222222222',
-  '2222222222222222',
-  '2111222222222222',
-  '2222222222222222',
-  '2211122222222222',
-  '2222222222222222',
-  '2222222222222222',
-  '2222222222222222',
-  '2222222222222222',
-  '.222222222222222',
-  '..22222222222222',
-  '...2222222222222',
-  '....222222222222',
-  '......2222222222',
-  '.........2222222',
+  '......2..........',
+  '.....222.........',
+  '.....2I22........',
+  '....23II2........',
+  '....2IIi32.......',
+  '...23IIi422......',
+  '...2IiII4222.....',
+  '..2234ii432222222',
+  '..222222212212221',
+  '..222222221212221',
+  '.1222222222221221',
+  '.2222222222222222',
+  '.2222222222222222',
+  '.2222222333222222',
+  '.2222222222222222',
+  '.2112222222222222',
+  '22222222222222222',
+  '21112222222222222',
+  '.2222222222222222',
+  '22333222222222222',
+  '22232222222222222',
+  '.1222222222233322',
+  '..122222222312132',
+  '..122222222222222',
+  '...12222222222223',
+  '.....112222222233',
+  '........111111222',
 ];
 
 const HEAD = HEAD_HALF.map((r) => r + [...r].reverse().join(''));
+const HEAD_PAD = 1; // the spare outer column
 
 // 6x6 eye templates; '.' leaves the fur showing. The resting eye is the
-// reference's half-lidded amber crescent with a bright highlight.
+// reference's half-lidded amber eye: a heavy dark upper lid, an iris
+// shaded under the lid and one bright highlight (always on the same side,
+// so both eyes share the light). The pupil is not part of the template:
+// it is drawn over the iris from PUPILS below. Every state keeps the same
+// box and anchor so nothing shifts between frames.
 const EYES = {
-  open: ['......', '......', '.Y..EY', 'YY...Y', '.YYYY.', '......'],
-  wide: ['.YYYY.', 'Y.EE.Y', 'Y.E..Y', 'Y....Y', '.YYYY.', '......'],
-  closed: ['......', '......', '......', '5....5', '.5555.', '......'],
-  happy: ['......', '..ee..', '.e..e.', 'e....e', '......', '......'],
-  down: ['......', '......', '.5555.', 'Y....Y', '.YyyY.', '......'],
-  panic: ['.0000.', '0eeee0', 'eeeeee', 'ee00ee', 'ee00ee', '.eeee.'],
+  open: ['......', '......', '.0000.', '0yyyE0', 'YYYYYY', '.YYYY.'],
+  wide: ['.0000.', '0YYYE0', 'YYYYEY', 'YYYYYY', 'yYYYYy', '.yyyy.'],
+  closed: ['......', '......', '......', '50..05', '.5555.', '......'],
+  happy: ['......', '..ee..', '.e55e.', 'e5..5e', '......', '......'],
+  down: ['......', '......', '......', '.5555.', 'yYYYYy', '.yYYy.'],
+  panic: ['.0000.', '0eeeE0', 'eeeeee', 'eeeeee', 'eeeeee', '.eeee.'],
 };
 
-// Mouth overlays in head-local coordinates: a small 'w' under the nose.
-// Only the happy and panic states open it, and only a little.
-const W_MOUTH = [
-  [15, 22], [16, 22],
-  [15, 23], [16, 23],
-  [12, 23], [19, 23],
-  [13, 24], [14, 24], [17, 24], [18, 24],
+/*
+ * Pupils: vertical feline slits that dilate into rounded pupils, as four
+ * 6x6 masks in the eye box, from 0 (constricted slit) to 3 (dilated).
+ * '0' is pupil, 's' darkens the iris around a widening pupil, 'e' is a
+ * faint second reflection on the dilated pupil. A mask only paints over
+ * iris pixels (IRIS), so the lids clip it and the highlight stays on top.
+ * The level moves one step per redraw, so every dilation or constriction
+ * passes through the intermediate frames.
+ */
+const PUPILS = [
+  ['...0..', '...0..', '...0..', '...0..', '...0..', '...0..'],
+  ['...0..', '...0..', '..s0s.', '..s0s.', '..s0s.', '...0..'],
+  ['...0..', '..00..', '.s00s.', '.s00s.', '..00..', '...0..'],
+  ['......', '..00..', '.0000.', '.e000.', '.s00s.', '......'],
 ];
+const IRIS = new Set(['Y', 'y', 'e']);
+const PUPIL_EYES = new Set(['open', 'wide', 'down', 'panic']);
+
+// Which eye template a frame shows (the financial state decides first).
+function eyeKind(p) {
+  if (p.mood === 'stressed') return 'panic';
+  if (p.mood === 'content') return p.eyes === 'blink' || p.eyes === 'closed' ? 'closed' : 'happy';
+  if (p.eyes === 'blink') return 'closed';
+  return EYES[p.eyes] ? p.eyes : 'open';
+}
+
+// Items the eyes follow while the cat watches them (screen-space x).
+const TRACKED_ITEMS = new Set(['block', 'obj', 'text', 'glyph']);
+
+/*
+ * The pupil size the current moment calls for, from fields the behaviors
+ * already set: surprise and curiosity dilate; tension widens them a little
+ * (the stressed eyes stay pale); reading, pondering (concentration) and
+ * bright sources constrict. Otherwise the depth light decides: deeper and
+ * dimmer widens the pupils, the lit foreground narrows them, and the
+ * resting middle depth is a relaxed slit.
+ */
+function pupilTarget(p, kind, light) {
+  if (kind === 'wide') return 3;
+  if (kind === 'panic') return 2; // tense, but the pale panic eyes stay pale
+  if (kind === 'down' || p.mouth === 'think') return 0;
+  const item = p.item?.kind;
+  if (item === 'glyph' || item === 'sparkle') return 0;
+  if (TRACKED_ITEMS.has(item)) return 2;
+  return 2 - light;
+}
+
+// Per-canvas pupil level, eased one step per redraw toward its target.
+const pupilLevels = new WeakMap();
+
+function easePupil(key, kind, target) {
+  const prev = pupilLevels.get(key);
+  if (prev == null) {
+    pupilLevels.set(key, target);
+    return target;
+  }
+  if (!PUPIL_EYES.has(kind)) return prev; // closed eyes keep their size
+  const next = prev + Math.sign(target - prev);
+  pupilLevels.set(key, next);
+  return next;
+}
+
+function drawPupil(g, tpl, level, x, y, ox) {
+  const mask = PUPILS[level];
+  for (let r = 0; r < mask.length; r++) {
+    for (let c = 0; c < mask[r].length; c++) {
+      const ch = mask[r][c];
+      const tc = c + ox;
+      if (ch === '.' || tc < 0 || tc >= tpl[r].length || !IRIS.has(tpl[r][tc])) continue;
+      put(g, x + tc, y + r, ch === 's' ? (tpl[r][tc] === 'e' ? '5' : 'y') : ch);
+    }
+  }
+}
+
+// Mouth overlays in head-local coordinates: a small 'w' under the nose,
+// with soft corners. Only the happy and panic states open it, and only a little.
+const W_MOUTH = [
+  [15, 22, '1'], [16, 22, '1'],
+  [15, 23, '0'], [16, 23, '0'],
+  [12, 23, '1'], [19, 23, '1'],
+  [13, 24, '0'], [14, 24, '0'], [17, 24, '0'], [18, 24, '0'],
+];
+
+// The nose: a small dark wedge with a dim sheen on its top edge.
+const NOSE = ['4554', '.44.'];
 
 const SMILE = ['0000', '0330'];
 const PANIC_MOUTH = ['04040404', '00000000', '.000000.'];
@@ -167,27 +260,30 @@ function drawHead(g, p, hx, hy) {
   const stressed = p.mood === 'stressed';
   const content = p.mood === 'content';
 
-  blit(g, HEAD, hx, hy);
+  blit(g, HEAD, hx - HEAD_PAD, hy);
 
   // eyes
   const dx = p.gaze === 'l' ? -1 : p.gaze === 'r' ? 1 : 0;
   const dy = p.gaze === 'u' ? -2 : 0;
-  const kind = stressed
-    ? 'panic'
-    : content
-    ? p.eyes === 'blink' || p.eyes === 'closed'
-      ? 'closed'
-      : 'happy'
-    : p.eyes === 'blink'
-    ? 'closed'
-    : EYES[p.eyes]
-    ? p.eyes
-    : 'open';
+  const kind = eyeKind(p);
   drawEye(g, EYES[kind], hx + 6 + dx, hy + 12 + dy);
   drawEye(g, EYES[kind], hx + 20 + dx, hy + 12 + dy);
 
+  // pupils: both shift together toward the gaze, and follow a watched
+  // object (the blue flame...) only while the cat looks its way
+  if (PUPIL_EYES.has(kind)) {
+    let ox = dx;
+    if (p.focusX != null) {
+      const t = Math.max(-1, Math.min(1, Math.round((p.focusX - (hx + 16 + dx)) / 10)));
+      if (!(dx && t && t !== dx)) ox = t;
+    }
+    const level = p.pupil ?? 1;
+    drawPupil(g, EYES[kind], level, hx + 6 + dx, hy + 12 + dy, ox);
+    drawPupil(g, EYES[kind], level, hx + 20 + dx, hy + 12 + dy, ox);
+  }
+
   // nose
-  blit(g, ['4444', '.44.'], hx + 14, hy + 20);
+  blit(g, NOSE, hx + 14, hy + 20);
 
   // mouth
   const mouth = stressed ? 'panic' : content ? 'happy' : p.mouth;
@@ -203,89 +299,126 @@ function drawHead(g, p, hx, hy) {
     return;
   }
 
-  for (const [x, y] of W_MOUTH) put(g, hx + x, hy + y, '0');
+  for (const [x, y, ch] of W_MOUTH) put(g, hx + x, hy + y, ch);
   if (mouth === 'happy') blit(g, SMILE, hx + 14, hy + 25);
 }
+
+// Three fine whiskers per side, rooted in the whisker pads and fanning
+// out: the upper one lifts, the middle one runs level, the lower one
+// droops. Tips fade to a darker tone so they read as thin, not as bars.
+const WHISKERS = [
+  // [head-local column (left side), row offset] from the root outward
+  { y: 19, run: [[1, 0], [0, 0], [-1, 0], [-2, 0], [-3, 0], [-4, -1], [-5, -1], [-6, -1], [-7, -2], [-8, -2]] },
+  { y: 21, run: [[1, 0], [0, 0], [-1, 0], [-2, 0], [-3, 0], [-4, 0], [-5, 0], [-6, 0], [-7, 0], [-8, 1]] },
+  { y: 23, run: [[2, 0], [1, 0], [0, 0], [-1, 0], [-2, 1], [-3, 1], [-4, 1], [-5, 1], [-6, 2]] },
+];
 
 function drawWhiskers(g, hx, hy, stressed, f) {
   const lift = stressed ? -1 : 0;
   const mirror = (x) => 2 * hx + 31 - x;
-  const line = (xs, y) => {
-    for (const x of xs) {
-      put(g, x, y, '4');
-      put(g, mirror(x), y, '4');
-    }
-  };
-  const run = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
-  line(run(hx - 8, hx - 1), hy + 19 + lift - (stressed && f ? 1 : 0));
-  line(run(hx - 7, hx - 1), hy + 22 + lift);
+  WHISKERS.forEach((w, i) => {
+    const flick = stressed && f && i === 0 ? -1 : 0;
+    w.run.forEach(([c, dy], k) => {
+      const ch = k >= w.run.length - 2 ? '3' : '4';
+      const x = hx + c;
+      const y = hy + w.y + dy + lift + flick;
+      put(g, x, y, ch);
+      put(g, mirror(x), y, ch);
+    });
+  });
 }
 
 /* ------------------------------------------------------------------ */
 /* Torso, legs, tail                                                   */
 /* ------------------------------------------------------------------ */
 
-// Left edge column (half-grid) per torso row t0..t25 (y = 30 + t).
-const SIT_L = [11, 11, 9, 8, 7, 6, 5, 5, 5, 5, 5, 5, 4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1];
-const STAND_L = [11, 11, 9, 8, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6];
+// Torso half-grids (16 cols, centre at the right edge, row t = y - 30),
+// mirrored by sym(). Shared chest: a shadow under the jaw, rounded
+// shoulders, the lighter bib with a fluffy edge and a V of darker fur
+// strands, and curved flank tabby stripes.
+//
+// Sitting (the concept art's pose): rounded haunches with a lit upper
+// curve and tabby marks, a curved haunch / leg seam, front legs with a
+// lit edge and a shaded inner edge, knuckled paws with toe seams, small
+// hind paws, and the black gap between the front legs.
+const SIT_HALF = [
+  '...........11111',
+  '..........221111',
+  '.........2222344',
+  '........22223444',
+  '.......222234444',
+  '......2122343444',
+  '......2123444344',
+  '.....21222234434',
+  '.....22212344443',
+  '.....22122223444',
+  '.....21222224434',
+  '....221222222343',
+  '....222221222244',
+  '...2333213222213',
+  '..23322313222100',
+  '.233222213222100',
+  '.332212213222100',
+  '2322221213222100',
+  '2322221213222100',
+  '2221222213212100',
+  '2222122113222100',
+  '.222222113222100',
+  '.221111212222100',
+  '.223333212333100',
+  '.221212112121100',
+  '..11111101111100',
+];
 
-const BIB_W = [6, 6, 5, 5, 4, 3, 2, 1, 1]; // rows t3..t11
+// Standing (walk cycle) chest and hips; the legs are drawn per frame.
+const STAND_HALF = [
+  '...........11111',
+  '..........221111',
+  '.........2222344',
+  '........22223444',
+  '.......222234444',
+  '.......122343444',
+  '......2123444344',
+  '......1222234434',
+  '......2212344443',
+  '......2122223444',
+  '......1222224434',
+  '......1222222343',
+  '......2222222244',
+  '......2211112233',
+];
 
-function drawChest(g, rows, ty0) {
-  for (let t = 0; t < rows.length; t++) {
-    for (let c = rows[t]; c <= 15; c++) sym(g, c, ty0 + t, '2');
-  }
-
-  // lighter chest bib, tapering to a point
-  BIB_W.forEach((w, i) => {
-    const y = ty0 + 3 + i;
-    for (let c = 16 - w; c <= 15; c++) sym(g, c, y, '4');
-    sym(g, 15 - w, y, '3');
+function blitHalf(g, rows, ty0) {
+  rows.forEach((row, t) => {
+    for (let c = 0; c < row.length; c++) if (row[c] !== '.') sym(g, c, ty0 + t, row[c]);
   });
-
-  // flank tabby stripes
-  for (const [c, t] of [[6, 5], [6, 6], [7, 7], [7, 8], [8, 9], [8, 10], [9, 11]]) {
-    sym(g, c, ty0 + t, '1');
-  }
 }
 
-// Sitting: the concept art's pose (haunches, two front legs, black gap).
 function drawSitTorso(g) {
-  drawChest(g, SIT_L.slice(0, 12), 30);
-
-  for (let t = 12; t < SIT_L.length; t++) {
-    for (let c = SIT_L[t]; c <= 15; c++) sym(g, c, 30 + t, c >= 14 && t >= 14 ? '0' : '2');
-  }
-
-  for (let t = 14; t <= 22; t++) sym(g, 8, 30 + t, '1'); // haunch / leg seam
-  for (let t = 14; t <= 16; t++) for (let c = 3; c <= 5; c++) sym(g, c, 30 + t, '3');
-  for (const [c, t] of [[3, 17], [4, 17], [3, 18]]) sym(g, c, 30 + t, '3');
-  for (let t = 14; t <= 21; t++) sym(g, 9, 30 + t, '3'); // leg light
-  for (let t = 14; t <= 23; t++) sym(g, 13, 30 + t, '1'); // leg inner shade
-  for (let c = 9; c <= 13; c++) sym(g, c, 30 + 23, '3'); // paw top
-  for (let c = 3; c <= 6; c++) sym(g, c, 30 + 23, '3'); // hind paw
-  for (let c = 8; c <= 13; c++) sym(g, c, 30 + 25, '1'); // sole
-  for (const c of [10, 12]) sym(g, c, 30 + 24, '1'); // toe seams
+  blitHalf(g, SIT_HALF, 30);
 }
 
 // Standing: used by the walk cycle. legs 1 lifts the left paw, 2 the right.
 function drawStandTorso(g, legs) {
-  drawChest(g, STAND_L, 30);
+  blitHalf(g, STAND_HALF, 30);
 
   const leg = (side, lifted) => {
     const set = side === 'L' ? putL : putR;
-    const end = lifted ? 23 : 27;
+    const end = lifted ? 23 : 25;
     for (let t = 14; t <= end; t++) {
       for (let c = 8; c <= 12; c++) set(g, c, 30 + t, c === 8 ? '3' : c === 12 ? '1' : '2');
     }
+    set(g, 10, 30 + 17, '3'); // fur clump on the foreleg
+    set(g, 11, 30 + 20, '1');
     if (lifted) {
       // paw tucked up and forward
-      for (let c = 8; c <= 13; c++) set(g, c, 30 + 24, '2');
-      for (let c = 9; c <= 13; c++) set(g, c, 30 + 25, '1');
+      for (let c = 8; c <= 13; c++) set(g, c, 30 + 24, c >= 9 && c <= 12 ? '3' : '2');
+      for (let c = 9; c <= 13; c++) set(g, c, 30 + 25, c === 11 ? '0' : '1');
     } else {
-      for (let c = 7; c <= 12; c++) set(g, c, 30 + 26, '2');
-      for (let c = 7; c <= 12; c++) set(g, c, 30 + 27, c % 2 ? '1' : '2');
+      // planted paw: knuckles, then toes and sole
+      for (let c = 7; c <= 12; c++) set(g, c, 30 + 26, c === 7 ? '2' : c === 12 ? '1' : '3');
+      for (let c = 7; c <= 12; c++) set(g, c, 30 + 27, c === 9 || c === 11 ? '1' : '2');
     }
   };
 
@@ -293,52 +426,45 @@ function drawStandTorso(g, legs) {
   leg('R', legs === 2);
 
   for (let t = 14; t <= 27; t++) for (let c = 13; c <= 15; c++) sym(g, c, 30 + t, '0');
-  for (let t = 12; t <= 13; t++) for (let c = 6; c <= 12; c++) sym(g, c, 30 + t, '2');
 }
 
+// The tail, tip at the top: a rounded, slightly narrower tip, a lit left
+// edge, a shaded right edge, thin tabby rings, and a base that sweeps
+// into the haunch.
 const TAIL = [
-  '......222.',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '.....22222',
-  '....222222',
-  '...2222222',
-  '..22222222',
-  '.222222222',
-  '2222222222',
-  '2222222222',
-  '2222222222',
-  '222222222.',
-  '22222222..',
-  '2222222...',
+  '.......22.',
+  '......3222',
+  '......3221',
+  '.....32221',
+  '.....31111',
+  '.....32221',
+  '.....32221',
+  '.....31111',
+  '.....32221',
+  '.....32221',
+  '.....31111',
+  '.....32221',
+  '.....32221',
+  '.....31111',
+  '.....32221',
+  '.....32221',
+  '....322221',
+  '...3222221',
+  '..32222211',
+  '.322222211',
+  '3222222211',
+  '2222222211',
+  '2222222221',
+  '222222221.',
+  '22222221..',
+  '2222221...',
 ];
 
 function drawTail(g, x0, y0, sway) {
-  const rows = TAIL.map((r) => r.split(''));
-
-  for (let r = 1; r <= 14; r++) {
-    rows[r][5] = '3';
-    rows[r][9] = r > 2 ? '1' : '2';
-  }
-  for (const r of [4, 7, 10, 13]) for (let c = 5; c <= 9; c++) rows[r][c] = '1';
-  rows[0][6] = '3';
-
-  for (let r = 0; r < rows.length; r++) {
+  for (let r = 0; r < TAIL.length; r++) {
     // the tip sways; the base stays attached
     const shift = r < 10 ? sway : r < 14 ? Math.round(sway / 2) : 0;
-    for (let c = 0; c < rows[r].length; c++) put(g, x0 + c + shift, y0 + r, rows[r][c]);
+    for (let c = 0; c < TAIL[r].length; c++) put(g, x0 + c + shift, y0 + r, TAIL[r][c]);
   }
 }
 
@@ -497,6 +623,38 @@ const HEART = ['.h.h.', 'hhhhh', '.hhh.', '..h..'];
 const DROP = ['.C.', 'CCC', 'CCC', '.C.'];
 const SPARK = ['..W..', '..W..', 'WWWWW', '..W..', '..W..'];
 
+// The drifting blue flame (the item NOMOZ.EXE watches pass by): a small
+// wisp with a deep-blue rim, bright-blue and cyan layers and a white-hot
+// core. Three flicker frames vary the tongue and lean of the tip; the base
+// stays put so it reads as one flame, not three.
+const FLAME = [
+  ['..B..', '.BL..', '.BLB.', 'BLCLB', 'BCwCB', 'BCwCB', '.BLB.'],
+  ['...B.', 'B.LB.', '.BCB.', 'BLCLB', 'BCwCB', 'BLwCB', '.BLB.'],
+  ['.B...', '.LB.B', '.BCLB', 'BLCLB', 'BCwCB', 'BCwLB', '.BLB.'],
+];
+const FLAME_W = 5;
+const FLAME_H = 7;
+
+// A restrained glow: a dithered ring of dim blue just outside the flame,
+// alternating with the flicker so it shimmers instead of sitting flat.
+function drawFlame(ctx, x, y, frame) {
+  const rows = FLAME[frame % FLAME.length];
+  const lit = (c, r) => r >= 0 && r < FLAME_H && c >= 0 && c < FLAME_W && rows[r][c] !== '.';
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = PALETTE.b;
+  for (let r = -1; r <= FLAME_H; r++) {
+    for (let c = -1; c <= FLAME_W; c++) {
+      if (lit(c, r) || (c + r + frame) % 2) continue;
+      if (lit(c - 1, r) || lit(c + 1, r) || lit(c, r - 1) || lit(c, r + 1)) ctx.fillRect(x + c, y + r, 1, 1);
+    }
+  }
+  ctx.restore();
+
+  fillPixels(ctx, rows, x, y, paletteColor);
+}
+
 export function textWidth(text) {
   return text === '<3' ? 5 : text.length * 4 - 1;
 }
@@ -556,10 +714,10 @@ export function drawBook(ctx, frame) {
  */
 const ITEM_KINDS = {
   text: (ctx, i) => drawText(ctx, i.text, i.x, i.y, PALETTE.C),
-  block: (ctx, i) => {
-    ctx.fillStyle = PALETTE.C;
-    ctx.fillRect(i.x, i.y, 2, 2);
-  },
+  // the drifting environmental object: a glowing blue flame centred on
+  // the item's 2x2 anchor. Its flicker follows its own position and the
+  // animation clock, so it changes on every step without a new timer.
+  block: (ctx, i, frame) => drawFlame(ctx, i.x - 1, i.y, (i.x + i.y + frame) % FLAME.length),
   obj: (ctx, i) => fillPixels(ctx, OBJECTS[i.name], i.x, i.y, paletteColor),
   crown: (ctx, i) => fillPixels(ctx, CROWN, i.x, i.y, paletteColor),
   coin: (ctx, i) => {
@@ -576,9 +734,9 @@ const ITEM_KINDS = {
 // Kinds that never clash with the stressed appearance.
 const STRESS_SAFE_ITEMS = new Set(['text', 'block']);
 
-function drawItem(ctx, item, stressed) {
+function drawItem(ctx, item, stressed, frame) {
   if (!item || (stressed && !STRESS_SAFE_ITEMS.has(item.kind))) return;
-  ITEM_KINDS[item.kind]?.(ctx, item);
+  ITEM_KINDS[item.kind]?.(ctx, item, frame);
 }
 
 /* ------------------------------------------------------------------ */
@@ -697,6 +855,14 @@ export function renderSprite(ctx, p, vanity) {
     lean: flip ? -p.lean : p.lean,
   };
 
+  // pupil size (eased per canvas) and the watched item's x in base space
+  const kind = eyeKind(q);
+  q.pupil = easePupil(ctx, kind, pupilTarget(q, kind, light));
+  const it = p.item;
+  if (it && TRACKED_ITEMS.has(it.kind) && typeof it.x === 'number') {
+    q.focusX = flip ? SPRITE_W - 2 - it.x : it.x + 1;
+  }
+
   const { cat, over, hx, hy, footY } = buildCat(q);
   const lit = rimLight(cat, light);
   const under = makeGrid();
@@ -763,5 +929,5 @@ export function renderSprite(ctx, p, vanity) {
     const w = textWidth(p.cue);
     drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, 0, stressed ? PALETTE.R : PALETTE.C);
   }
-  drawItem(ctx, p.item, stressed);
+  drawItem(ctx, p.item, stressed, p.frame || 0);
 }
