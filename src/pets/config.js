@@ -49,6 +49,10 @@ export const SCHEDULER = {
   longGap: [4000, 11000],
   firstDelay: [200, 3200], // before the first behavior of a page load
   restartDelay: [300, 1100], // after a mood / breakpoint change
+  // Financial moods that look the same apart from worn items (crown, coin).
+  // A change between them keeps the running behavior, the position and the
+  // sprite canvas; any other change cancels the behavior and cross-fades.
+  continuousMoods: ['idle', 'content'],
   minBehaviorMs: 600,
   historyLength: 4, // recent behaviors that are down-weighted
   historyPenalty: 0.4,

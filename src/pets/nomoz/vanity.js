@@ -1,12 +1,13 @@
 import { defineVanityItem } from '../core/vanity.js';
-import { CROWN, drawBook, drawCoin } from './sprites.js';
+import { CROWN, chestSpot, drawBook, drawCoin } from './sprites.js';
 
 /*
  * NOMOZ.EXE's vanity slots and items.
  *
  * Slot anchors place an item relative to the current frame (`p.hx`, `p.hy`
  * are the head's top-left in sprite pixels, so head items follow the head
- * as it breathes, dips or leans). Items decide their own visibility from
+ * as it breathes, dips or leans; chest items follow the pose's chest and
+ * stay under the chin, see chestSpot). Items decide their own visibility from
  * the render state, and may be offset by behavior-driven view fields.
  *
  * To add an item: append a defineVanityItem(...) here (and its id to
@@ -16,8 +17,8 @@ import { CROWN, drawBook, drawCoin } from './sprites.js';
 export const SLOTS = {
   head: (p) => ({ x: p.hx + 12, y: p.hy + 3 }),
   neck: (p) => ({ x: p.hx + 10, y: p.hy + 26 }),
-  chest: () => ({ x: 24, y: 34 }),
-  held: () => ({ x: 24, y: 34 }),
+  chest: (p) => chestSpot(p),
+  held: (p) => chestSpot(p),
   prop: () => ({ x: 0, y: 0 }),
   accessory: (p) => ({ x: p.hx, y: p.hy }),
 };
@@ -41,7 +42,7 @@ export const ITEMS = [
     name: 'Chest coin',
     slot: 'chest',
     layer: 10,
-    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y),
+    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, 0, p.facing > 0),
     visible: (p) => (p.mood === 'content' || p.mood === 'stressed') && !p.coin,
   }),
 
@@ -52,7 +53,7 @@ export const ITEMS = [
     name: 'Held coin',
     slot: 'held',
     layer: 30,
-    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, p.coin.turn || 0),
+    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, p.coin.turn || 0, p.facing > 0),
     offset: (p) => ({ x: p.coin.dx || 0, y: p.coin.dy || 0 }),
     visible: (p) => p.mood === 'content' && !!p.coin,
   }),

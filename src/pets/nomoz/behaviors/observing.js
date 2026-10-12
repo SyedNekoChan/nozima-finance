@@ -81,7 +81,7 @@ const OPTIONS = [['+', '-'], ['1', '2'], ['o', '*'], ['=', '~'], ['?', '!']];
 
 export const ponder = defineActivity({
   id: 'ponder',
-  weights: W(6),
+  weights: W(6, 6),
   cooldown: 18000,
   duration: [5000, 16000],
   flagWeights: { approaching: 2 }, // more thoughtful near the budget limit

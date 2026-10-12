@@ -86,16 +86,31 @@ export class PetScheduler {
   /*
    * Financial mood, breakpoint or reduced-motion changed: abandon the
    * running behavior cleanly, reset posture (not position) and carry on.
-   * Cooldowns, history and the random stream persist.
+   * Cooldowns, history and the random stream persist. A change between
+   * moods that share one look (SCHEDULER.continuousMoods) only switches
+   * the mood: the running behavior (or the pause) carries on, unless it is
+   * not allowed in the new mood or its plan depends on the mood
+   * (`moodBound`), in which case it is cancelled as usual.
    */
   setMode({ mood, reduced, compact }, delay) {
     if (!this.alive) return;
+    if (reduced === this.reduced && compact === this.compact && this.continuesInto(mood)) {
+      this.mood = mood;
+      return;
+    }
     this.cancel();
     this.mood = mood;
     this.reduced = reduced;
     this.compact = compact;
     this.queued = null;
     this.schedule(() => this.next(), delay);
+  }
+
+  continuesInto(mood) {
+    const same = SCHEDULER.continuousMoods || [];
+    if (!same.includes(this.mood) || !same.includes(mood)) return false;
+    const b = this.current && this.byId[this.current];
+    return !b || (!b.moodBound && canReact(b, mood));
   }
 
   // Level-based context flags (e.g. 'approaching'): never cancels anything.

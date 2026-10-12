@@ -8,7 +8,7 @@
 /* Appearance per financial state: base opacity (depth then dims it). */
 export const APPEARANCES = {
   idle: { alpha: 0.95 },
-  content: { alpha: 1 },
+  content: { alpha: 0.95 },
   stressed: { alpha: 1 },
 };
 

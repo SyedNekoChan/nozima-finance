@@ -19,6 +19,8 @@ import { SCHEDULER } from '../config.js';
  *     flagWeights,            { flag: factor } weight multipliers while a flag is set
  *     reactMoods,             moods where a financial reaction may run it even though
  *                             its ordinary weight there is 0
+ *     moodBound,              true if plan() draws differently per mood: a change
+ *                             between continuous moods then cancels it
  *     eligible(c),            optional extra rule on the live context
  *     followOn,               { otherId: factor } natural continuations (a nudge, never a script)
  *     enter(c), exit(c, why), lifecycle hooks; exit also runs on cancellation
@@ -45,6 +47,7 @@ export function defineBehavior(def) {
     requiresFlags: [],
     flagWeights: {},
     reactMoods: [],
+    moodBound: false,
     followOn: {},
     enabled: true,
     ...def,

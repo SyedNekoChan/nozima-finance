@@ -18,7 +18,7 @@ const DREAMS = ['fish', 'moon', 'star', 'yarn', 'coin', 'mouse'];
 export const sleep = defineBehavior({
   id: 'sleep',
   rarity: 'rare',
-  weights: W(4),
+  weights: W(4, 4),
   cooldown: 90000,
   duration: [9000, 24000],
   followOn: { stretch: 5, groom: 2, yawn: 1.5 },

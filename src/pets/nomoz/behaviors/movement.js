@@ -140,7 +140,7 @@ export const walk = defineActivity({
     const stepMs = rnd(c.rng, 440, 520);
 
     // occasionally stop partway, as though distracted
-    if (c.mood === 'idle' && c.rng() < 0.35) {
+    if (c.rng() < 0.35) {
       const f = rnd(c.rng, 0.35, 0.65);
       const mid = {
         sx: lerp(c.cur.sx, dest.sx, f),
@@ -333,7 +333,7 @@ export const edgeExit = defineBehavior({
  */
 export const peek = defineActivity({
   id: 'peek',
-  weights: W(4),
+  weights: W(4, 4),
   cooldown: 60000,
   moves: true,
   followOn: { look: 2, sit: 2, survey: 2 },

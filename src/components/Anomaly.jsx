@@ -4,6 +4,7 @@ import useFinanceStore from '../hooks/useFinanceStore.js';
 import usePet from '../pets/usePet.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import EnvProp from '../pets/EnvProp.jsx';
+import { SCHEDULER } from '../pets/config.js';
 import { easeCss } from '../pets/motion.js';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
@@ -205,6 +206,10 @@ function Pet({ pet }) {
       reduced={reduced}
     />
   );
+  // Moods that differ only in worn items share one canvas, so the crown and
+  // coin simply appear or go on the next frame; any other mood change
+  // cross-fades the sprite art.
+  const look = SCHEDULER.continuousMoods.includes(mood) ? 'calm' : mood;
   const moveMs = reduced ? 0 : view.transitionMs;
   const ease = easeCss(view.ease);
   const opacity = visible
@@ -238,7 +243,7 @@ function Pet({ pet }) {
         <AnimatePresence mode="wait" initial>
           {visible && (
             <motion.div
-              key={mood}
+              key={look}
               className="nomoz-sprite"
               initial={{ opacity: 0 }}
               animate={{
