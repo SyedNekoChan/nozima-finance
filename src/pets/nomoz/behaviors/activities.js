@@ -111,7 +111,7 @@ export const read = defineBehavior({
     }
 
     let end = Math.max(t + dur, u);
-    const ending = weighted(c.rng, { close: 4, doze: c.mood === 'idle' ? 1.2 : 0, discovery: 1.5 });
+    const ending = weighted(c.rng, { close: 4, doze: 1.2, discovery: 1.5 });
     if (ending === 'doze') {
       // nods off over the open book, then wakes with a start
       end = S.play('dropOff', end);
@@ -140,7 +140,7 @@ export const read = defineBehavior({
 
 export const inspect = defineBehavior({
   id: 'inspect',
-  weights: W(6),
+  weights: W(6, 6),
   cooldown: 40000,
   followOn: { ponder: 3, ponderSymbol: 3, look: 2 },
   plan(c, S) {
@@ -352,6 +352,7 @@ export const coinPolish = defineBehavior({
   id: 'coinPolish',
   weights: W(4, 10),
   cooldown: 25000,
+  moodBound: true,
   flagWeights: { approaching: 2 }, // more thoughtful near the budget limit
   followOn: { crown: 2, glint: 2 },
   plan(c, S) {
@@ -401,6 +402,7 @@ export const crown = defineBehavior({
   id: 'crown',
   weights: W(3, 10),
   cooldown: 25000,
+  moodBound: true,
   followOn: { coinPolish: 2 },
   plan(c, S) {
     const hold = rnd(c.rng, 2800, 4800);

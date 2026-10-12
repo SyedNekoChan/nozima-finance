@@ -92,7 +92,7 @@ Pixel-art rules, for every future frame:
   the prosperous state, the cyan / red cues and the drifting blue flame.
 - Eye states (all in the same 6×6 box and anchor, so nothing shifts between
   frames): resting half-lidded amber eye, wide round eye (surprise),
-  lowered lid (reading), closed arc (blink / sleep), `^ ^` (content), pale
+  lowered lid (reading), closed arc (blink / sleep), `^ ^` (a pleased moment a behavior asks for), pale
   panic eyes (stressed).
 - Pupils are drawn over the iris of every open eye state (clipped by the
   lids, under the highlight) from four masks: a constricted vertical slit,
@@ -176,9 +176,10 @@ and no animation outcome ever touches financial data.
 - **Idle** — the reference cat as drawn. It performs the environmental and
   personality behaviors.
 - **Content / prosperous** — income this month, at least 30% of it unspent,
-  positive balance, budget not reached. The same cat with closed `^ ^`
-  eyes, a small smile, a gold pixel crown and the gold `$` cyber-coin on
-  the chest bib. Calm, composed behaviors only.
+  positive balance, budget not reached. Exactly the idle cat (same face,
+  eyes, pupils, expressions and opacity) wearing two vanity items: a gold
+  pixel crown and the gold `$` cyber-coin on its necklace. It can do every
+  idle behavior, plus its own prosperous moments.
 - **Stressed / overspending** — over budget or the budget reached. The same
   cat, tense and fragmented: rows of the sprite slip sideways in two
   alternating frames, sparse pixels drop out, head jitters, tail lashes,
@@ -188,8 +189,9 @@ and no animation outcome ever touches financial data.
 
 One-shot store reactions (`INCOME`, `EXPENSE`, `TRANSFER`, `OVERSPEND`,
 `CELEBRATE`) come from the existing `anomalyEvent` and last seconds; on the
-special calendar day a pixel heart cue shows once per day. State changes
-cross-fade the sprite.
+special calendar day a pixel heart cue shows once per day. Changes into or
+out of the stressed state cross-fade the sprite; idle and prosperous share
+one canvas, so the crown and coin simply appear or go on the next frame.
 
 Financial state has priority over every optional activity:
 
@@ -200,9 +202,15 @@ Financial state has priority over every optional activity:
 - The sprite additionally refuses incompatible props in the stressed state
   (the book and objects are never drawn; the vanity items declare their own
   visibility by state).
-- When the state changes, the running behavior is cancelled cleanly (its
-  `exit` hook runs, posture resets) and the same scheduler carries on;
-  position and depth are not touched.
+- When the state changes to or from stressed, the running behavior is
+  cancelled cleanly (its `exit` hook runs, posture resets) and the same
+  scheduler carries on; position and depth are not touched.
+- Idle and prosperous look the same apart from the worn items
+  (`SCHEDULER.continuousMoods`), so a change between them only switches the
+  mood: the running behavior, its posture and the position carry on. Only a
+  behavior that is not allowed in the new mood (a prosperous-only vanity
+  moment) or whose plan draws differently per mood (`moodBound`: coinPolish,
+  crown, budgetWatch, incomeGlance, relief) is cancelled as above.
 
 ### Financial context: mood vs. reactions
 
@@ -225,9 +233,10 @@ only after a successful income, expense or transfer is saved (and on the write
 that crosses the budget). No financial calculation, threshold or rule was
 added or changed, and nothing a pet does feeds back into financial data.
 
-**Healthy.** The content mood keeps the composed look. Eligible, never forced:
-sitting and observing, `coinPolish`, `coinInspect`, `crown`, `vanity`, and the
-new `relax` (a slow-breathing rest). They sit in the ordinary random pool.
+**Healthy.** The content mood has the whole idle behavior library. On top of
+it, eligible, never forced: `coinInspect`, `vanity`, `glint`, and the new
+`relax` (a slow-breathing rest), with `coinPolish` and `crown` weighted up.
+They sit in the ordinary random pool.
 
 **Approaching the budget limit.** `deriveBudgetProximity` (`src/lib/nomoz.js`)
 is a boolean: the existing utilisation ratio is at or above
@@ -278,9 +287,10 @@ timer and no loop.
 **Priority and boundaries.**
 
 1. Persistent mood and appearance (the scheduler's mood rules).
-2. Essential transitions: a mood change cancels the running behavior through
-   `setMode` (appearance first), then the transition reaction is the first
-   thing offered.
+2. Essential transitions: a change to or from stressed cancels the running
+   behavior through `setMode` (appearance first), then the transition
+   reaction is the first thing offered. Between idle and prosperous the
+   running behavior usually carries on and the reaction comes at its end.
 3. One-shot reactions: offered only at a behavior boundary
    (`reactionSource.take`), never mid-animation.
 4. Ordinary randomized behavior, which resumes afterwards and is otherwise
@@ -429,11 +439,11 @@ Personality behaviors:
 
 | Behavior     | Moods                 | What it does                                                                 |
 | ------------ | --------------------- | ---------------------------------------------------------------------------- |
-| read         | idle, content         | Settles (sometimes walks to a nearby spot), opens a pixel book in its lap, 10–22s of reading in a varied rhythm: page turns, a paw following the lines, nudging the book, comparing pages, looking up in thought, a page lifted out with a little magic, absorbed stillness; closes it, dozes off over it and wakes with a start (idle), or stops at a sudden discovery |
+| read         | idle, content         | Settles (sometimes walks to a nearby spot), opens a pixel book in its lap, 10–22s of reading in a varied rhythm: page turns, a paw following the lines, nudging the book, comparing pages, looking up in thought, a page lifted out with a little magic, absorbed stillness; closes it, dozes off over it and wakes with a start, or stops at a sudden discovery |
 | glitch       | idle, content, stressed | Rare, brief: two or three row slips with a faint cyan ghost, then a startled look, a glance aside and back to normal; never a flicker |
 | coinInspect  | content               | Lifts the cyber-$ off its chest, turns it over (face, edge, back), puts it back |
 | idea         | idle, content         | Stops in a thinking pose; a tiny pixel bulb appears above its head, then goes. An environmental animation, not a UI overlay |
-| sleep        | idle                  | Nods off sitting, lies down sphinx-like, or curls up with its head on its paws (sometimes after turning about and kneading); 9–24s of `z` cues with stirs, ear flicks, tail swishes, half-wakes, position changes and tiny dream symbols (rarely a faint magical shimmer); wakes naturally, often with a yawn and a stretch |
+| sleep        | idle, content         | Nods off sitting, lies down sphinx-like, or curls up with its head on its paws (sometimes after turning about and kneading); 9–24s of `z` cues with stirs, ear flicks, tail swishes, half-wakes, position changes and tiny dream symbols (rarely a faint magical shimmer); wakes naturally, often with a yawn and a stretch |
 | vanity       | content               | Rare and composed: adjusts its crown, admires its coin with sparkles, or checks itself over |
 
 Rare encounters (see "Rare environmental encounters"): `miniTerminal`,
@@ -459,9 +469,10 @@ Existing behaviors kept as they were: sit, observe, look, lookUp,
 ponderSymbol, stillness, tired, stretch, inspect, floatSymbol, followPixel,
 coinPolish, crown, glint, twitch, curious, travel, retreat, approach,
 relocate, edgeExit, and the stressed set (shuffle, pace, flinch,
-nervousLook, still). Their weights per state are unchanged. `walk`, `peek`,
-`ponder`, `read` and `sleep` keep their ids, moods and weights but were
-expanded (see "Activities and the extended rig").
+nervousLook, still). Their weights per state are unchanged, except that
+the idle-only `inspect`, `ponder`, `peek` and `sleep` now have the same
+weight while prosperous. `walk`, `peek`, `ponder`, `read` and `sleep` keep
+their ids but were expanded (see "Activities and the extended rig").
 
 ### Activities and the extended rig
 
@@ -547,7 +558,7 @@ Activities never run while the pet is off-screen. Long performances set
 | pawCheck, survey, yawn | 4 / 3, 3 / 3, 3 / 2 | Short stationary connecting actions |
 | shakeOff      | 0.6 / 0.6, 30s   | Shakes off leftover magic; made likely by the magical activities' `followOn` |
 
-Expanded existing behaviors (same ids, moods, weights):
+Expanded existing behaviors (same ids):
 
 - **walk** draws a route style: a stroll (the original), a meander with
   pauses to look, sniff or listen, a brisk purposeful stride, cautious
@@ -649,6 +660,7 @@ multi-phase performance with props or effects use `defineActivity({...})`
 | `requiresFlags`      | financial-context flags that must be set (e.g. `approaching`)     |
 | `flagWeights`        | `{ flag: factor }` weight multipliers while a flag is set         |
 | `reactMoods`         | moods where a financial reaction may run it despite weight 0      |
+| `moodBound`          | `plan` draws differently per mood: cancelled on an idle ↔ prosperous change |
 | `eligible(c)`        | extra rule on the live context                                    |
 | `followOn`           | `{ otherId: factor }` natural continuations                       |
 | `enter(c)`, `exit(c, why)` | lifecycle; `exit` also runs on cancellation (`why === 'cancel'`) |
@@ -693,7 +705,12 @@ A pet declares slots (`head`, `neck`, `chest`, `held`, `prop`, `accessory`)
 as anchor functions, and items (`defineVanityItem`) with `id`, `slot`,
 compatible `pets`, `rows(p)` or `draw(...)`, `offset(p)` for animation,
 `visible(p)` for conditions (state, behavior fields) and `layer`. The pet
-lists default-worn ids in `equipped`. Items shipped: `crown`, `chestCoin`,
+lists default-worn ids in `equipped`. Items shipped: `crown` (on the head
+anchor, so it follows every pose, lean, dip and breath), `chestCoin` (on its
+necklace: the `chest` anchor, `chestSpot` in `sprites.js`, sits on the bib
+of the sitting and standing body, lower when crouching or stretching, and
+just under the chin when the head is low, lying or curled up; its `$` is
+pre-reversed so it reads correctly whichever way the cat faces),
 `heldCoin` (lifted and turned by `coinInspect`) and `book` (shown while
 `view.book` is set). To add an item, append a `defineVanityItem` in
 `nomoz/vanity.js` and its id to `EQUIPPED`; a behavior can animate it by
@@ -720,6 +737,7 @@ never override the stressed or prosperous appearance.
 | ------------------------------------------------------------ | -------------------------------------- |
 | Depth range, near boost, scale, margins, opacity, light steps | `WORLD` in `src/pets/config.js`        |
 | Gaps, cooldown history, rarity weights, step timing, clocks   | `SCHEDULER` in `src/pets/config.js`    |
+| Moods that share one look (no cancel, no cross-fade)          | `SCHEDULER.continuousMoods`            |
 | Active pet, enabled interactions                              | `src/pets/config.js`                   |
 | Encounter start delay and shared quiet gap                    | `ENCOUNTER` in `src/pets/config.js`    |
 | Quiet gap between long performances                           | `ACTIVITY` in `src/pets/config.js`     |

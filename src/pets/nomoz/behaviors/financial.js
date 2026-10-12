@@ -55,6 +55,7 @@ export const budgetWatch = defineBehavior({
   rarity: 'uncommon',
   weights: W(6, 6),
   cooldown: 70000,
+  moodBound: true,
   requiresFlags: ['approaching'],
   followOn: { look: 2, sit: 2, ponder: 1.5 },
   plan(c, S) {
@@ -110,6 +111,7 @@ export const incomeGlance = defineBehavior({
   id: 'incomeGlance',
   weights: W(0),
   reactMoods: ['idle', 'content'],
+  moodBound: true,
   plan(c, S) {
     const g = pick(c.rng, ['l', 'r']);
     S.at(0, { pose: 'sit', legs: 0, gaze: g });
@@ -170,6 +172,7 @@ export const relief = defineBehavior({
   id: 'relief',
   weights: W(0),
   reactMoods: ['idle', 'content'],
+  moodBound: true,
   plan(c, S) {
     // a slow breath out: the head settles
     S.at(0, { pose: 'sit', legs: 0, lean: 0, gaze: 'c', eyes: 'closed', droop: 1, mouth: 'rest' });

@@ -187,10 +187,10 @@ const PUPILS = [
 const IRIS = new Set(['Y', 'y', 'e']);
 const PUPIL_EYES = new Set(['open', 'wide', 'down', 'panic']);
 
-// Which eye template a frame shows (the financial state decides first).
+// Which eye template a frame shows. Only the stressed state overrides the
+// behavior's eyes; the prosperous state shares the idle face.
 function eyeKind(p) {
   if (p.mood === 'stressed') return 'panic';
-  if (p.mood === 'content') return p.eyes === 'blink' || p.eyes === 'closed' ? 'closed' : 'happy';
   if (p.eyes === 'blink') return 'closed';
   return EYES[p.eyes] ? p.eyes : 'open';
 }
@@ -272,7 +272,6 @@ function drawEye(g, tpl, x, y, color) {
 
 function drawHead(g, p, hx, hy) {
   const stressed = p.mood === 'stressed';
-  const content = p.mood === 'content';
 
   blit(g, HEAD, hx - HEAD_PAD, hy);
 
@@ -300,7 +299,7 @@ function drawHead(g, p, hx, hy) {
   blit(g, NOSE, hx + 14, hy + 20);
 
   // mouth
-  const mouth = stressed ? 'panic' : content ? 'happy' : p.mouth;
+  const mouth = stressed ? 'panic' : p.mouth;
   if (mouth === 'panic') {
     blit(g, PANIC_MOUTH, hx + 12, hy + 23);
     return;
@@ -992,14 +991,17 @@ export function drawText(ctx, text, x, y, color) {
 }
 
 // turn: 0 = face, 1..4 = the coin turning over to its back and round again
-export function drawCoin(ctx, x, y, turn = 0) {
+// mirror: the coin is drawn into the unmirrored base art of a cat that is
+// then flipped, so its symbol is pre-reversed to read correctly on screen.
+export function drawCoin(ctx, x, y, turn = 0, mirror = false) {
   const rows = turn > 0 ? COIN_TURN[Math.min(turn, COIN_TURN.length - 1)] : null;
   if (rows) {
     fillPixels(ctx, rows, x, y, paletteColor);
     return;
   }
   fillPixels(ctx, COIN, x, y, paletteColor);
-  fillPixels(ctx, FONT.$, x + 2, y + 1, () => PALETTE.k);
+  const glyph = mirror ? FONT.$.map((r) => [...r].reverse().join('')) : FONT.$;
+  fillPixels(ctx, glyph, x + 2, y + 1, () => PALETTE.k);
   ctx.fillStyle = PALETTE.k;
   ctx.fillRect(x + 3, y, 2, 1);
   ctx.fillRect(x + 3, y + 7, 2, 1);
@@ -1349,6 +1351,20 @@ function buildCat(p) {
   // cues ride above the head when it is low (lying, head down)
   const cueY = pose.lying || poseName === 'low' ? Math.max(0, hy - 7) : 0;
   return { cat, over, hx, hy, footY, feet, cueY };
+}
+
+/*
+ * Where a chest item (the coin on its necklace) sits in this frame, in
+ * base space: on the bib of the sitting and standing body, lower with the
+ * crouching torso and the stretch, and always just under the chin when the
+ * head is lower than that (head down, lying, curled up), inside the box.
+ * p.pose is the requested pose, p.hy the head's row in this frame.
+ */
+const CHEST_Y = { sit: 34, stand: 34, stretch: 38, crouch: 38 };
+
+export function chestSpot(p) {
+  const y = Math.max(CHEST_Y[p.pose] ?? CHEST_Y.sit, p.hy + 28);
+  return { x: 24, y: Math.min(y, SPRITE_H - 8) };
 }
 
 // Worn and held items render through the pet's vanity registry, after the
