@@ -17,6 +17,8 @@ import { createWorld } from './space.js';
  *   vanity      { slots, items, equipped }
  *   capabilities  ['walk', 'read', ...]  optional extensions it supports
  *   reactions   { semanticName: behaviorId }  for the interaction API
+ *   rest        neutral rig patch an activity applies when it ends or is
+ *               cancelled (limbs, ears, gaze focus...; never position)
  *   props       { kind: { width, height, render(ctx, spec, frame) } }  world-anchored
  *               environmental objects (encounters spawn them by kind)
  *   financialReactions  [defineFinancialReaction(...)]  how this pet reacts to
@@ -67,6 +69,7 @@ export function definePet(def) {
   return {
     appearances: { idle: { alpha: 1 }, content: { alpha: 1 }, stressed: { alpha: 1 } },
     reactions: {},
+    rest: {},
     initial: { poses: ['sit'] },
     ...def,
     vanity,

@@ -76,3 +76,13 @@ export const ENCOUNTER = {
   // spawn attempts before falling back to a plain random spot
   spawnTries: 10,
 };
+
+/* ------------------------------------------------------------------ */
+/* Activities (longer performances, see core/activity.js)              */
+/* ------------------------------------------------------------------ */
+
+export const ACTIVITY = {
+  // quiet time after any long performance (yarn play, a spell, alchemy...)
+  // before another may start, so they never follow each other closely
+  performanceGap: [45000, 120000],
+};
