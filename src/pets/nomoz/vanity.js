@@ -42,8 +42,9 @@ export const ITEMS = [
     name: 'Chest coin',
     slot: 'chest',
     layer: 10,
-    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, 0, p.facing > 0),
-    visible: (p) => (p.mood === 'content' || p.mood === 'stressed') && !p.coin,
+    draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, p.chestTurn || 0, p.facing > 0),
+    // hidden while the cat walks away (the chest faces away from the viewer)
+    visible: (p) => (p.mood === 'content' || p.mood === 'stressed') && !p.coin && p.chest !== null,
   }),
 
   // The same coin lifted off the chest to be examined, turned and put back.
@@ -55,7 +56,7 @@ export const ITEMS = [
     layer: 30,
     draw: (ctx, p, pos) => drawCoin(ctx, pos.x, pos.y, p.coin.turn || 0, p.facing > 0),
     offset: (p) => ({ x: p.coin.dx || 0, y: p.coin.dy || 0 }),
-    visible: (p) => p.mood === 'content' && !!p.coin,
+    visible: (p) => p.mood === 'content' && !!p.coin && p.chest !== null,
   }),
 
   // A temporary prop: the open book of the reading behavior (view.book 0..2).
