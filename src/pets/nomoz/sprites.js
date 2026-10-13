@@ -498,6 +498,8 @@ function drawTailCurve(g, { x, y, a, len, k, hook = 0, r0 = 2.4, r1 = 1.05 }) {
       }
       if (!best) continue;
       const [qx, qy, qa, d, r] = best;
+      // a thick tail gets a tufted, furry edge rather than a smooth line
+      if (r0 > 3 && margin < 0.6 && d > 2 && Math.floor(d * 1.5) % 3 === 0) continue;
       const dx = Math.cos(qa);
       const dy = Math.sin(qa);
       const side = dx * (cy - qy) - dy * (cx - qx); // across the spine
@@ -545,12 +547,12 @@ function tailSpec(p, poseName, view) {
   const drop = poseName === 'crouch' ? 3 : 0;
 
   if (view === 'side' || view === 'frontQ' || view === 'rearQ') {
-    return { x: 42, y: 34 + drop, a: 5 - 70 * lift + sway, len: 17, k: -1.2 - curl, hook: -(25 + 50 * curl) };
+    return { x: 43, y: 33 + drop, a: -5 - 65 * lift + sway, len: 18, k: -1.4 - curl, hook: -(30 + 50 * curl), r0: 3.4, r1: 1.7 };
   }
   if (view === 'rear') {
     return { x: 28, y: 45 + drop, a: -90 + sway, len: 20, k: 0.6 + curl * 0.8, hook: 40 + 50 * curl };
   }
-  if (poseName === 'low') return { x: 40, y: 29, a: -80 + sway, len: 19, k: -1, hook: -40 * (1 + curl) };
+  if (poseName === 'low') return { x: 40, y: 29, a: -80 + sway, len: 19, k: -1, hook: -40 * (1 + curl), r0: 3.2, r1: 1.6 };
   if (poseName === 'stand' || poseName === 'crouch') {
     return { x: 41, y: 49 + drop, a: -40 - 40 * lift + sway, len: 20, k: -1.4 - curl, hook: -(30 + 40 * curl) };
   }
@@ -1432,58 +1434,80 @@ function drawRearTorso(g, p, drop) {
 }
 
 /*
- * A leg seen from the side: a 3-pixel column from the body to the floor,
- * its foot `s` pixels forward (-) or back (+) of the hip, lifted `lift`
- * rows; near legs lit on their leading edge, far legs in shadow.
+ * A leg seen from the side, as thick as the reference front legs: a
+ * 5-pixel column (lit leading edge, fur body, shaded trailing edge, a fur
+ * clump part way down) from under the body to a knuckled paw with toe
+ * seams. Its foot sits `s` pixels forward (-) or back (+) of the hip and
+ * lifts `lift` rows while it swings; far legs are one pixel narrower and
+ * in shadow, behind the body.
  */
 function drawSideLeg(g, x0, top, s, lift, near) {
   const foot = 55 - lift;
+  const w = near ? 5 : 4;
   for (let y = top; y <= foot; y++) {
     const x = x0 + Math.round((s * (y - top)) / Math.max(1, foot - top));
-    if (near) {
-      put(g, x, y, '3');
-      put(g, x + 1, y, '2');
-      put(g, x + 2, y, '2');
-      put(g, x + 3, y, '1');
-    } else {
-      put(g, x, y, '2');
-      put(g, x + 1, y, '1');
-      put(g, x + 2, y, '1');
+    for (let c = 0; c < w; c++) {
+      const ch = near ? (c === 0 ? '3' : c === w - 1 ? '1' : '2') : c === 0 ? '2' : '1';
+      put(g, x + c, y, ch);
     }
+    if (near && y === top + 3) put(g, x + 2, y, '3'); // fur clump
+    if (near && y === top + 6) put(g, x + 3, y, '1');
   }
-  const fx = x0 + s - 1;
-  for (let c = 0; c < 5; c++) {
-    put(g, fx + c, foot + 1, near ? (c === 0 ? '3' : c === 4 ? '1' : '2') : c < 4 ? '1' : '.');
-    put(g, fx + c, foot + 2, near ? (c === 1 || c === 3 ? '1' : '2') : c < 4 ? '1' : '.');
+  // the paw: knuckles, then toes and sole, a little wider than the leg
+  const px = x0 + s - 1;
+  for (let c = 0; c < w + 2; c++) {
+    put(g, px + c, foot + 1, near ? (c === 0 ? '2' : c === w + 1 ? '1' : '3') : '1');
+    put(g, px + c, foot + 2, near ? (c === 2 || c === 4 ? '1' : '2') : c === 0 ? '2' : '1');
   }
 }
 
 /*
  * The four legs in a trot: legs 1 and 2 swing the diagonal pairs forward
- * (lifted) and back, legs 3 tucks them for a leap, legs 0 stands square.
- * `layer` draws the far pair (behind the body) or the near pair.
+ * (lifted) and back, legs 3 tucks them for a leap (forelegs reaching,
+ * hind legs pushing off), legs 0 stands square. `layer` draws the far
+ * pair (behind the body) or the near pair.
  */
 function drawSideLegs(g, legs, drop, layer) {
-  const top = 44 + drop;
+  const top = 46 + drop;
   const step = legs === 1 ? 1 : legs === 2 ? -1 : 0;
   const leap = legs === 3;
   const near = layer === 'near';
   const legsAt = near
-    ? [[16, step, 'f'], [36, -step, 'h']]
-    : [[20, -step, 'f'], [40, step, 'h']];
+    ? [[16, step, 'f'], [34, -step, 'h']]
+    : [[20, -step, 'f'], [38, step, 'h']];
   for (const [x, dir, end] of legsAt) {
     const s = leap ? (end === 'f' ? -3 : 3) : dir * -2;
     const lift = leap ? (end === 'f' ? 3 : 1) : dir > 0 ? 2 : 0;
-    drawSideLeg(g, x, top, s, lift, near);
+    drawSideLeg(g, x, Math.min(top, 52 - lift), s, lift, near);
   }
 }
 
-// The body from the side: chest, barrel and haunch from the same fur mound.
+/*
+ * The body from the side, with the reference body's volume: a deep,
+ * rounded barrel, a full chest and neck, a big round haunch, the bib on
+ * the chest, fur tufts along the belly and chest, and the flank stripes
+ * of the same fur mound. Short and plush, never a long thin box.
+ */
 function drawSideBody(g, drop) {
-  drawMound(g, 30, 38.5 + drop, 13.5, 8);
-  drawMound(g, 39, 38 + drop, 7.5, 8.5); // haunch
-  drawMound(g, 19.5, 35.5 + drop, 6.5, 8); // chest and neck
-  for (const [x, y] of [[14, 37], [14, 38], [15, 39], [14, 39], [15, 40], [15, 41]]) put(g, x, y + drop, '4'); // bib
+  drawMound(g, 30, 38 + drop, 12.5, 9.5);
+  drawMound(g, 38.5, 38.5 + drop, 8.5, 9.5); // haunch
+  drawMound(g, 20, 36 + drop, 7.5, 9.5); // chest and neck
+  // the bib: a lighter fluffy patch down the chest, edged with darker strands
+  for (const [x, y, ch] of [
+    [13, 36, '4'], [13, 37, '4'], [14, 37, '4'], [13, 38, '4'], [14, 38, '3'], [13, 39, '4'],
+    [14, 39, '4'], [14, 40, '4'], [13, 40, '3'], [14, 41, '4'], [15, 41, '3'], [15, 42, '4'],
+    [16, 42, '3'], [14, 42, '1'], [16, 43, '4'], [17, 44, '3'],
+  ]) {
+    put(g, x, y + drop, ch);
+  }
+  // fur tufts breaking the silhouette: chest front, belly and haunch
+  for (const [x, y, ch] of [
+    [12, 39, '2'], [12, 41, '1'], [13, 43, '1'],
+    [22, 47, '1'], [25, 48, '1'], [28, 47, '1'], [31, 48, '1'],
+    [47, 36, '2'], [47, 40, '1'],
+  ]) {
+    put(g, x, y + drop, ch);
+  }
 }
 
 // Profile ears: the reference ear itself (head rows 0-6), and the far ear
