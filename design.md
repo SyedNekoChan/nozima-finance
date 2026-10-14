@@ -72,6 +72,10 @@ non-uniformly; the CSS box scales the whole canvas uniformly.
   items, cues, the book, the stressed and glitch treatments).
 - The artwork wears its own crown and coin, so the crown and coin vanity
   items rest while it is shown; the eyes and pupils are part of the art.
+- The crown and coin belong to the prosperous state: in the normal (idle)
+  state each frame is shown bare (crown and coin lifted off, the fur filled
+  in where they lay on the body, every other pixel as supplied). The
+  prosperous and stressed states show the frames exactly as supplied.
 - The procedural cat described below is kept only as the fallback if the
   sheet cannot load.
 
