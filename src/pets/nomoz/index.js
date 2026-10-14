@@ -15,6 +15,7 @@ import { FINANCIAL_REACTIONS } from './financial.js';
 import { PROPS } from './props.js';
 import { ITEMS, SLOTS } from './vanity.js';
 import { renderSprite } from './sprites.js';
+import { loadSheet } from './sheet.js';
 
 /*
  * NOMOZ.EXE: the first registered pet, the solid-black cat of the
@@ -25,6 +26,8 @@ import { renderSprite } from './sprites.js';
  * application never depends on it.
  */
 function build() {
+  // start fetching the canonical sprite sheet before the first frame
+  loadSheet();
   try {
     return definePet({
       id: 'nomoz',

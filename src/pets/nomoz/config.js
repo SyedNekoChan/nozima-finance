@@ -50,8 +50,12 @@ export const REST_PATCH = {
 /* World overrides for this pet (see WORLD in src/pets/config.js). */
 export const WORLD_OVERRIDES = {};
 
-/* Sprite box: 56 x 60 logical pixels, scaled by a whole number. */
-export const SPRITE_SIZE = { width: 56, height: 60 };
+/*
+ * Sprite box: 56 x 60 logical pixels, scaled by a whole number. The canvas
+ * holds `resolution` pixels per logical pixel, so the sprite sheet's frames
+ * are drawn 1:1 (see sheet.js).
+ */
+export const SPRITE_SIZE = { width: 56, height: 60, resolution: 4 };
 
 /*
  * Lighting. The cat stays solid black and is revealed by light, never by
