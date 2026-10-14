@@ -80,6 +80,8 @@ function Pet({ pet }) {
   const { world } = pet;
   const SPRITE_W = pet.sprite.width;
   const SPRITE_H = pet.sprite.height;
+  // canvas pixels per logical sprite pixel (the sprite sheet is drawn 1:1)
+  const RES = pet.sprite.resolution || 1;
   const scale = world.pixelScale(metrics ? metrics.width : 0);
   const boxW = SPRITE_W * scale;
   const boxH = SPRITE_H * scale;
@@ -259,8 +261,8 @@ function Pet({ pet }) {
               <canvas
                 ref={setCanvasEl}
                 data-mood={mood}
-                width={SPRITE_W}
-                height={SPRITE_H}
+                width={SPRITE_W * RES}
+                height={SPRITE_H * RES}
                 className="nomoz-canvas"
               />
             </motion.div>

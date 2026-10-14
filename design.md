@@ -51,6 +51,34 @@ enough to recognise at a glance, always behind the primary financial
 content. It is the first pet of a small, moddable pet subsystem
 (`src/pets`); everything below describes the implemented system.
 
+### Canonical sprite sheet
+
+The supplied "Cat King" directional sprite sheet
+(`src/pets/nomoz/assets/cat-king-sheet.webp`, kept byte-for-byte as
+supplied) is the cat's runtime artwork and source of truth. `nomoz/sheet.js`
+slices its four rows (Walk Down, Walk Left, Walk Right, Walk Up) and four
+columns (Idle, Walk 1, Walk 2, Idle) at runtime by measured frame regions,
+makes only the sheet's flat grey backdrop transparent, and keeps every cat
+pixel exactly (verified pixel for pixel). Frames are drawn 1:1 into the
+sprite canvas (4 canvas pixels per logical pixel), bottom-aligned on one
+baseline and centred on the cat, never mirrored, smoothed or rescaled
+non-uniformly; the CSS box scales the whole canvas uniformly.
+
+- Direction: the walk view picks the row (front: Down, rear: Up, side and
+  three-quarter views: Left / Right by facing).
+- Animation: alternate steps show Walk 1 / Walk 2 (Walk 1 mid-leap); every
+  other moment shows the row's Idle frame. Behaviors without their own
+  frames keep running on the idle frames with their overlays (effects,
+  items, cues, the book, the stressed and glitch treatments).
+- The artwork wears its own crown and coin, so the crown and coin vanity
+  items rest while it is shown; the eyes and pupils are part of the art.
+- The crown and coin belong to the prosperous state: in the normal (idle)
+  state each frame is shown bare (crown and coin lifted off, the fur filled
+  in where they lay on the body, every other pixel as supplied). The
+  prosperous and stressed states show the frames exactly as supplied.
+- The procedural cat described below is kept only as the fallback if the
+  sheet cannot load.
+
 ### Canonical reference
 
 The "lonely black cat" pixel-art image is the source of truth for the

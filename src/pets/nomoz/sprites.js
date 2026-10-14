@@ -33,6 +33,13 @@
  * Everything is hard pixels (no smoothing); the canvas is scaled with
  * image-rendering: pixelated.
  *
+ * THE CANONICAL ART is the supplied directional sprite sheet (./sheet.js):
+ * renderSprite draws the cat from its exact frames (idle and walking, per
+ * direction) for every pose and behavior, with the behavior overlays
+ * (effects, items, cues, the book, the stressed treatment) on top. The
+ * procedural cat below is kept only as the fallback should the sheet fail
+ * to load.
+ *
  * Worn items (crown, chest coin, held coin, book) are not drawn here: they
  * are vanity items (./vanity.js) rendered through the pet's vanity
  * registry. Temporary overlays (cues, the drifting blue flame, objects,
@@ -40,6 +47,7 @@
  * a prop.
  */
 import { LIGHTING, SPRITE_SIZE } from './config.js';
+import { FRAME_H, loadSheet, sheetFrame, sheetState, whenSheetSettles } from './sheet.js';
 
 export const SPRITE_W = SPRITE_SIZE.width;
 export const SPRITE_H = SPRITE_SIZE.height;
@@ -1739,14 +1747,10 @@ function paintGrid(ctx, g) {
 }
 
 /*
- * p: { mood, gaze, eyes, mouth, legs, pose, lean, facing, cue, item,
- *      book, crown, crownLift, coin, droop, glitch, frame, light,
- *      pawL, pawR, ears, tail, focus, pupils, bookPaw, bookShift, fx }
- * vanity: the pet's vanity registry (worn items).
- * The caller's ctx is a SPRITE_W x SPRITE_H canvas context. The base art
- * has its tail on the right (as in the concept art); facing > 0 mirrors it.
+ * The procedural cat (the fallback art), drawn into a SPRITE_W x SPRITE_H
+ * context. The base art has its tail on the right; facing > 0 mirrors it.
  */
-export function renderSprite(ctx, p, vanity) {
+function renderProcedural(ctx, p, vanity) {
   const { a, ac, b, bc } = layers();
   const flip = p.facing > 0;
   const stressed = p.mood === 'stressed';
@@ -1847,4 +1851,180 @@ export function renderSprite(ctx, p, vanity) {
   }
   drawItem(ctx, p.item, stressed, p.frame || 0);
   drawFx(ctx, p.fx, false, stressed, p.frame || 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* The canonical sprite sheet                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The sheet frames are drawn 1:1 (no rescaling) into a canvas of
+ * SPRITE_W x SPRITE_H at the sprite resolution (4 sheet pixels per logical
+ * pixel): bottom-aligned on the frame baseline and centred on the cat, so
+ * every idle and walking frame of every direction shares one pivot. The
+ * behavior overlays (effects, items, cues, the book, the stressed marks)
+ * keep their logical coordinates, drawn at 3 sheet pixels per logical
+ * pixel around the same pivot, so they sit on the sheet cat as they sat on
+ * the procedural one.
+ */
+const SHEET_RES = 4;
+const SHEET_W = SPRITE_W * SHEET_RES;
+const SHEET_H = SPRITE_H * SHEET_RES;
+const SHEET_BASE = SHEET_H - 10; // the frames' bottom row
+const OV = 3; // overlay scale
+const OV_X = SHEET_W / 2 - OV * 28; // logical (28, 57), the cat's foot centre ...
+const OV_Y = SHEET_BASE - 2 - OV * 57; // ... sits on the frame's centre and baseline
+
+let sheetScratch = null;
+
+function sheetLayers() {
+  if (!sheetScratch) {
+    const mk = () => {
+      const cv = document.createElement('canvas');
+      cv.width = SHEET_W;
+      cv.height = SHEET_H;
+      const c = cv.getContext('2d');
+      c.imageSmoothingEnabled = false;
+      return [cv, c];
+    };
+    const [cat, cc] = mk();
+    const [ghost, gc] = mk();
+    const [out, oc] = mk();
+    sheetScratch = { cat, cc, ghost, gc, out, oc };
+  }
+  return sheetScratch;
+}
+
+const overlay = (c) => c.setTransform(OV, 0, 0, OV, OV_X, OV_Y);
+const plain = (c) => c.setTransform(1, 0, 0, 1, 0, 0);
+
+function renderSheet(ctx, p, vanity, frame) {
+  const { cat, cc, ghost, gc, out, oc } = sheetLayers();
+  const stressed = p.mood === 'stressed';
+  const clock = p.frame || 0;
+
+  // the cat: the exact frame, then the book of the reading behaviors (the
+  // crown and coin are part of the artwork, so their vanity items rest)
+  plain(cc);
+  cc.clearRect(0, 0, SHEET_W, SHEET_H);
+  cc.drawImage(frame, Math.round(SHEET_W / 2 - frame.width / 2), SHEET_BASE - (FRAME_H - 1));
+  if (vanity) {
+    overlay(cc);
+    vanity.draw(cc, { ...p, sheet: true, hx: HX, hy: POSES.sit.hy }, { fillPixels, colorFor: paletteColor });
+    plain(cc);
+  }
+
+  plain(oc);
+  oc.clearRect(0, 0, SHEET_W, SHEET_H);
+
+  // effects behind the cat
+  overlay(oc);
+  drawFx(oc, p.fx, true, stressed, clock);
+  plain(oc);
+
+  // row slips (stressed, glitch) in overlay rows; a faint cyan ghost for the glitch
+  const plan = [];
+  if (stressed) plan.push(...STRESS_SHIFTS[clock % 2]);
+  if (p.glitch && GLITCH_SHIFTS[p.glitch]) plan.push(...GLITCH_SHIFTS[p.glitch]);
+  const shifts = shiftTable(plan);
+  if (p.glitch) {
+    plain(gc);
+    gc.clearRect(0, 0, SHEET_W, SHEET_H);
+    gc.drawImage(cat, 0, 0);
+    gc.globalCompositeOperation = 'source-in';
+    gc.fillStyle = PALETTE.C;
+    gc.fillRect(0, 0, SHEET_W, SHEET_H);
+    gc.globalCompositeOperation = 'source-over';
+    oc.globalAlpha = 0.32;
+    oc.drawImage(ghost, 2 * OV, 0);
+    oc.globalAlpha = 1;
+  }
+  for (let y = 0; y < SHEET_H; y++) {
+    const ly = Math.floor((y - OV_Y) / OV);
+    const dx = ly >= 0 && ly < SPRITE_H ? shifts[ly] * OV : 0;
+    oc.drawImage(cat, 0, y, SHEET_W, 1, dx, y, SHEET_W, 1);
+  }
+
+  overlay(oc);
+  if (stressed) {
+    // cracks: sparse missing pixels through the fur
+    for (let y = 6; y < 57; y++) {
+      for (let x = 8; x < 48; x++) {
+        if ((x * 7 + y * 13 + (clock % 2) * 5) % 37 === 0) oc.clearRect(x, y, 1, 1);
+      }
+    }
+    const f = clock % 2;
+    fillPixels(oc, DROP, f ? 5 : 8, f ? 9 : 5, paletteColor);
+    fillPixels(oc, DROP, f ? 49 : 47, f ? 5 : 11, paletteColor);
+    drawText(oc, f ? '?' : '!', 0, f ? 22 : 18, PALETTE.R);
+    drawText(oc, f ? 'X' : '?', 52, f ? 16 : 20, PALETTE.R);
+  }
+  if (p.cue) {
+    const w = textWidth(p.cue);
+    drawText(oc, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, 0, stressed ? PALETTE.R : PALETTE.C);
+  }
+  drawItem(oc, p.item, stressed, clock);
+  drawFx(oc, p.fx, false, stressed, clock);
+  plain(oc);
+
+  plain(ctx);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(out, 0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+// The fallback: the procedural cat at logical size, scaled up whole.
+let fallbackCanvas = null;
+
+function renderFallback(ctx, p, vanity) {
+  if (ctx.canvas.width === SPRITE_W) {
+    renderProcedural(ctx, p, vanity);
+    return;
+  }
+  if (!fallbackCanvas) {
+    fallbackCanvas = document.createElement('canvas');
+    fallbackCanvas.width = SPRITE_W;
+    fallbackCanvas.height = SPRITE_H;
+  }
+  const fc = fallbackCanvas.getContext('2d');
+  renderProcedural(fc, p, vanity);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(fallbackCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+// What a canvas last asked for while the sheet was still loading.
+const waitingFor = new WeakMap();
+
+/*
+ * p: { mood, gaze, eyes, mouth, legs, pose, lean, facing, view, cue, item,
+ *      book, crown, crownLift, coin, droop, glitch, frame, light,
+ *      pawL, pawR, ears, tail, focus, pupils, bookPaw, bookShift, fx }
+ * vanity: the pet's vanity registry (worn items).
+ * The caller's ctx is a SPRITE_W x SPRITE_H canvas at the sprite
+ * resolution (SPRITE_SIZE.resolution). The cat comes from the sprite
+ * sheet; until it has loaded nothing is drawn (the latest request is drawn
+ * as soon as it is ready), and if it cannot load the procedural cat is.
+ */
+export function renderSprite(ctx, p, vanity) {
+  loadSheet();
+  const state = sheetState();
+  if (state === 'ready') {
+    renderSheet(ctx, p, vanity, sheetFrame(p));
+    return;
+  }
+  if (state === 'failed' || typeof document === 'undefined') {
+    renderFallback(ctx, p, vanity);
+    return;
+  }
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const first = !waitingFor.has(ctx);
+  waitingFor.set(ctx, [p, vanity]);
+  if (first) {
+    whenSheetSettles(() => {
+      const [lp, lv] = waitingFor.get(ctx);
+      waitingFor.delete(ctx);
+      renderSprite(ctx, lp, lv);
+    });
+  }
 }
