@@ -35,10 +35,12 @@
  *
  * THE CANONICAL ART is the supplied directional sprite sheet (./sheet.js):
  * renderSprite draws the cat from its exact frames (idle and walking, per
- * direction) for every pose and behavior, with the behavior overlays
- * (effects, items, cues, the book, the stressed treatment) on top. The
- * procedural cat below is kept only as the fallback should the sheet fail
- * to load.
+ * direction) whenever the sheet has a frame of the moment, with the
+ * behavior overlays (effects, items, cues, the stressed treatment) on top.
+ * Every other moment of the behavior library (see sheetShows) is drawn by
+ * the procedural rig below at the same scale, centre and baseline, so no
+ * behavior collapses onto a static frame. The rig is also the fallback
+ * should the sheet fail to load.
  *
  * Worn items (crown, chest coin, held coin, book) are not drawn here: they
  * are vanity items (./vanity.js) rendered through the pet's vanity
@@ -47,7 +49,7 @@
  * a prop.
  */
 import { LIGHTING, SPRITE_SIZE } from './config.js';
-import { FRAME_H, loadSheet, sheetFrame, sheetState, whenSheetSettles } from './sheet.js';
+import { FRAME_H, loadSheet, sheetFrame, sheetShows, sheetState, whenSheetSettles } from './sheet.js';
 
 export const SPRITE_W = SPRITE_SIZE.width;
 export const SPRITE_H = SPRITE_SIZE.height;
@@ -1747,7 +1749,8 @@ function paintGrid(ctx, g) {
 }
 
 /*
- * The procedural cat (the fallback art), drawn into a SPRITE_W x SPRITE_H
+ * The procedural cat (the rig art for every moment the sheet has no frame
+ * of, and the fallback art), drawn into a SPRITE_W x SPRITE_H
  * context. The base art has its tail on the right; facing > 0 mirrors it.
  */
 function renderProcedural(ctx, p, vanity) {
@@ -1973,6 +1976,30 @@ function renderSheet(ctx, p, vanity, frame) {
   ctx.drawImage(out, 0, 0, ctx.canvas.width, ctx.canvas.height);
 }
 
+/*
+ * A rig state the sheet has no frame of (see sheetShows): the procedural
+ * cat, drawn at the overlay scale so it stands on the frames' baseline at
+ * their centre and size, with its own effects, items and cues. Each
+ * canvas keeps its own logical canvas, so its pupils ease continuously.
+ */
+const rigCanvas = new WeakMap();
+
+function renderRig(ctx, p, vanity) {
+  let small = rigCanvas.get(ctx);
+  if (!small) {
+    small = document.createElement('canvas');
+    small.width = SPRITE_W;
+    small.height = SPRITE_H;
+    rigCanvas.set(ctx, small);
+  }
+  renderProcedural(small.getContext('2d'), p, vanity);
+  const k = ctx.canvas.width / SHEET_W;
+  plain(ctx);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, OV_X * k, OV_Y * k, SPRITE_W * OV * k, SPRITE_H * OV * k);
+}
+
 // The fallback: the procedural cat at logical size, scaled up whole.
 let fallbackCanvas = null;
 
@@ -2003,14 +2030,17 @@ const waitingFor = new WeakMap();
  * vanity: the pet's vanity registry (worn items).
  * The caller's ctx is a SPRITE_W x SPRITE_H canvas at the sprite
  * resolution (SPRITE_SIZE.resolution). The cat comes from the sprite
- * sheet; until it has loaded nothing is drawn (the latest request is drawn
- * as soon as it is ready), and if it cannot load the procedural cat is.
+ * sheet wherever the sheet has a frame of the state, and from the rig
+ * everywhere else, so every behavior stays visible; until the sheet has
+ * loaded nothing is drawn (the latest request is drawn as soon as it is
+ * ready), and if it cannot load the procedural cat is.
  */
 export function renderSprite(ctx, p, vanity) {
   loadSheet();
   const state = sheetState();
   if (state === 'ready') {
-    renderSheet(ctx, p, vanity, sheetFrame(p));
+    if (sheetShows(p)) renderSheet(ctx, p, vanity, sheetFrame(p));
+    else renderRig(ctx, p, vanity);
     return;
   }
   if (state === 'failed' || typeof document === 'undefined') {
