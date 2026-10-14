@@ -400,6 +400,31 @@ export function sheetCol(p) {
   return 0;
 }
 
+/*
+ * Whether the sheet has a frame for a view. The sheet draws the cat
+ * sitting at rest (Idle) and stepping (Walk 1 / Walk 2), eyes open, looking
+ * ahead or the way it walks. Every other rig state of the behavior library
+ * (lying, crouching, stretching, standing still, blinking and closed eyes,
+ * glances, mouth shapes, raised paws, ears, tail, lean, droop, pupils,
+ * focus, the book, the crown and coin animations) has no frame on the
+ * sheet, so it must not collapse onto the Idle frame: it is drawn by the
+ * rig instead (see renderSprite).
+ */
+const AT_REST_MOUTHS = new Set(['idle', 'rest']);
+
+export function sheetShows(p) {
+  const pose = p.pose || 'sit';
+  const walking = p.legs === 1 || p.legs === 2 || p.legs === 3;
+  if (pose !== (walking ? 'stand' : 'sit')) return false;
+  if ((p.eyes || 'open') !== 'open') return false;
+  const gaze = p.gaze || 'c';
+  if (walking ? gaze === 'u' : gaze !== 'c') return false;
+  if (!AT_REST_MOUTHS.has(p.mouth || 'idle')) return false;
+  if (p.lean || p.droop || p.pawL || p.pawR || p.ears || p.tail) return false;
+  if (p.focus || p.pupils || p.book != null || p.bookPaw || p.bookShift) return false;
+  return !p.crown && !p.crownLift && !p.coin;
+}
+
 // The keyed frame canvas for a view (bare in the normal state), or null
 // until the sheet is ready.
 export function sheetFrame(p) {
