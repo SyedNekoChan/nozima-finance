@@ -11,6 +11,7 @@ import Dashboard from './features/dashboard/Dashboard.jsx';
 import Ledger from './features/ledger/Ledger.jsx';
 import Calendar from './features/calendar/Calendar.jsx';
 import Accounts from './features/accounts/Accounts.jsx';
+import RpgMount from './rpg/mount.jsx';
 
 const TAB_ORDER = ['DASHBOARD', 'LEDGER', 'CALENDAR', 'ACCOUNTS'];
 
@@ -68,6 +69,7 @@ export default function App() {
       </main>
       <Footer />
     </div>
+    <RpgMount />
     </MotionConfig>
   );
 }
