@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kit import *
+import paint as P
 
 OUT = ART
 
@@ -55,42 +56,76 @@ def bob_head(a, y_split, dy, x0=0, x1=W):
 
 
 # ---------------------------------------------------------------- walking
+def front_stance(phase, srcn, bob, tail_off):
+    """a standing cat seen from the front. The head and chest are the approved
+    ones (idle_front rows 8-45); the legs are painted: forelegs side by side,
+    hind legs peeking out at both sides, one diagonal pair forward per phase.
+    phase: 'A' left fore + right hind forward, 'B' all down, 'C' mirrored."""
+    src = load('idle_front', srcn)
+    tail = region(src, 56, 0, W, H)
+    top = crop(src, 24, 8, 56, 46)
+    upper = blank()
+    paste(upper, top, 24, 6 + bob)
+    # the sitting haunches are not part of a standing cat: cut them, the
+    # painted hind legs cover the edge
+    upper = erase(upper, 47, 38 + bob, W, H)
+    upper = erase(upper, 0, 38 + bob, 27, H)
+    lift = {'A': {'fl': 0, 'fr': 6, 'hl': 3, 'hr': 0}, 'B': {'fl': 0, 'fr': 0, 'hl': 1, 'hr': 1},
+            'C': {'fl': 6, 'fr': 0, 'hl': 0, 'hr': 3},
+            'L': {'fl': 4, 'fr': 4, 'hl': 2, 'hr': 2}}[phase]
+    seed = {'A': 11, 'B': 21, 'C': 31, 'L': 41}[phase]
+    legs = blank()
+    # hind legs (behind): outside the forelegs, a little higher (farther away)
+    P.DIM = 1
+    for cx, key, sd in ((28, 'hl', 1), (48, 'hr', 2)):
+        bottom = 59 - lift[key] + bob
+        P.limb(legs, cx, 40 + bob, bottom - 3, 3.4, 2.6, 0.0, seed=seed + sd)
+        P.paw(legs, cx, bottom, 8, 4, seed=seed + sd)
+    P.DIM = 0
+    back = legs
+    legs = blank()
+    # forelegs: the lifted one is shorter and a little tucked in
+    for cx, key, sd in ((33, 'fl', 5), (41, 'fr', 6)):
+        up = lift[key]
+        bottom = 61 - up + bob
+        lean = (0.0 if up == 0 else (0.18 if key == 'fl' else -0.18))
+        P.limb(legs, cx, 41 + bob, bottom - 4, 3.6, 2.9, lean, seed=seed + sd)
+        P.paw(legs, cx + int(lean * (bottom - 45)), bottom, 10 if up == 0 else 8, 4, seed=seed + sd)
+    # a dark gap between the forelegs and under the chest
+    for y in range(44 + bob, 58 + bob):
+        legs[y, 37, :] = P.rgba(0) if legs[y, 37, 3] == 0 else legs[y, 37]
+    t = shift(tail, tail_off[0] - 6, tail_off[1] + 2)
+    return ground(over(t, back, upper, legs), 61)
+
+
 def walk_front():
-    """facing us, walking toward us: the sitting cat stood up (legs longer by
-    repeated fur rows, the haunches left behind as hind legs), paws alternate"""
-    out = []
-    for lift, bob, tdx, tdy, srcn in (('L', 0, 0, 0, 0), (None, 1, 1, 0, 1), ('R', 0, 0, 1, 0)):
-        src = load('idle_front', srcn)
-        tail = region(src, 56, 0, W, H)
-        body = erase(src.copy(), 56, 0, W, H)
-        body = insert_rows(body, 52, 7, 28, 47, src=52)
-        if lift:
-            x0, x1 = {'L': (28, 38), 'R': (38, 47)}[lift]
-            body = lift_paw(body, x0, x1, 64, 8, 6)
-        if bob:
-            body = bob_head(body, 34, bob)
-        out.append(ground(over(shift(tail, tdx, tdy), body)))
-    return out
+    """facing us, walking toward us: approved head and chest, painted legs"""
+    return [front_stance('A', 0, 0, (0, 0)), front_stance('B', 1, 1, (1, 0)), front_stance('C', 0, 0, (0, 1))]
 
 
 def walk_rear():
-    """walking away: the approved rear view with the sitting haunch cut off,
-    two legs from the front view's legs, the curled tail raised at the side"""
+    """walking away: the approved rear view down to the rump, painted hind
+    legs under it (paws alternate), the approved curled tail raised at the side"""
     out = []
-    for lift, bob, tail, srcn in (('L', 0, (0, 0), 0), (None, 1, (1, 0), 1), ('R', 0, (0, -1), 0)):
+    for phase, srcn, bob, tail in (('A', 0, 0, (0, 0)), ('B', 1, 1, (1, 0)), ('C', 0, 0, (0, -1))):
         rear = load('sit_rear', 0)
         tl = region(rear, 57, 28, W, H)
         body = erase(rear.copy(), 57, 28, W, H)
         body = erase(body, 0, 45, W, H)
-        legs = crop(load('idle_front', srcn), 27, 48, 48, 62)
-        paste(body, legs, 27, 44)
-        ph = legs.shape[0]
-        if lift:
-            x0, x1 = {'L': (27, 37), 'R': (37, 48)}[lift]
-            body = lift_paw(body, x0, x1, 44 + ph, 6, 6)
-        if bob:
-            body = bob_head(body, 24, bob)
-        out.append(ground(over(shift(tl, -5 + tail[0], -12 + tail[1]), body)))
+        body = bob_head(body, 24, bob) if bob else body
+        lift = {'A': (0, 6), 'B': (0, 0), 'C': (6, 0)}[phase]
+        legs = blank()
+        seed = {'A': 41, 'B': 51, 'C': 61}[phase]
+        for cx, up, sd in ((33, lift[0], 1), (45, lift[1], 2)):
+            bottom = 61 - up + bob
+            lean = 0.0 if up == 0 else (0.15 if cx < 40 else -0.15)
+            P.limb(legs, cx, 40 + bob, bottom - 4, 3.8, 3.0, lean, seed=seed + sd)
+            P.paw(legs, cx + int(lean * (bottom - 44)), bottom, 10 if up == 0 else 8, 4, seed=seed + sd)
+        for y in range(46 + bob, 58 + bob):
+            if legs[y, 39, 3] == 0:
+                legs[y, 39] = P.rgba(0)
+        body = P.texture(body, (24, 0, 56, 45), 81 + ord(phase), 0.55)
+        out.append(ground(over(shift(tl, -5 + tail[0], -10 + tail[1]), body, legs), 61))
     return out
 
 
@@ -110,15 +145,46 @@ def head_from_reference(kind, scale):
     return ref_part((x0, y0, x1, y1), scale)
 
 
+def blend_seam(a, mask, y_min):
+    """interleave head and body fur along the neck: within two pixels of the
+    pasted head's lower edge, alternate pixels take the neighbouring colour of
+    the other side (a fur-like dither instead of a straight cut)"""
+    out = a.copy()
+    opaque = a[..., 3] > 0
+    ys, xs = np.where(mask)
+    for y in range(max(y_min, 0), H):
+        for x in range(W):
+            if not opaque[y, x] or (x + y) % 2:
+                continue
+            # nearest pixel on the other side of the seam, within 2 px
+            best = None
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    yy, xx = y + dy, x + dx
+                    if 0 <= yy < H and 0 <= xx < W and opaque[yy, xx] and mask[yy, xx] != mask[y, x]:
+                        d = abs(dx) + abs(dy)
+                        if best is None or d < best[0]:
+                            best = (d, yy, xx)
+            if best:
+                out[y, x] = a[best[1], best[2]]
+    return out
+
+
 def walk_head_swap(kind, scale, at):
     """the approved side-walk body with the profile head replaced by the
     three-quarter head (toward us) or the rear head (away), re-sampled from
-    the reference to the walking cat's head size"""
+    the reference to the walking cat's head size, blended into the neck"""
     head = head_from_reference(kind, scale)
     out = []
     for k in range(3):
         a = erase(load('walk_side', k), 1, 8, 24, 32)
+        mask = np.zeros((H, W), bool)
+        h, w = head.shape[:2]
+        mask[at[1]:at[1] + h, at[0]:at[0] + w] = head[..., 3] > 0
         paste(a, head, *at)
+        if kind == 'rear':
+            a = P.texture(a, (at[0], at[1], at[0] + w, at[1] + h), 71 + k, 0.7)
+        a = blend_seam(a, mask, at[1] + h - 9)
         out.append(ground(a))
     return out
 
@@ -135,14 +201,26 @@ def squash(a, y0, n, head_dy=0, head_x1=W, head_y=36):
 
 # ---------------------------------------------------------------- the rest
 def leap_side():
-    a = load('walk_side', 2)
-    return [shift(a, 0, -7)]
+    """a bound: the approved walking body with its legs replaced by painted
+    ones, the forelegs reaching forward, the hind legs pushing back"""
+    a = load('walk_side', 1)
+    a = erase(a, 0, 45, 80, H)          # the walking legs
+    legs = blank()
+    P.DIM = 1
+    for cx, lean, sd in ((26, -0.62, 3), (62, 0.66, 4)):     # far pair
+        P.limb(legs, cx, 41, 52, 3.0, 2.4, lean, seed=300 + sd)
+        P.paw(legs, cx + int(lean * 11), 56, 7, 4, seed=300 + sd)
+    P.DIM = 0
+    for cx, lean, sd in ((20, -0.75, 1), (55, 0.72, 2)):     # near pair
+        P.limb(legs, cx, 41, 53, 3.4, 2.6, lean, seed=300 + sd)
+        P.paw(legs, cx + int(lean * 12), 58, 8, 4, seed=300 + sd)
+    return [shift(over(legs, a), 0, -3)]
 
 
 def leap_front():
-    wf = walk_front()[1]
-    a = lift_paw(wf.copy(), 28, 47, 62, 6, 3)
-    return [shift(a, 0, -7)]
+    """a hop toward us: the standing front cat with every paw tucked up, raised
+    off the ground (the floor shadow stays down)"""
+    return [shift(front_stance('L', 1, 0, (0, 0)), 0, -7)]
 
 
 def low_front():

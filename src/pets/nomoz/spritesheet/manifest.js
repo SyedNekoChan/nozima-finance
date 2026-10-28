@@ -84,16 +84,24 @@ const clips = {
   leap_front: clip('leap_front', [0], { floor: 61 }),
   leap_side: clip('leap_side', [0], { floor: 61 }),
 };
+// front and rear walks are painted as left-forward, neutral, right-forward:
+// played out and back (0 1 2 1) they make a full cycle; the side-derived
+// views have their own three-frame cycle
+const cycle = (view) => (view === 'front' || view === 'rear' ? [0, 1, 2, 1] : [0, 1, 2]);
+const cycleMs = (view, ms) => (view === 'front' || view === 'rear' ? Math.round((ms * 3) / 4) : ms);
 for (const view of VIEWS) {
-  clips[`walk_${view}`] = clip(`walk_${view === 'side' ? 'side' : view}`, [0, 1, 2], { ms: WALK });
+  clips[`walk_${view}`] = clip(`walk_${view}`, cycle(view), { ms: cycleMs(view, WALK) });
   clips[`stand_${view}`] = clip(`walk_${view}`, [1]); // arriving or waiting on four legs
-  clips[`creep_${view}`] = clip(`creep_${view}`, [0, 1, 2], { ms: CREEP });
+  clips[`creep_${view}`] = clip(`creep_${view}`, cycle(view), { ms: cycleMs(view, CREEP) });
   clips[`crouch_${view}`] = clip(`creep_${view}`, [1]);
 }
 
-// What none of this art shows: a raised forepaw (except grooming) and the open
-// book. Rules name them so those states keep the procedural cat.
-const FREE = { pawL: false, pawR: false, book: false };
+// Raised forepaws other than grooming (mid / high) are not drawn: those states
+// use the same art with the paws down, so the cat never switches to the
+// procedural style in the middle of a gesture; effects, cues and the open book
+// are drawn over it, aligned to the art's head (see anchors). Reading uses the
+// same art too, with the book on its lap.
+const FREE = {};
 
 const select = [
   { when: { pose: 'curl' }, clip: 'curl' },
@@ -111,13 +119,13 @@ const select = [
     { when: { pose: 'crouch', moving: false, view, ...FREE }, clip: `crouch_${view}` },
   ]),
   // sitting
-  { when: { pose: 'sit', view: ['rear', 'rearQ'], book: false }, clip: 'sit_rear' },
-  { when: { pose: 'sit', view: ['frontQ', 'side'], book: false }, clip: 'sit_threeq' },
-  { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false, book: false }, clip: 'sit_groom' },
-  { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false, book: false }, clip: 'sit_groom' },
-  { when: { pose: 'sit', view: 'front', moving: false, eyes: 'closed', droop: true, ...FREE }, clip: 'sit_doze' },
-  { when: { pose: 'sit', view: 'front', moving: false, eyes: ['closed', 'blink', 'happy'], ...FREE }, clip: 'idle_front_closed' },
-  { when: { pose: 'sit', view: 'front', moving: false, ...FREE }, clip: 'idle_front' },
+  { when: { pose: 'sit', view: ['rear', 'rearQ'] }, clip: 'sit_rear' },
+  { when: { pose: 'sit', view: ['frontQ', 'side'] }, clip: 'sit_threeq' },
+  { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', eyes: 'closed', droop: true, ...FREE }, clip: 'sit_doze' },
+  { when: { pose: 'sit', view: 'front', eyes: ['closed', 'blink', 'happy'], ...FREE }, clip: 'idle_front_closed' },
+  { when: { pose: 'sit', view: 'front', ...FREE }, clip: 'idle_front' },
 ];
 
 export const SHEET_MANIFEST = { sheets, clips, select };

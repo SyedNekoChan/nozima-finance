@@ -100,6 +100,31 @@ def clean(img, fur, eye):
             )
             if nb <= 2 and not is_yellow(a[y, x, :3]):
                 o[y, x, 3] = 0
+    # the reference sheet has text labels near some cats ("MISC POSES"): keep
+    # only the largest connected shape
+    alive = o[..., 3] > 0
+    seen = np.zeros(alive.shape, bool)
+    best = []
+    for y0 in range(h):
+        for x0 in range(w):
+            if alive[y0, x0] and not seen[y0, x0]:
+                stack, comp = [(y0, x0)], []
+                seen[y0, x0] = True
+                while stack:
+                    cy, cx = stack.pop()
+                    comp.append((cy, cx))
+                    for dy in (-1, 0, 1):
+                        for dx in (-1, 0, 1):
+                            ny, nx = cy + dy, cx + dx
+                            if 0 <= ny < h and 0 <= nx < w and alive[ny, nx] and not seen[ny, nx]:
+                                seen[ny, nx] = True
+                                stack.append((ny, nx))
+                if len(comp) > len(best):
+                    best = comp
+    keep = np.zeros(alive.shape, bool)
+    for cy, cx in best:
+        keep[cy, cx] = True
+    o[~keep, 3] = 0
     for y in range(h):
         for x in range(w):
             if o[y, x, 3] == 0:

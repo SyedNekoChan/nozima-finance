@@ -139,6 +139,90 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     });
   }
 
+  /* ---------------------------------------------------------------- */
+  /* The face: eyes and whiskers drawn live over the art                 */
+  /* ---------------------------------------------------------------- */
+
+  // the yellows of the approved eyes, a near-black pupil and a lid
+  const EYE = { L: '#e4cb84', M: '#d9bf80', D: '#cab178', d: '#ab9464', P: '#09080b', lid: '#18171b', pale: '#dfe6ea' };
+
+  // eye shape rows for a w x 3 box; null keeps what is under it, chars index EYE
+  function eyeRows(w, kind, pupil, shift) {
+    const c = w >> 1;
+    const inner = (i) => i >= 1 && i <= w - 2;
+    const row = (fn) => Array.from({ length: w }, (_, i) => fn(i));
+    if (kind === 'closed') return [row(() => null), row(() => 'P'), row(() => null)];
+    if (kind === 'happy') {
+      return [row((i) => (inner(i) ? 'P' : null)), row((i) => (inner(i) ? null : 'P')), row(() => null)];
+    }
+    const iris = kind === 'panic' ? 'pale' : kind === 'wide' ? 'L' : null;
+    const col = (r, i) => iris || (r === 1 ? (i === c ? 'L' : 'M') : 'D');
+    const p0 = Math.max(1, Math.min(w - 2, c + shift));
+    const wide = pupil >= 3 && w >= 5 ? [p0 - 1, p0, p0 + 1] : pupil === 2 && w >= 4 ? [p0, Math.min(w - 2, p0 + 1)] : [p0];
+    const rows = [0, 1, 2].map((r) =>
+      row((i) => {
+        if (r !== 1 && !inner(i)) return null;
+        if (wide.includes(i) && !(r !== 1 && wide.length > 2 && i !== p0)) return 'P';
+        return col(r, i);
+      })
+    );
+    if (kind === 'down') return [row(() => 'lid'), row((i) => (inner(i) ? 'lid' : null)), rows[2]];
+    if (kind === 'wide') rows.unshift(row((i) => (inner(i) ? 'D' : null)));
+    return rows;
+  }
+
+  function drawEyes(ac, eyes, face, ox) {
+    if (!eyes || !face) return;
+    const dxGaze = face.gaze === 'l' ? -1 : face.gaze === 'r' ? 1 : 0;
+    for (const [x, y, w] of eyes) {
+      // cover the painted eye with fur taken from just above / below it
+      const x0 = Math.max(0, x - 1);
+      const span = w + 2;
+      const above = ac.getImageData(x0, y - 3, span, 1).data;
+      const below = ac.getImageData(x0, y + 4, span, 1).data;
+      for (let r = -2; r <= 3; r++) {
+        const src = r <= 1 ? above : below;
+        for (let i = 0; i < span; i++) {
+          if (src[i * 4 + 3] === 0) continue;
+          // fur only: a highlight above or below the eye is not copied into it
+          const bright = src[i * 4] + src[i * 4 + 1] + src[i * 4 + 2] > 190;
+          ac.fillStyle = bright ? '#252427' : `rgb(${src[i * 4]},${src[i * 4 + 1]},${src[i * 4 + 2]})`;
+          ac.fillRect(x0 + i, y + r, 1, 1);
+        }
+      }
+      let shift = dxGaze;
+      if (face.focusX != null) {
+        const t = Math.max(-1, Math.min(1, Math.round((face.focusX + ox - (x + w / 2)) / 10)));
+        if (!(dxGaze && t && t !== dxGaze)) shift = t;
+      }
+      const kind = face.kind === 'blink' ? 'closed' : face.kind;
+      const rows = eyeRows(w, kind, face.pupil ?? 1, shift);
+      const top = rows.length === 4 ? y - 1 : y;
+      rows.forEach((row, r) =>
+        row.forEach((k, i) => {
+          if (!k) return;
+          ac.fillStyle = EYE[k];
+          ac.fillRect(x + i, top + r, 1, 1);
+        })
+      );
+    }
+  }
+
+  // three fine whiskers a side: the upper lifts, the middle runs level, the
+  // lower droops; the last two pixels fade
+  function drawWhiskers(ac, whiskers) {
+    if (!whiskers) return;
+    const seen = { '-1': 0, 1: 0 };
+    for (const [x, y, dir, len] of whiskers) {
+      const n = seen[dir]++ % 3;
+      for (let i = 0; i < len; i++) {
+        const dy = n === 0 ? -Math.floor((i + 1) / 3) : n === 2 ? Math.floor((i + 1) / 3) : 0;
+        ac.fillStyle = paletteColor(i >= len - 2 ? '4' : '5');
+        ac.fillRect(x + dir * (i + 1), y + dy, 1, 1);
+      }
+    }
+  }
+
   function makeBody(clip, sheet, image, index, cw, ch) {
     const rect = frameRect(sheet, clip.frames[index]);
     const [px, py] = clip.pivot || [sheet.frameWidth / 2, sheet.frameHeight];
@@ -164,6 +248,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           ac.imageSmoothingEnabled = false;
           ac.drawImage(image, rect.x, rect.y, rect.w, rect.h, ox, oy, rect.w, rect.h);
           if (clip.under) rimLight(ac, silhouette(clip, index, image, rect, ox, oy, cw, ch), info.light);
+          drawEyes(ac, an && an.eyes, info.face, info.ox);
+          drawWhiskers(ac, an && an.whiskers);
           // kept procedural regions: rectangles are in procedural space
           const keep = [...base, ...head.map(([x, y, w, h]) => [info.hx + x, info.hy + y, w, h])];
           for (const [x, y, w, h] of keep) {

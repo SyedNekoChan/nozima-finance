@@ -1,46 +1,47 @@
 # NOMOZ.EXE sprite-sheet production spec
 
-Reference: `art/source/reference.webp`, the user's concept sheet (a fluffy long-haired black cat, round yellow eyes with slit pupils, big curled tail, dark soft shading). The converted frames of that sheet are the canonical look; everything else is derived from them. Machine-readable form: `spec.js`; manifest format: `manifest.js`.
+Reference: `art/source/reference.webp`, the user's concept sheet (a fluffy long-haired black cat, round yellow eyes with slit pupils, big curled tail, dark soft shading). The frames converted from that sheet are the canonical look and are not edited (one exception below); everything else is derived from them. Machine-readable form: `spec.js`; manifest format: `manifest.js`. Review images: `art/review/`.
 
 ## Sizes and conventions
-- **Frame 96 x 64**, one cat per frame, feet on row 61 (the last opaque row; two rows stay empty below). Frames face LEFT (head left, tail right); `facing > 0` mirrors the canvas. Hard pixels, alpha 0 or 255, at most 32 colours (10 fur tones + 4 eye yellows, shared by every frame).
-- **Sheet mode** (`SPRITE_RENDERER.mode = 'sheet'` in `../config.js`) uses the box `SHEET_SPRITE_SIZE` (96 x 64) because the reference cat is about 87 px long walking. The procedural cat, effects, items and cues are drawn in a 56 x 60 area centred at the bottom of that box, so procedural coordinates stay valid and the procedural cat is the per-state fallback. Procedural mode keeps its 56 x 60 box and is unchanged (pixel-identical over 7,560 state combinations).
-- **Lighting** is added by the engine from each frame's silhouette (rim light by depth, floor pool, contact shadow, dithered aura); frames contain none. `lighting: 'baked'` opts out.
-- **Eyes are baked** into the art. Live pupil dilation and gaze shifts exist only on the procedural cat.
-- **Vanity**: the crown and chest coin follow `anchors`, measured from each frame by `node build.mjs anchors` (ear-tip rows give the crown, the head type gives the coin; `chest: false` / `null` hides it when the chest faces away). Effects, items, cues and the open book are drawn at the procedural positions and do not follow sheet art, so rules exclude `book` and raised paws.
-- **Floor**: a clip's `floor` row keeps the shadow on the ground when the art is raised (the leaps).
+- **Frame 96 x 64**, feet on row 61. Frames face LEFT (head left, tail right); `facing > 0` mirrors the whole canvas. Hard pixels, alpha 0 or 255, at most 32 colours (ten near-black fur tones, 3..37 per channel, plus four eye yellows, shared by every frame).
+- **Sheet mode** (`SPRITE_RENDERER.mode = 'sheet'` in `../config.js`) uses a 96 x 64 box (`SHEET_SPRITE_SIZE`). The procedural cat, its effects, items and cues are drawn in a 56 x 60 area at the bottom centre of that box, so procedural coordinates stay valid. Procedural mode keeps its 56 x 60 box and is unchanged (pixel-identical over 7,560 state combinations).
+- **Lighting** is added by the engine from each frame's silhouette (rim light by depth, floor pool, contact shadow, dithered aura); frames contain none. A clip's `floor` row keeps the shadow on the ground when the art is raised (leaps).
+- **Eyes and whiskers are live** (`anchors.js` -> `renderer.js`): the baked eyes are covered with fur taken from just above/below and redrawn from small templates in the approved yellows, so pupil dilation (levels 0-3), gaze, focus tracking, blink, wide, happy, down and the stressed pale eyes work as on the procedural cat. Whiskers are three fine lines a side. Eye boxes and whisker roots are measured from each frame's ear tips by head type (`FACE` in `spec.js`); frames whose eyes are closed in the art (`eyesOff`) and rear heads have none.
+- **Overlays follow the art**: crown and chest coin sit at per-frame anchors measured by `build.mjs anchors`; effects, items, cues, the open book and stress marks are drawn at procedural positions shifted so that the procedural head lands on the art's head (also when mirrored), so a book lies on the sheet cat's lap and effects hover over its head.
 
 ## Art folders (`art/<id>/<n>.png` -> `sheets/nomoz_<id>.png`)
-Converted from the reference (`art/source/convert_reference.py`): `idle_front` (4: open, open, wink, closed), `walk_side` (3), `sit_threeq`, `sit_doze`, `sit_groom`, `sit_rear`, `curl`, `stretch` (1 each; stretch scaled to 0.21 to fit).
+Converted from the reference (`art/source/convert_reference.py`), unedited: `idle_front` (4), `walk_side` (3), `sit_threeq`, `sit_doze`, `sit_groom`, `sit_rear`, `curl` (1 each) and `stretch` (1; scaled to 0.21 to fit). The only change to an approved frame: the converter now drops stray specks from the reference sheet's text labels, which removed four stray pixel groups from `stretch`.
 
-Built from those frames (`art/source/build_missing.py`; programmatic assembly, **not hand-drawn**):
-| id | frames | how it is made |
+Built (`art/source/build_missing.py`, `paint.py`, `kit.py`). **These were made by code, pixel by pixel, from approved parts and painted fur; they were not drawn in the SpriteForge editor.**
+| id | frames | what is real art and what is reused |
 |---|---|---|
-| walk_front | 3 | `idle_front` with the legs lengthened by repeating fur rows, the haunch left as hind legs; paws lift alternately (left, neutral + head bob, right), tail sways |
-| walk_rear | 3 | `sit_rear` with the sitting haunch cut off, two legs taken from the front view, the curled tail raised at the side; paws alternate |
-| walk_frontQ | 3 | approved `walk_side` body with the profile head replaced by the `sit_threeq` head, re-sampled from the reference to the walking cat's head size |
-| walk_rearQ | 3 | the same body with the rear head from `sit_rear` |
-| creep_front / frontQ / side / rearQ / rear | 3 each | the matching walk frames with the leg rows removed (a lower body), the head lowered 2-3 px |
-| leap_side, leap_front | 1 each | a walk frame raised 7 px (front also with a paw lifted); floor shadow stays on the ground |
-| low_front | 2 | the closed-eye front cat with the neck rows removed, the head resting low |
-| loaf_front | 2 | the sitting front cat with the leg and haunch rows removed: a low loaf |
+| walk_front | 3 (A, B, C) | head and chest from `idle_front`; the haunches removed; four legs and paws **painted** (fur-stroked, tapered, toe seams): forelegs side by side, hind legs behind at both sides, a diagonal pair forward per frame |
+| walk_rear | 3 | `sit_rear` down to the rump, textured with fur strokes; two hind legs and paws **painted**; the approved curled tail raised at the side |
+| walk_frontQ | 3 | approved side-walk body; the three-quarter head re-sampled from the reference to the walking head size; the neck dithered into the ruff |
+| walk_rearQ | 3 | the same body with the rear head, fur-textured, dithered into the neck |
+| creep_* (5) | 3 each | the matching walks with leg rows removed (a lower body) and the head lowered 2-3 px |
+| leap_side | 1 | approved body with its legs **replaced by painted** reaching and pushing legs |
+| leap_front | 1 | painted standing front cat with every paw tucked, raised 7 px |
+| low_front, loaf_front | 2 each | the closed-eye / sitting front cat with the neck / leg rows removed |
 
-## Which art each state uses (see `manifest.js`; first match wins)
-- sit, front: `idle_front` (frames 0-1, 1 s); eyes closed / blink / happy: closed frame; eyes closed + droop: `sit_doze`; a forepaw at `mid` / `high`: `sit_groom`. sit, frontQ and side: `sit_threeq` (no profile sit art exists); sit, rearQ and rear: `sit_rear`.
-- stand, per view: moving: `walk_<view>` (320 ms per frame); still: frame 1 of it. legs 3 (hop): `leap_front` (front) or `leap_side` (frontQ, side, rearQ); the rear hop shows the walk-away art.
-- crouch, per view: moving: `creep_<view>` (400 ms); still: frame 1.
-- stretch, curl: their art. loaf: `loaf_front`. low: `low_front`.
-- **Procedural cat (different style) is still drawn for**: any raised forepaw other than the grooming one, the open book (reading), a sitting cat with `legs` 1-3, and any state a rule does not list. Lying poses exist only facing front, as in the procedural cat.
+## Which art each state uses (`manifest.js`, audited by `audit.mjs`)
+- sit, front: `idle_front` (frames 0-1, 1 s); eyes closed / blink / happy: its closed frame; eyes closed + droop: `sit_doze`; forepaw at `mid` / `high`: `sit_groom`. sit, frontQ and side: `sit_threeq` (no profile sit art); rearQ and rear: `sit_rear`.
+- stand, per view: moving: `walk_<view>` (front and rear play frames 0 1 2 1 at 240 ms for a full left-neutral-right-neutral cycle; the others 0 1 2 at 320 ms); still: frame 1. legs 3 (hop): `leap_front` / `leap_side` (rear hop: the walk-away art).
+- crouch, per view: moving: `creep_<view>` (same cycles, slower); still: frame 1.
+- stretch, curl, loaf, low: their art.
+- `audit.mjs` walks 36,480 states (every pose x view x legs x paw x book x eyes x droop): all select a clip, so the procedural cat is no longer drawn in sheet mode for any known pose; it remains the fallback for a failed or missing sheet, for unknown poses, and while a sheet is loading.
+- **Explicit approximations** (decided, not accidental): a raised forepaw other than grooming is not drawn, the cat keeps its paws down while the effects/cues play over it; sitting in profile uses the three-quarter sit; a rear hop uses the walk-away art; lying exists only facing front.
 
 ## Workflow (what the tools can really do)
-SpriteForge here is a manual editor: `open_editor` / `open_full_editor` open a PNG or pixel grid in a browser editor and return a link; `get_sprite` reads a session back. It cannot generate, batch-process or export files, and this sandbox cannot download from its host (blocked by the egress proxy).
-1. `python3 art/source/convert_reference.py` then `python3 art/source/build_missing.py` (Pillow + numpy) produce all frames mechanically. Do not re-run either over hand-finished frames: after editing a frame, the PNG in `art/<id>/` is the source of truth.
-2. Refine a frame by hand: open its PNG in SpriteForge, edit, download the PNG, replace `art/<id>/<n>.png`.
-3. `node src/pets/nomoz/spritesheet/build.mjs sheets` validates the frames, writes `sheets/` and `anchors.js`; `node src/pets/nomoz/spritesheet/validate.mjs` checks the manifest against the sheets.
-4. Try it with `SPRITE_RENDERER.mode = 'sheet'`. The default stays `'procedural'`.
+SpriteForge here is a manual editor (`open_editor`, `open_full_editor`, `get_sprite`); it cannot generate, batch-process or export files, and this sandbox cannot download from its host. So:
+1. `python3 art/source/convert_reference.py` then `python3 art/source/build_missing.py` (Pillow + numpy) rebuild every frame deterministically. After you hand-edit a frame, that PNG is the source of truth: do not re-run these over it.
+2. To refine by hand: open the PNG in SpriteForge, edit, download, replace `art/<id>/<n>.png`.
+3. `node build.mjs sheets` validates frames and writes `sheets/` and `anchors.js`; `node validate.mjs --strict` checks the manifest against the sheets; `node audit.mjs --strict` checks state coverage and per-frame anchors/eyes/whiskers; `python3 art/source/make_review.py` and `node art/source/review_render.cjs` regenerate `art/review/` (contact sheet of every frame, the walking cycles, and the real renderer's output for 44 states).
+4. The default stays `'procedural'`.
 
-## Known limits
-- The built frames are assembled from the approved art with simple pixel surgery. Seams are visible at the neck of the three-quarter and rear walks, the front and rear walks read as a standing cat with small leg motion, the crouches are the walks with shorter legs, and the hop is a raised walk pose. They are consistent in palette, density and proportions but are not hand-finished; the walking cycles in particular would benefit from hand drawing.
-- Whiskers are not in the frames (too thin to survive the reference conversion).
-- Anchors are measured, not hand-placed; check them by eye per pose.
-- Sheet art is dark; the engine adds the rim light.
+## Known limits (honest list)
+- Nothing here was hand-drawn in a pixel editor. The painted legs, textures and seam dithering are generated and read as consistent fur, but they are simpler than the approved fur: limbs are uniform columns with a lit left edge, and the rear views are smoother than the approved front views.
+- Crouch walks are the walks with shorter legs (no bent joints); the hop poses are static single frames; `low_front` and `loaf_front` are approved art with rows removed.
+- The three-quarter and rear walks reuse the approved side-walk body, so their legs and tail swing exactly like the side view.
+- Eye templates are 5 x 3 px (4 and 3 px in the three-quarter and profile faces), matching the approved eyes' size, not their exact noise.
+- Gestures with raised paws (casting, tapping, reaching) show no paw in sheet mode.

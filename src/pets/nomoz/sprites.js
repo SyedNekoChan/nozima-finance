@@ -1710,7 +1710,8 @@ function layers(cw, ch) {
     };
     const a = mk();
     const b = mk();
-    scratch = { cw, ch, a, ac: a.getContext('2d'), b, bc: b.getContext('2d') };
+    // `a` is read back by the sprite-sheet path (eyes cover the painted fur)
+    scratch = { cw, ch, a, ac: a.getContext('2d', { willReadFrequently: true }), b, bc: b.getContext('2d') };
   }
   return scratch;
 }
@@ -1763,7 +1764,7 @@ function paintGrid(ctx, g, ox = 0, oy = 0) {
  * the procedural fur with other body art while everything else (pupils,
  * lighting, vanity, effects, stress / glitch) still runs here.
  *   { under?: false | { mask, footY, feet, poolX },
- *     paint(ac, { grid, hx, hy, ox, oy, light, view, pose, footY, feet })
+ *     paint(ac, { grid, hx, hy, ox, oy, light, view, pose, footY, feet, face })
  *     -> falsy to use the procedural body, or
  *        { over?: false, anchor?: { hx, hy, chest, chestTurn } } }
  *   `under`: undefined = the procedural floor pool and aura, false = none,
@@ -1832,7 +1833,20 @@ export function renderSprite(ctx, p, vanity, body = null) {
   let drawn = null;
   if (body) {
     try {
-      drawn = body.paint(ac, { grid: lit, hx, hy, ox, oy, light, view: q.view, pose: q.pose, footY, feet });
+      drawn = body.paint(ac, {
+        grid: lit,
+        hx,
+        hy,
+        ox,
+        oy,
+        light,
+        view: q.view,
+        pose: q.pose,
+        footY,
+        feet,
+        // what the face needs: the eye kind, the eased pupil level, where it looks
+        face: { kind, pupil: q.pupil, gaze: q.gaze, focusX: q.focusX, stressed },
+      });
     } catch (err) {
       drawn = null;
     }
@@ -1844,15 +1858,33 @@ export function renderSprite(ctx, p, vanity, body = null) {
   }
   if (!drawn) paintGrid(ac, lit, ox, oy);
   if (!drawn || drawn.over !== false) paintGrid(ac, over, ox, oy);
+  // Where procedural coordinates land on the canvas. By default the 56 x 60
+  // area is centred (ox, oy). Art that places its own head carries an anchor:
+  // the procedural overlays (vanity, effects, items, cues, the open book) are
+  // then moved so that the procedural head sits on the art's head.
+  let tbx = ox;
+  let tby = oy;
+  let chestAt = chest;
+  let chestTurnAt = chestTurn;
+  let hxAt = hx;
   if (drawn && drawn.anchor) {
     const an = drawn.anchor;
-    drawProps(ac, { ...q, chest: an.chest, chestTurn: an.chestTurn || 0 }, an.hx, an.hy, vanity);
-  } else {
-    ac.save();
-    ac.translate(ox, oy);
-    drawProps(ac, { ...q, chest, chestTurn }, hx, hy, vanity);
-    ac.restore();
+    if (an.hx > -50) {
+      tbx = an.hx - hx;
+      tby = an.hy - hy;
+    } else {
+      hxAt = -100; // no crown on this art
+    }
+    chestAt = an.chest ? { x: an.chest.x - tbx, y: an.chest.y - tby } : null;
+    chestTurnAt = an.chestTurn || 0;
   }
+  // overlays are drawn in screen space: mirrored art mirrors the shift too
+  const tsx = flip ? CW - SPRITE_W - tbx : tbx;
+  const tsy = tby;
+  ac.save();
+  ac.translate(tbx, tby);
+  drawProps(ac, { ...q, chest: chestAt, chestTurn: chestTurnAt }, hxAt, hy, vanity);
+  ac.restore();
 
   bc.clearRect(0, 0, CW, CH);
   bc.save();
@@ -1868,7 +1900,7 @@ export function renderSprite(ctx, p, vanity, body = null) {
   // procedural-space overlays (effects, items, cues, stress marks)
   const inProcedural = (fn) => {
     ctx.save();
-    ctx.translate(ox, oy);
+    ctx.translate(tsx, tsy);
     try {
       fn();
     } finally {

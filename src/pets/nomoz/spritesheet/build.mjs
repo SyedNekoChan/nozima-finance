@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng, encodePng } from './png.mjs';
-import { ART, CHEST_DY, FRAME, HEAD_COLUMNS, sheetId, sheetSize } from './spec.js';
+import { ART, CHEST_DY, FACE, FRAME, HEAD_COLUMNS, sheetId, sheetSize } from './spec.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ARTDIR = join(here, 'art');
@@ -113,7 +113,7 @@ function anchors() {
   for (const [id, a] of Object.entries(ART)) {
     const files = frameFiles(id);
     if (files.length !== a.frames) continue;
-    out[id] = files.map((f) => {
+    out[id] = files.map((f, i) => {
       if (!a.head) return a.anchors;
       const img = decodePng(readFileSync(f));
       const [c0, c1] = HEAD_COLUMNS[a.head];
@@ -125,7 +125,14 @@ function anchors() {
       for (let y = top; y <= top + 4; y++) for (let x = c0; x < c1; x++) if (opaque(x, y)) (sum += x), n++;
       const cx = Math.round(sum / n) - 4;
       const dy = CHEST_DY[a.head];
-      return { crown: [cx, top + 3], chest: dy === null || a.chest === false ? null : [cx, top + dy] };
+      const face = a.face ? FACE[a.face] : null;
+      const off = (a.eyesOff || []).includes(i);
+      return {
+        crown: [cx, top + 3],
+        chest: dy === null || a.chest === false ? null : [cx, top + dy],
+        ...(face && !off ? { eyes: face.eyes.map(([dx, dyy, w]) => [cx + 4 + dx, top + dyy, w]) } : {}),
+        ...(face ? { whiskers: face.whiskers.map(([dx, dyy, dir, len]) => [cx + 4 + dx, top + dyy, dir, len]) } : {}),
+      };
     });
   }
   const lines = Object.entries(out).map(([id, frames]) => `  ${id}: ${JSON.stringify(frames)},`);

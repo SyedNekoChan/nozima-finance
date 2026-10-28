@@ -24,28 +24,28 @@ export const SHEET_DIR = 'src/pets/nomoz/spritesheet/sheets';
  */
 export const ART = {
   // converted from the reference (art/source/convert_reference.py)
-  idle_front: { frames: 4, from: 'reference', head: 'front', note: 'sitting, facing us: open, open (tail shifted), wink, eyes closed' },
-  walk_side: { frames: 3, from: 'reference', head: 'side', note: 'walking cycle, facing left; head-aligned' },
-  sit_threeq: { frames: 1, from: 'reference', head: 'threeq', note: 'sitting, three-quarter view facing left' },
+  idle_front: { frames: 4, from: 'reference', head: 'front', face: 'front', eyesOff: [3], note: 'sitting, facing us: open, open (tail shifted), wink, eyes closed' },
+  walk_side: { frames: 3, from: 'reference', head: 'side', face: 'profile', note: 'walking cycle, facing left; head-aligned' },
+  sit_threeq: { frames: 1, from: 'reference', head: 'threeq', face: 'threeq', note: 'sitting, three-quarter view facing left' },
   sit_doze: { frames: 1, from: 'reference', head: null, anchors: { crown: [55, 10], chest: [55, 28] }, note: 'sitting, head lowered, eyes closed' },
   sit_groom: { frames: 1, from: 'reference', head: null, anchors: { crown: [37, 8], chest: null }, note: 'sitting, licking a paw' },
   sit_rear: { frames: 1, from: 'reference', head: 'rear', note: 'sitting, seen from behind' },
   curl: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'curled up asleep' },
   stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'full-body stretch (scaled to fit the box)' },
   // built from the approved frames (art/source/build_missing.py)
-  walk_front: { frames: 3, from: 'built', head: 'front', note: 'standing, walking toward us: sitting cat with lengthened legs, paws alternate' },
-  walk_frontQ: { frames: 3, from: 'built', head: 'side', note: 'approved side-walk body with the three-quarter head' },
+  walk_front: { frames: 3, from: 'built', head: 'front', face: 'front', note: 'walking toward us: approved head and chest, painted standing legs, paws alternate' },
+  walk_frontQ: { frames: 3, from: 'built', head: 'side', face: 'threeqWalk', note: 'approved side-walk body with the three-quarter head' },
   walk_rearQ: { frames: 3, from: 'built', head: 'side', chest: false, note: 'approved side-walk body with the rear head' },
-  walk_rear: { frames: 3, from: 'built', head: 'rear', note: 'walking away: rear view, two legs, raised tail' },
-  creep_front: { frames: 3, from: 'built', head: 'front', note: 'crouched walk, front' },
-  creep_frontQ: { frames: 3, from: 'built', head: 'side', note: 'crouched walk, three-quarter front' },
-  creep_side: { frames: 3, from: 'built', head: 'side', note: 'crouched walk, side' },
+  walk_rear: { frames: 3, from: 'built', head: 'rear', note: 'walking away: approved rear view to the rump, painted hind legs, raised tail' },
+  creep_front: { frames: 3, from: 'built', head: 'front', face: 'front', note: 'crouched walk, front' },
+  creep_frontQ: { frames: 3, from: 'built', head: 'side', face: 'threeqWalk', note: 'crouched walk, three-quarter front' },
+  creep_side: { frames: 3, from: 'built', head: 'side', face: 'profile', note: 'crouched walk, side' },
   creep_rearQ: { frames: 3, from: 'built', head: 'side', chest: false, note: 'crouched walk, three-quarter rear' },
   creep_rear: { frames: 3, from: 'built', head: 'rear', note: 'crouched walk, rear' },
-  leap_front: { frames: 1, from: 'built', head: 'front', note: 'mid-hop, front (raised 7 px; floor shadow stays on the ground)' },
-  leap_side: { frames: 1, from: 'built', head: 'side', note: 'mid-hop, side (raised 7 px)' },
-  low_front: { frames: 2, from: 'built', head: 'front', note: 'head down, body low (eyes closed = looking down)' },
-  loaf_front: { frames: 2, from: 'built', head: 'front', note: 'lying, a low loaf' },
+  leap_front: { frames: 1, from: 'built', head: 'front', face: 'front', note: 'mid-hop, front (raised 7 px; floor shadow stays on the ground)' },
+  leap_side: { frames: 1, from: 'built', head: 'side', face: 'profile', note: 'mid-hop, side (raised 7 px)' },
+  low_front: { frames: 2, from: 'built', head: 'front', face: 'front', eyesOff: [0, 1], note: 'head down, body low (eyes closed = looking down)' },
+  loaf_front: { frames: 2, from: 'built', head: 'front', face: 'front', note: 'lying, a low loaf' },
 };
 
 /*
@@ -55,6 +55,33 @@ export const ART = {
  * own `anchors`; `chest: false` hides the coin (the chest faces away).
  */
 export const CHEST_DY = { front: 21, side: 19, threeq: 22, rear: null };
+/*
+ * Eyes and whiskers are drawn live over the art (so pupils dilate, gaze moves
+ * and the eyes blink, wink or close like the procedural cat's), at spots
+ * measured from the head: [dx, dy, ...] relative to (cx, ear top) where cx is
+ * the crown's centre column. eyes: [dx, dy, width] (a box `width` x 3);
+ * whiskers: [dx, dy, direction, length]. `face` on an ART entry picks the set;
+ * `eyesOff: [frames]` lists frames whose eyes are already closed in the art.
+ */
+export const FACE = {
+  front: {
+    eyes: [[-7, 11, 5], [2, 11, 5]],
+    whiskers: [[-7, 14, -1, 8], [-7, 16, -1, 8], [-7, 18, -1, 7], [7, 14, 1, 8], [7, 16, 1, 8], [7, 18, 1, 7]],
+  },
+  threeq: {
+    eyes: [[-6, 13, 5], [1, 13, 4]],
+    whiskers: [[-8, 14, -1, 8], [-8, 16, -1, 8], [-8, 18, -1, 7], [3, 17, 1, 4], [3, 19, 1, 4]],
+  },
+  threeqWalk: {
+    eyes: [[-8, 11, 5], [1, 12, 4]],
+    whiskers: [[-9, 15, -1, 7], [-9, 17, -1, 7], [-9, 19, -1, 6], [3, 18, 1, 4], [3, 20, 1, 4]],
+  },
+  profile: {
+    eyes: [[-4, 12, 3]],
+    whiskers: [[-6, 16, -1, 3], [-6, 18, -1, 3]],
+  },
+};
+
 export const HEAD_COLUMNS = { front: [26, 51], side: [1, 27], threeq: [15, 47], rear: [29, 53] };
 
 export const sheetId = (art) => `nomoz_${art}`;
