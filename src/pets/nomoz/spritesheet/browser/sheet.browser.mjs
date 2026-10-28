@@ -3,10 +3,10 @@
  *
  *   npm run test:browser
  *
- * Needs `playwright` with a Chromium build. It is not a project dependency
- * (CI runs `npm test` only); it is looked up next to the project, then in
- * the global npm root, and every test is skipped with a reason when it or the
- * browser is missing.
+ * Needs `playwright` (a pinned devDependency) with its Chromium build
+ * (`npx playwright install chromium`); it is looked up in the project, then in
+ * the global npm root. Locally every test is skipped with a reason when it or
+ * the browser is missing; with CI=true or REQUIRE_BROWSER=1 that is an error.
  *
  * What is real here: the shipped PNG sheets, real canvases, the real
  * renderer and procedural fallback, real timers and clocks, a real
@@ -18,10 +18,10 @@
 import { before, after, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { REQUIRED, loadPlaywright, startVite } from './support.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHEETS = resolve(HERE, '..');
@@ -32,61 +32,25 @@ const DESKTOP = { width: 1280, height: 800 };
 const MOBILE = { width: 390, height: 780 };
 
 let skipReason = null;
+// On CI (or REQUIRE_BROWSER=1) a missing browser is a failure, never a skip.
+const unavailable = (why) => {
+  if (REQUIRED) throw new Error(`browser tests are required but cannot run: ${why}`);
+  skipReason = why;
+};
 let chromium = null;
 let browser = null;
 let bundle = '';
 let sheetData = {};
 const servers = {};
 
-function loadPlaywright() {
-  const roots = [ROOT];
-  try {
-    roots.push(execSync('npm root -g', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
-  } catch {}
-  for (const r of roots) {
-    try {
-      return createRequire(join(r, 'x.js'))('playwright');
-    } catch {}
-  }
-  return null;
-}
-
-async function startVite(flipToSheet) {
-  const vite = await import(pathToFileURL(join(ROOT, 'node_modules/vite/dist/node/index.js')));
-  const react = (await import(pathToFileURL(join(ROOT, 'node_modules/@vitejs/plugin-react/dist/index.js')))).default;
-  let flipped = 0;
-  const flip = {
-    name: 'nomoz-sheet-mode-for-test',
-    enforce: 'pre',
-    transform(code, id) {
-      if (!flipToSheet || !id.split('?')[0].endsWith('/src/pets/nomoz/config.js')) return null;
-      const out = code.replace("SPRITE_RENDERER = { mode: 'procedural' }", "SPRITE_RENDERER = { mode: 'sheet' }");
-      if (out !== code) flipped++;
-      return out;
-    },
-  };
-  const server = await vite.createServer({
-    root: ROOT,
-    configFile: false,
-    base: '/nozima-finance/',
-    plugins: [react(), flip],
-    server: { host: '127.0.0.1', port: 0, strictPort: false },
-    logLevel: 'error',
-    clearScreen: false,
-  });
-  await server.listen();
-  const url = `http://127.0.0.1:${server.httpServer.address().port}/nozima-finance/`;
-  return { server, url, flipped: () => flipped };
-}
-
 before(async () => {
   const pw = loadPlaywright();
-  if (!pw) return void (skipReason = 'playwright is not installed');
+  if (!pw) return void unavailable('playwright is not installed');
   try {
     browser = await pw.chromium.launch();
     chromium = pw.chromium;
   } catch (err) {
-    return void (skipReason = `Chromium could not launch: ${String(err.message).split('\n')[0]}`);
+    return void unavailable(`Chromium could not launch: ${String(err.message).split('\n')[0]}`);
   }
   const esbuild = require('esbuild');
   const entry = `

@@ -11,7 +11,8 @@
     "sheets:build": "node src/pets/nomoz/spritesheet/build.mjs sheets",
     "sheets:validate": "node src/pets/nomoz/spritesheet/validate.mjs --strict",
     "sheets:audit": "node src/pets/nomoz/spritesheet/audit.mjs --strict",
-    "test:browser": "node --test --test-timeout=120000 src/pets/nomoz/spritesheet/browser/*.browser.mjs"
+    "test:browser": "node --test --test-timeout=180000 src/pets/nomoz/spritesheet/browser/*.browser.mjs",
+    "verify": "npm test && npm run test:browser"
   },
   "dependencies": {
     "dexie": "^4.0.8",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "playwright": "1.63.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "vite": "^5.4.8"

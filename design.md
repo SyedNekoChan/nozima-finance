@@ -724,11 +724,17 @@ their coordinates and follow the art's head through per-frame anchors.
   `sheets:audit` (every pose / view / leg state must select a clip) and
   `npm test` (unit tests, approved-frame hash guard, the three tools in
   strict mode). CI runs `npm test` before the build. `npm run test:browser` runs real-Chromium
-  tests (Playwright, looked up locally or in the global npm root; skipped with a
-  reason when absent, not run in CI): the shipped sheets through the real
+  tests with the pinned `playwright` devDependency (browser installed by
+  `npx playwright install chromium`): the shipped sheets through the real
   renderer at desktop and mobile sizes, frame timing, reduced motion, fallback,
-  tab hiding, and the full app with sheet mode switched on in memory by a
-  Vite plugin (the source stays `'procedural'`).
+  tab hiding, the app on Vite dev servers, and production builds (default and
+  sheet mode) served with `vite preview`: emitted sheets match the sources byte
+  for byte, load as `image/png`, and render. Sheet mode is switched on in memory
+  by a Vite plugin around the existing `SPRITE_RENDERER` constant; the source
+  stays `'procedural'`. Locally the browser tests skip with a reason when
+  Chromium is missing; with `CI=true` or `REQUIRE_BROWSER=1` that is an error.
+  `.github/workflows/ci.yml` (pull requests, non-master pushes) and the deploy
+  workflow both run `npm ci`, `npm test`, `test:browser` and the build.
 
 #### Vanity / equipment
 
