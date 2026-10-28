@@ -48,7 +48,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, t0: 0, timer: 0, params: null, vanity: null, onReady: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -58,6 +58,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   const begin = (c, clip, now) => {
     c.clip = clip;
     c.t0 = now;
+    c.shown = false; // the clock starts when its first frame is on screen
     return clip;
   };
 
@@ -66,7 +67,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const tid = wanted ? wanted.id : null;
     const cur = c.clip;
     if (cur) {
-      const finished = !cur.loop && now - c.t0 >= cur.total;
+      const finished = c.shown && !cur.loop && now - c.t0 >= cur.total;
       const nxt = finished && cur.next && !bad.has(cur.next) ? man.clips[cur.next] : null;
       if (nxt) {
         c.target = tid;
@@ -130,6 +131,10 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       if (entry.status === 'loading') {
         entry.listeners.add(c.onReady);
       } else if (entry.status === 'ready' && fitsImage(sheet, entry.image.naturalWidth, entry.image.naturalHeight)) {
+        if (!c.shown) {
+          c.shown = true;
+          c.t0 = now;
+        }
         const pos = prefersReducedMotion()
           ? { index: clip.still, wait: Infinity }
           : frameAt(clip, now - c.t0);
