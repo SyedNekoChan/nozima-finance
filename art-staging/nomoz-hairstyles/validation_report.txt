@@ -1,0 +1,87 @@
+INFO  === short ===
+PASS  short: RGBA 240x192 (= base v2 sheet size)
+PASS  short: alpha only 0/255
+PASS  short: palette = 4-tone ramp + shared outline (5 colours)  -> 5 used
+PASS  short: no colour shared with base, clothing or the other hairstyles (outline excepted)
+PASS  short: no empty frame; >=1px transparent padding in every frame cell  -> min padding 2px
+PASS  short: hair stays inside its declared zone x9..30, y2..24  -> []
+PASS  short: head-anchored region (above the sway rows) is pixel-identical in all 6 frames of each direction (no flicker, fixed hairline)  -> []
+PASS  short: hair top row - head anchor y is constant within each direction  -> {'down': [0, 0, 0, 0, 0, 0], 'left': [0, 0, 0, 0, 0, 0], 'right': [0, 0, 0, 0, 0, 0], 'up': [0, 0, 0, 0, 0, 0]}
+PASS  short: head-aligned change between neighbouring frames <= 24 px (incl. walk3->walk0 loop wrap; idle0->idle1 unchanged)  -> max 0 px
+PASS  short: hair centroid x moves <= 1.5px between neighbouring frames  -> max 0.00px
+PASS  short: one connected silhouette per frame, no stray pixels (components <= 2, none < 8 px)  -> []
+PASS  short: no un-outlined exterior hair edge (hair pixels touching transparent background are outline colour)  -> 0 px []
+PASS  short/down: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.37,+0.37,+0.37,+0.37,+0.37,+0.37 v +0.30,+0.30,+0.30,+0.30,+0.30,+0.30
+PASS  short/left: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.46,+0.46,+0.46,+0.46,+0.46,+0.46 v +0.09,+0.09,+0.09,+0.09,+0.09,+0.09
+PASS  short/right: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.54,+0.54,+0.54,+0.54,+0.54,+0.54 v +0.31,+0.31,+0.31,+0.31,+0.31,+0.31
+PASS  short/up: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.47,+0.47,+0.47,+0.47,+0.47,+0.47 v +0.15,+0.15,+0.15,+0.15,+0.15,+0.15
+PASS  short: staged composite == body + clothing + this hairstyle (documented draw order, pixel exact)
+PASS  short: face is never covered (eyes, brows, mouth/blush pixels of the base are unchanged in all 24 frames)  -> []
+PASS  short: hands and forearms are never covered  -> []
+INFO  short: hair pixels overlapping clothing over the whole sheet: 0 (documented overlap; clothing remains beneath)
+PASS  short: hair never extends beyond the base head silhouette (no overhang)  -> 0 px outside
+PASS  short: metadata sheet sha256 matches PNG
+PASS  short: base v2, clothing v1 and default hair files unchanged (sha256 match metadata)
+INFO  === medium ===
+PASS  medium: RGBA 240x192 (= base v2 sheet size)
+PASS  medium: alpha only 0/255
+PASS  medium: palette = 4-tone ramp + shared outline (5 colours)  -> 5 used
+PASS  medium: no colour shared with base, clothing or the other hairstyles (outline excepted)
+PASS  medium: no empty frame; >=1px transparent padding in every frame cell  -> min padding 1px
+PASS  medium: hair stays inside its declared zone x7..32, y1..26  -> []
+PASS  medium: head-anchored region (above the sway rows) is pixel-identical in all 6 frames of each direction (no flicker, fixed hairline)  -> []
+PASS  medium: hair top row - head anchor y is constant within each direction  -> {'down': [-1, -1, -1, -1, -1, -1], 'left': [-1, -1, -1, -1, -1, -1], 'right': [-1, -1, -1, -1, -1, -1], 'up': [-1, -1, -1, -1, -1, -1]}
+PASS  medium: head-aligned change between neighbouring frames <= 24 px (incl. walk3->walk0 loop wrap; idle0->idle1 unchanged)  -> max 10 px
+PASS  medium: hair centroid x moves <= 1.5px between neighbouring frames  -> max 0.04px
+PASS  medium: one connected silhouette per frame, no stray pixels (components <= 2, none < 8 px)  -> []
+PASS  medium: no un-outlined exterior hair edge (hair pixels touching transparent background are outline colour)  -> 0 px []
+PASS  medium/down: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.68,+0.68,+0.68,+0.68,+0.68,+0.68 v +0.31,+0.31,+0.32,+0.31,+0.31,+0.31
+PASS  medium/left: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.43,+0.43,+0.43,+0.43,+0.43,+0.43 v +0.18,+0.18,+0.16,+0.18,+0.16,+0.18
+PASS  medium/right: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.47,+0.47,+0.47,+0.47,+0.47,+0.47 v +0.22,+0.22,+0.24,+0.22,+0.24,+0.22
+PASS  medium/up: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.35,+0.35,+0.35,+0.35,+0.35,+0.35 v +0.28,+0.28,+0.28,+0.28,+0.28,+0.28
+PASS  medium: staged composite == body + clothing + this hairstyle (documented draw order, pixel exact)
+PASS  medium: face is never covered (eyes, brows, mouth/blush pixels of the base are unchanged in all 24 frames)  -> []
+PASS  medium: hands and forearms are never covered  -> []
+INFO  medium: hair pixels overlapping clothing over the whole sheet: 144 (documented overlap; clothing remains beneath)
+INFO  medium: hair pixels outside the base body silhouette (declared overhang/tail): 1949
+PASS  medium: metadata sheet sha256 matches PNG
+PASS  medium: base v2, clothing v1 and default hair files unchanged (sha256 match metadata)
+INFO  === long ===
+PASS  long: RGBA 240x192 (= base v2 sheet size)
+PASS  long: alpha only 0/255
+PASS  long: palette = 4-tone ramp + shared outline (5 colours)  -> 5 used
+PASS  long: no colour shared with base, clothing or the other hairstyles (outline excepted)
+PASS  long: no empty frame; >=1px transparent padding in every frame cell  -> min padding 2px
+PASS  long: hair stays inside its declared zone x7..32, y2..36  -> []
+PASS  long: head-anchored region (above the sway rows) is pixel-identical in all 6 frames of each direction (no flicker, fixed hairline)  -> []
+PASS  long: hair top row - head anchor y is constant within each direction  -> {'down': [0, 0, 0, 0, 0, 0], 'left': [0, 0, 0, 0, 0, 0], 'right': [0, 0, 0, 0, 0, 0], 'up': [0, 0, 0, 0, 0, 0]}
+PASS  long: head-aligned change between neighbouring frames <= 24 px (incl. walk3->walk0 loop wrap; idle0->idle1 unchanged)  -> max 18 px
+PASS  long: hair centroid x moves <= 1.5px between neighbouring frames  -> max 0.05px
+PASS  long: one connected silhouette per frame, no stray pixels (components <= 2, none < 8 px)  -> []
+PASS  long: no un-outlined exterior hair edge (hair pixels touching transparent background are outline colour)  -> 0 px []
+PASS  long/down: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.63,+0.63,+0.63,+0.63,+0.63,+0.63 v +0.11,+0.11,+0.08,+0.11,+0.10,+0.11
+PASS  long/left: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.34,+0.34,+0.34,+0.34,+0.34,+0.34 v +0.10,+0.10,+0.08,+0.10,+0.08,+0.10
+PASS  long/right: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.25,+0.25,+0.25,+0.25,+0.25,+0.25 v +0.28,+0.28,+0.27,+0.28,+0.27,+0.28
+PASS  long/up: lit from upper-left in every frame (horizontal tone score >= +0.20, vertical >= +0.05)  -> h +0.20,+0.20,+0.20,+0.20,+0.20,+0.20 v +0.29,+0.29,+0.29,+0.29,+0.29,+0.29
+PASS  long: staged composite == body + clothing + this hairstyle (documented draw order, pixel exact)
+PASS  long: face is never covered (eyes, brows, mouth/blush pixels of the base are unchanged in all 24 frames)  -> []
+PASS  long: hands and forearms are never covered  -> []
+INFO  long: hair pixels overlapping clothing over the whole sheet: 1351 (documented overlap; clothing remains beneath)
+INFO  long: hair pixels outside the base body silhouette (declared overhang/tail): 956
+PASS  long: metadata sheet sha256 matches PNG
+PASS  long: base v2, clothing v1 and default hair files unchanged (sha256 match metadata)
+INFO  silhouette difference (XOR/union of head-aligned hair alpha, idle0) minimum over the four directions: short-medium 0.39; short-long 0.36; medium-long 0.28; short-default 0.16; medium-default 0.23; long-default 0.28
+PASS  the three hairstyles differ clearly in silhouette in every direction (XOR/union >= 0.20 for each pair)  -> {('short', 'medium'): 0.39, ('short', 'long'): 0.36, ('medium', 'long'): 0.28}
+PASS  each hairstyle also differs from the default hair (XOR/union >= 0.15 in every direction)  -> {('short', 'default'): 0.16, ('medium', 'default'): 0.23, ('long', 'default'): 0.28}
+INFO  hair height in pixels (down,left,right,up): short [11, 17, 17, 17]; medium [23, 23, 23, 23]; long [29, 28, 28, 29]
+PASS  length ordering short < medium < long in every direction
+PASS  palettes are clearly distinct (mean RGB distance > 60 between each pair)  -> [('short', 'medium', 88), ('short', 'long', 116), ('medium', 'long', 96)]
+PASS  short: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  medium: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  long: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  rebuilt composites == staged composites (pixel/byte exact)
+PASS  rebuilt 1x/2x/5x contact sheets == staged previews (pixel exact)
+PASS  exported parts/*.txt match hair_parts.py
+PASS  metadata equals regenerated metadata
+
+FAILS: []

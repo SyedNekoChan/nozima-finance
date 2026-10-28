@@ -1,0 +1,486 @@
+{
+ "id": "nm_class_mage",
+ "version": 1,
+ "category": "protagonist_class_sprite",
+ "class": "Mage",
+ "appearance": "fixed by class; equipment never changes this sprite (docs/nomoz/GAME_DESIGN.md section 6)",
+ "sheet": {
+  "file": "nm_class_mage_v1.png",
+  "sha256": "c70232e5de385ea87025e8c52ecd94fdeaf937e9be335595bbdeac6368708966",
+  "width": 240,
+  "height": 192,
+  "columns": 6,
+  "rows": 4
+ },
+ "frame": {
+  "width": 40,
+  "height": 48
+ },
+ "row_order": [
+  "down",
+  "left",
+  "right",
+  "up"
+ ],
+ "column_order": [
+  "idle0",
+  "idle1",
+  "walk0",
+  "walk1",
+  "walk2",
+  "walk3"
+ ],
+ "animations": {
+  "idle": {
+   "columns": [
+    0,
+    1
+   ],
+   "frame_ms": 600,
+   "loop": true
+  },
+  "walk": {
+   "columns": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "frame_ms": 140,
+   "loop": true
+  }
+ },
+ "anchors": {
+  "ground": [
+   20,
+   45
+  ],
+  "foot_baseline_y": 44,
+  "body_axis_x": 20,
+  "head_window": {
+   "x": 9,
+   "y": 3,
+   "w": 22,
+   "h": 20
+  },
+  "per_frame": {
+   "down/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     32
+    ],
+    "hand_b": [
+     28,
+     32
+    ]
+   },
+   "down/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "hand_a": [
+     11,
+     32
+    ],
+    "hand_b": [
+     28,
+     32
+    ]
+   },
+   "down/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     33
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   },
+   "down/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   },
+   "down/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     33
+    ]
+   },
+   "down/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   },
+   "left/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     20,
+     32
+    ],
+    "hand_b": [
+     21,
+     32
+    ]
+   },
+   "left/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "hand_a": [
+     20,
+     32
+    ],
+    "hand_b": [
+     21,
+     32
+    ]
+   },
+   "left/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     21.5,
+     32
+    ],
+    "hand_b": [
+     19,
+     32
+    ]
+   },
+   "left/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     20,
+     31
+    ],
+    "hand_b": [
+     21,
+     31
+    ]
+   },
+   "left/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     18,
+     32
+    ],
+    "hand_b": [
+     22.5,
+     32
+    ]
+   },
+   "left/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     20,
+     31
+    ],
+    "hand_b": [
+     21,
+     31
+    ]
+   },
+   "right/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     19,
+     32
+    ],
+    "hand_b": [
+     18,
+     32
+    ]
+   },
+   "right/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "hand_a": [
+     19,
+     32
+    ],
+    "hand_b": [
+     18,
+     32
+    ]
+   },
+   "right/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     17.5,
+     32
+    ],
+    "hand_b": [
+     20,
+     32
+    ]
+   },
+   "right/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     19,
+     31
+    ],
+    "hand_b": [
+     18,
+     31
+    ]
+   },
+   "right/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     21,
+     32
+    ],
+    "hand_b": [
+     16.5,
+     32
+    ]
+   },
+   "right/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     19,
+     31
+    ],
+    "hand_b": [
+     18,
+     31
+    ]
+   },
+   "up/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     32
+    ],
+    "hand_b": [
+     28,
+     32
+    ]
+   },
+   "up/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "hand_a": [
+     11,
+     32
+    ],
+    "hand_b": [
+     28,
+     32
+    ]
+   },
+   "up/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     33
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   },
+   "up/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   },
+   "up/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     33
+    ]
+   },
+   "up/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "hand_a": [
+     11,
+     31
+    ],
+    "hand_b": [
+     28,
+     31
+    ]
+   }
+  },
+  "note": "hand_a/hand_b follow base v2 (screen-left/screen-right in down/up views, near/far in side views); weapons attach to them or are planted on y=44"
+ },
+ "design": {
+  "silhouette_keyword": "tall bell: hat + robe + staff",
+  "head": "floppy pointed blue hat with gold band and star, long lilac hair",
+  "body": "V-neck blue robe with gold trim and sash, bell hem with slippers peeking out, long sleeves with trimmed cuffs",
+  "weapon": "tall crystal staff planted at the screen-right hand",
+  "weapon_hand": "screen-right (side views: near hand)",
+  "accessories": [
+   "hat",
+   "sash"
+  ],
+  "eye_iris": "#8a63d8"
+ },
+ "palette": {
+  "shared": {
+   "O": "#17121f",
+   "S": "#f4d9bf",
+   "T": "#dcae90",
+   "U": "#b07f6a",
+   "K": "#e69a8a",
+   "E": "#20233f",
+   "W": "#ffffff"
+  },
+  "iris": "#8a63d8",
+  "class_ramps_dark_to_light": {
+   "UTS": [
+    "#b07f6a",
+    "#dcae90",
+    "#f4d9bf"
+   ],
+   "GHJL": [
+    "#1b2a57",
+    "#2d4a96",
+    "#4d78cb",
+    "#88b4ee"
+   ],
+   "xyz": [
+    "#8a6420",
+    "#e0b64a",
+    "#fff1b8"
+   ],
+   "ABCD": [
+    "#5b5278",
+    "#8d83b3",
+    "#c2b8df",
+    "#efe9ff"
+   ],
+   "lmn": [
+    "#3a2616",
+    "#6a4528",
+    "#9a6a3c"
+   ],
+   "pqr": [
+    "#1d6f98",
+    "#4cc3e8",
+    "#c9f6ff"
+   ]
+  },
+  "colors_total": 25,
+  "lighting": "upper-left"
+ },
+ "rig": {
+  "uses": "humanoid base v2 pose recipes, part placements, face parts and limb geometry (build dependencies hashed below)",
+  "build_dependencies_sha256": {
+   "nm_humanoid_base_v2.json": "7e226bef78a901cae87ed8aa114399629fd0a654ed20211adc4c1554a91f31ad",
+   "source/parts_v2.py": "4e8d5a5b46ec2a8969d073e950d53da5d1655234251fa419c5929b3daf3dd0cb",
+   "source/parts.py": "f7aaa69c32f8c16395e151aa2388513994ff553bb4de5eee2c9a65693637f22a",
+   "source/build_sheet_v2.py": "c21e23a27e7a2121808e0660160e752a27578c04517a4fafb22a51e761f55b64"
+  },
+  "secondary_motion": "1 px sway on walk contacts for capes, scarf tails, braids (head/body-anchored parts stay fixed); robe hems use lifted-side variants"
+ },
+ "scope": {
+  "included": "idle (2 frames) and walk (4 frames) in four directions",
+  "excluded": [
+   "combat poses",
+   "portraits/UI",
+   "runtime integration",
+   "NPCs",
+   "creatures"
+  ]
+ }
+}

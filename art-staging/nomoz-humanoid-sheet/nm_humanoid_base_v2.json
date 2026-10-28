@@ -1,0 +1,867 @@
+{
+ "id": "nm_humanoid_base",
+ "version": 2,
+ "sheet": {
+  "composite": "nm_humanoid_base_composite_sheet_v2.png",
+  "body": "nm_humanoid_base_body_sheet_v2.png",
+  "hair_default": "nm_humanoid_base_hair_default_sheet_v2.png",
+  "underlayer_mask": "nm_humanoid_base_underlayer_mask_sheet_v2.png",
+  "width": 240,
+  "height": 192,
+  "columns": 6,
+  "rows": 4
+ },
+ "frame": {
+  "width": 40,
+  "height": 48
+ },
+ "row_order": [
+  "down",
+  "left",
+  "right",
+  "up"
+ ],
+ "column_order": [
+  "idle0",
+  "idle1",
+  "walk0",
+  "walk1",
+  "walk2",
+  "walk3"
+ ],
+ "frame_rect": "x=col*40, y=row*48",
+ "animations": {
+  "idle": {
+   "columns": [
+    0,
+    1
+   ],
+   "frame_ms": 600,
+   "loop": true
+  },
+  "walk": {
+   "columns": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "frame_ms": 140,
+   "loop": true
+  }
+ },
+ "anchors": {
+  "ground": [
+   20,
+   45
+  ],
+  "foot_baseline_y": 44,
+  "body_axis_x": 20,
+  "head_window": {
+   "x": 9,
+   "y": 3,
+   "w": 22,
+   "h": 20
+  },
+  "part_origins": {
+   "torso_front_back": [
+    13,
+    23
+   ],
+   "arm_front_back": [
+    [
+     9,
+     24
+    ],
+    [
+     27,
+     24
+    ]
+   ],
+   "legs_front_back": [
+    [
+     14,
+     33
+    ],
+    [
+     20,
+     33
+    ]
+   ],
+   "torso_side": [
+    15,
+    23
+   ],
+   "leg_side_box_16w": [
+    12,
+    33
+   ],
+   "arm_side_near": {
+    "stand": [
+     18,
+     24
+    ],
+    "fwd": [
+     16,
+     24
+    ],
+    "back": [
+     16,
+     24
+    ]
+   },
+   "arm_side_far": "near x + 1, drawn darker behind the torso",
+   "note": "side leg boxes widened from 8 to 16 px (hip centred on the torso, ground row unchanged); right-facing boxes use x=40-x-w"
+  },
+  "per_frame": {
+   "anchors": {
+    "down/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "down/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "down/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      33
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "down/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "down/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      33
+     ]
+    },
+    "down/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "left/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      20,
+      32
+     ],
+     "hand_b": [
+      21,
+      32
+     ]
+    },
+    "left/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      20,
+      32
+     ],
+     "hand_b": [
+      21,
+      32
+     ]
+    },
+    "left/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      21.5,
+      32
+     ],
+     "hand_b": [
+      19,
+      32
+     ]
+    },
+    "left/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      20,
+      31
+     ],
+     "hand_b": [
+      21,
+      31
+     ]
+    },
+    "left/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      18,
+      32
+     ],
+     "hand_b": [
+      22.5,
+      32
+     ]
+    },
+    "left/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      20,
+      31
+     ],
+     "hand_b": [
+      21,
+      31
+     ]
+    },
+    "right/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      19,
+      32
+     ],
+     "hand_b": [
+      18,
+      32
+     ]
+    },
+    "right/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      19,
+      32
+     ],
+     "hand_b": [
+      18,
+      32
+     ]
+    },
+    "right/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      17.5,
+      32
+     ],
+     "hand_b": [
+      20,
+      32
+     ]
+    },
+    "right/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      19,
+      31
+     ],
+     "hand_b": [
+      18,
+      31
+     ]
+    },
+    "right/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      21,
+      32
+     ],
+     "hand_b": [
+      16.5,
+      32
+     ]
+    },
+    "right/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      19,
+      31
+     ],
+     "hand_b": [
+      18,
+      31
+     ]
+    },
+    "up/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "up/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "up/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      33
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "up/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "up/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      33
+     ]
+    },
+    "up/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    }
+   },
+   "hair_anchors": {
+    "down/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "down/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "down/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      33
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "down/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "down/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      33
+     ]
+    },
+    "down/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "left/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      20,
+      32
+     ],
+     "hand_b": [
+      21,
+      32
+     ]
+    },
+    "left/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      20,
+      32
+     ],
+     "hand_b": [
+      21,
+      32
+     ]
+    },
+    "left/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      21.5,
+      32
+     ],
+     "hand_b": [
+      19,
+      32
+     ]
+    },
+    "left/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      20,
+      31
+     ],
+     "hand_b": [
+      21,
+      31
+     ]
+    },
+    "left/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      18,
+      32
+     ],
+     "hand_b": [
+      22.5,
+      32
+     ]
+    },
+    "left/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      20,
+      31
+     ],
+     "hand_b": [
+      21,
+      31
+     ]
+    },
+    "right/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      19,
+      32
+     ],
+     "hand_b": [
+      18,
+      32
+     ]
+    },
+    "right/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      19,
+      32
+     ],
+     "hand_b": [
+      18,
+      32
+     ]
+    },
+    "right/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      17.5,
+      32
+     ],
+     "hand_b": [
+      20,
+      32
+     ]
+    },
+    "right/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      19,
+      31
+     ],
+     "hand_b": [
+      18,
+      31
+     ]
+    },
+    "right/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      21,
+      32
+     ],
+     "hand_b": [
+      16.5,
+      32
+     ]
+    },
+    "right/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      19,
+      31
+     ],
+     "hand_b": [
+      18,
+      31
+     ]
+    },
+    "up/idle0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "up/idle1": {
+     "head_origin": [
+      9,
+      4
+     ],
+     "hand_a": [
+      11,
+      32
+     ],
+     "hand_b": [
+      28,
+      32
+     ]
+    },
+    "up/walk0": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      33
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "up/walk1": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    },
+    "up/walk2": {
+     "head_origin": [
+      9,
+      3
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      33
+     ]
+    },
+    "up/walk3": {
+     "head_origin": [
+      9,
+      2
+     ],
+     "hand_a": [
+      11,
+      31
+     ],
+     "hand_b": [
+      28,
+      31
+     ]
+    }
+   }
+  },
+  "hand_anchor_note": "hand_a = near hand, hand_b = far hand (side views); left/right arm (front/back). x can be .5 where the hand spans two columns. Values follow bob and the documented 1px arm foreshortening in front walk frames."
+ },
+ "layers_draw_order": [
+  "far_limbs (side views)",
+  "legs",
+  "torso/underlayer",
+  "[future: clothing/armor]",
+  "head/skin",
+  "hair",
+  "[future: head accessories]",
+  "near arm",
+  "[future: weapon/off-hand per-frame hand anchors]"
+ ],
+ "layer_notes": "Body and hair sheets are separate and share identical frame geometry; composite = body + hair. Future layers must be authored on the same 40x48 grid and 6x4 layout and composited in order above. Up (back) view: hair above head, weapon/cape order may invert (document per layer).",
+ "palette": {
+  "outline": "#17121f",
+  "skin": [
+   "#f4d9bf",
+   "#dcae90",
+   "#b07f6a"
+  ],
+  "blush": "#e69a8a",
+  "eye": [
+   "#20233f",
+   "#ffffff",
+   "#3f8fb5"
+  ],
+  "hair": [
+   "#2a1a14",
+   "#4b2f22",
+   "#7a4e33",
+   "#a8714a"
+  ],
+  "shirt": [
+   "#3c3a4a",
+   "#5f5d73",
+   "#8c8aa3",
+   "#bdbbd2"
+  ],
+  "trousers": [
+   "#24303f",
+   "#3a4a60",
+   "#587089"
+  ],
+  "leather": [
+   "#2e1e14",
+   "#50321f",
+   "#7d5230",
+   "#a77a4a"
+  ],
+  "colors": 23,
+  "changed_from_v1": false
+ },
+ "lighting": "upper-left in every direction. Right-facing parts (head, hair, torso) are hand-authored; right limbs started as mirrored drafts and were tone-checked by hand.",
+ "future_slots": [
+  "hair/head variants",
+  "clothing/armor (use underlayer mask for coverage)",
+  "weapon",
+  "off-hand",
+  "accessories"
+ ],
+ "notes": [
+  "Equipment does not change protagonist sprite per GAME_DESIGN; slots exist for NPC/class variants.",
+  "Staged only; not wired into runtime or manifests.",
+  "v1 files are unchanged; v2 files carry a _v2 suffix."
+ ],
+ "supersedes": "nm_humanoid_base_v1.json (kept unchanged)",
+ "changes_from_v1": [
+  "front/back: shirt collar/fold/hem shading, boot cuff+sole, forehead cast shadow, shaped ears and nape hairline in the up view",
+  "side: shaped ear + sideburn, torso buckle/folds, hand-drawn arm and leg poses (stand/fwd/back/lift) replace row-shear",
+  "right-facing: hand-authored head/hair/torso parts instead of mirrored+relit",
+  "front walk: arm foreshortening instead of whole-arm row shift"
+ ]
+}
