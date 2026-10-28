@@ -27,11 +27,31 @@ One PNG per group in `src/pets/nomoz/spritesheet/sheets/`, named `nomoz_<group>.
 Head anchor (the procedural `hy` is what vanity uses): sit 4, stand 3, crouch 7, stretch 9, low 20, loaf 20, curl 25 (+1 when the head bobs, +2 lowered). Turned views: side `hx=4, hy=3`, frontQ/rearQ `hx=9, hy=6`, rear `hx=12, hy=3`.
 
 ## Dynamic regions (keep expressions alive)
-Sheet art is cleared inside these rectangles and the live procedural pixels are drawn instead, so leave eyes, pupils, nose and mouth to them or they will be overwritten. Head-relative `[x, y, w, h]` from `hx, hy`:
-- front / frontQ eyes+pupils `[5, 10, 22, 8]`, nose+mouth `[11, 20, 10, 8]`; rear/rearQ: none.
-- side eye+pupil `[1, 10, 8, 8]`, nose+mouth `[-3, 16, 9, 8]`.
-- `dynamic.whiskers: true` if the sheet leaves whiskers out.
+Sheet art is cleared inside these rectangles and the live procedural pixels are drawn instead (the procedural fur in the rectangle comes with them, so keep rectangles tight and keep the sheet's face where the procedural face is). Head-relative `[x, y, w, h]` from the head anchor `hx, hy` (front, sit: `hx = 12`, `hy = 4`, +1 on the breathing frame). Also in `spec.js` (`DYNAMIC`):
+- eyes + pupils (gaze moves them 1 px sideways, 2 px up): `[5, 10, 8, 8]` and `[19, 10, 8, 8]`
+- nose `[14, 20, 4, 2]`; mouth (all expressions) `[12, 22, 8, 4]`
+- `whiskers: true` only if the sheet leaves them out (the procedural whiskers are not mirrored-safe over art that has its own).
+Side view: eye+pupil `[1, 10, 8, 8]`, nose+mouth `[-3, 16, 9, 8]`. Rear views: none.
 Static rectangles cannot follow a moving tail or raised paw. Bake tail and paws into the frames, and keep the clip from matching those states (below).
+
+## Construction rules (refined design, from the canonical front idle)
+The approved procedural cat is the reference for identity; the sheet art redraws it with better proportions. All views and poses are built from these rules so they stay one cat:
+- Head: 28 px wide at the cheeks (x 14-41), ear tips on row 3-4, skull rows 9-28, eyes 6x6 at `(hx+6, hy+12)` and `(hx+20, hy+12)` exactly as in `sprites.js` (EYES), nose and mouth at the procedural positions. Ears 9 rows tall with a pale tufted inner ear (`I`/`i`).
+- Body: wider at the base than the head (haunches 37 px at the floor, x 10-45), forelegs 7 px wide with a 2 px black gap, paws 10 px wide on rows 54-57 with toe seams, hind paws showing beside them, chest ruff and a lighter bib (`4`/`3`) under the coin spot `(24, 34)`.
+- Tail: substantial, root 4 px thick tapering to 2 px, 33 px long, rising on the right side and hooking inward at the tip, tabby rings every 5 px.
+- Shading: light from the upper left. Planes `3` (lit), `2` (base), `1` (shadow), `0` ink for seams only. Rim light (`5`, `6` on up/left edges, `4` on the right edge) is baked in, as `sprites.js` would draw it. Fur tufts break the silhouette along cheeks, chest, haunches and tail.
+- Only characters from `PALETTE` in `sprites.js`; transparent background; no anti-aliasing.
+
+## Art pipeline (what is actually possible)
+SpriteForge exposes only a manual editor (`open_editor`, `open_full_editor`) and a read-only `get_sprite` (palette + pixel grid, PNG url). There is no generation, batch or export tool, and this environment cannot download the PNG url (the host is blocked by the egress proxy), so exports are done by hand:
+1. A frame is seeded (from `art/draft/<clip>.txt` via `node build.mjs draft`, or an existing PNG) and opened in an editor session; the session link is shared with the artist.
+2. The artist refines it in the editor and downloads the PNG, then commits it as `art/<clip>/<n>.png` (56x60, n from 0). `get_sprite` with `include_pixels` returns the same pixels as a grid if a PNG is not available.
+3. `node build.mjs check` validates every frame (size, binary alpha, colour count, frame count per clip); `node build.mjs sheets` assembles a group's sheet only when all of its clips are drawn; `node validate.mjs` checks the registered manifest and sheet sizes.
+4. Only then is the sheet registered in `manifest.js` and its rules added. The procedural renderer stays the default and the fallback for every clip not yet registered.
+
+## Status
+- `idle_front` (2 frames): drafted from the refined construction rules, in `art/idle_front/`, awaiting approval. Not registered. Registration once approved: sheet `nomoz_idle` (columns 2, rows 5), clip `idle_front` `{ sheet: 'nomoz_idle', row: 0, ms: 1000, dynamic: { head: [[5,10,8,8],[19,10,8,8],[14,20,4,2],[12,22,8,4]] } }`, rule `{ when: { pose: 'sit', view: 'front', moving: false, pawL: false, pawR: false, ears: false, book: false }, clip: 'idle_front' }` (rows 1-4 of the sheet are the turned views and must exist first, because the sheet is assembled per group).
+- Everything else: not started.
 
 ## Selection rules (the one convention that prevents mismatched art)
 `select` is first-match-wins on `SPRITE_FIELDS`. Every art rule must also exclude states the sheet does not cover, so the procedural cat draws those instead of a wrong frame: `pawL: false, pawR: false, book: false, ears: false, tail: [null, 'still']` as the clip covers. Order: leap (`legs: 3`), then walk/creep (`moving: true`), then idle/stand/crouch (`moving: false`), then front-only poses. Direction is `view`.

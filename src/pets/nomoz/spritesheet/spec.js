@@ -7,6 +7,12 @@
  */
 export const FRAME = { width: 56, height: 60 }; // SPRITE_SIZE in ../config.js
 export const VIEWS = ['front', 'frontQ', 'side', 'rearQ', 'rear']; // = sheet row order
+/* Tight head-relative rectangles [x, y, w, h] kept procedural (front view); see SPEC.md. */
+export const DYNAMIC = {
+  front: { head: [[5, 10, 8, 8], [19, 10, 8, 8], [14, 20, 4, 2], [12, 22, 8, 4]] },
+  side: { head: [[1, 10, 8, 8], [-3, 16, 9, 8]] },
+};
+
 export const SHEET_DIR = 'src/pets/nomoz/spritesheet/sheets';
 
 /*
