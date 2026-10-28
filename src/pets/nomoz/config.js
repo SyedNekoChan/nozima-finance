@@ -54,6 +54,16 @@ export const WORLD_OVERRIDES = {};
 export const SPRITE_SIZE = { width: 56, height: 60 };
 
 /*
+ * Which renderer draws the cat.
+ *   'procedural' : the pixel-grid renderer in ./sprites.js (the default).
+ *   'sheet'      : sprite-sheet clips from ./spritesheet/manifest.js, with
+ *                  the procedural renderer as the per-frame fallback and
+ *                  the source of dynamic overlays. With an empty manifest
+ *                  it behaves exactly like 'procedural'.
+ */
+export const SPRITE_RENDERER = { mode: 'procedural' };
+
+/*
  * Lighting. The cat stays solid black and is revealed by light, never by
  * recolouring: directional rim levels per depth (top/left, corner, right),
  * the lit floor pool, its black contact shadow and the dithered aura.

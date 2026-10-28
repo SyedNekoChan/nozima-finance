@@ -1745,8 +1745,15 @@ function paintGrid(ctx, g) {
  * vanity: the pet's vanity registry (worn items).
  * The caller's ctx is a SPRITE_W x SPRITE_H canvas context. The base art
  * has its tail on the right (as in the concept art); facing > 0 mirrors it.
+ *
+ * body (optional, used by the sprite-sheet path in ./spritesheet): replaces
+ * the procedural fur with other body art while everything else (anchors,
+ * pupils, lighting, vanity, effects, stress / glitch) still runs here.
+ *   { under?: false, paint(ac, { grid, hx, hy, view, pose, footY, feet })
+ *     -> falsy to use the procedural body, or { over?: false } }
+ * p.replay marks a redraw of an unchanged state (the pupil does not ease).
  */
-export function renderSprite(ctx, p, vanity) {
+export function renderSprite(ctx, p, vanity, body = null) {
   const { a, ac, b, bc } = layers();
   const flip = p.facing > 0;
   const stressed = p.mood === 'stressed';
@@ -1767,7 +1774,8 @@ export function renderSprite(ctx, p, vanity) {
   // pupil size (eased per canvas) and the watched thing's x in base space:
   // a tracked item, else the behavior's focus point, else a tracked effect
   const kind = eyeKind(q);
-  q.pupil = easePupil(ctx, kind, pupilTarget(q, kind, light));
+  q.pupil =
+    p.replay && pupilLevels.has(ctx) ? pupilLevels.get(ctx) : easePupil(ctx, kind, pupilTarget(q, kind, light));
   const it = p.item;
   const tracked = fxWith(p.fx, 'track');
   if (it && TRACKED_ITEMS.has(it.kind) && typeof it.x === 'number') {
@@ -1784,9 +1792,22 @@ export function renderSprite(ctx, p, vanity) {
   drawUnder(under, lit, light, footY, feet[0], feet[1]);
 
   ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
-  paintGrid(ac, under);
-  paintGrid(ac, lit);
-  paintGrid(ac, over);
+  if (!body || body.under !== false) paintGrid(ac, under);
+  let drawn = null;
+  if (body) {
+    try {
+      drawn = body.paint(ac, { grid: lit, hx, hy, view: q.view, pose: q.pose, footY, feet });
+    } catch (err) {
+      drawn = null;
+    }
+    if (!drawn) {
+      // the body art could not be drawn: start again with the procedural cat
+      ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
+      paintGrid(ac, under);
+    }
+  }
+  if (!drawn) paintGrid(ac, lit);
+  if (!drawn || drawn.over !== false) paintGrid(ac, over);
   drawProps(ac, { ...q, chest, chestTurn }, hx, hy, vanity);
 
   bc.clearRect(0, 0, SPRITE_W, SPRITE_H);

@@ -8,6 +8,7 @@ import {
   LIGHTING,
   REACTIONS_MAP,
   REST_PATCH,
+  SPRITE_RENDERER,
   SPRITE_SIZE,
   WORLD_OVERRIDES,
 } from './config.js';
@@ -15,6 +16,8 @@ import { FINANCIAL_REACTIONS } from './financial.js';
 import { PROPS } from './props.js';
 import { ITEMS, SLOTS } from './vanity.js';
 import { renderSprite } from './sprites.js';
+import { SHEET_MANIFEST } from './spritesheet/manifest.js';
+import { createSheetRenderer } from './spritesheet/renderer.js';
 
 /*
  * NOMOZ.EXE: the first registered pet, the solid-black cat of the
@@ -26,10 +29,12 @@ import { renderSprite } from './sprites.js';
  */
 function build() {
   try {
+    const render =
+      SPRITE_RENDERER.mode === 'sheet' ? createSheetRenderer({ manifest: SHEET_MANIFEST }) : renderSprite;
     return definePet({
       id: 'nomoz',
       name: 'NOMOZ.EXE',
-      sprite: { ...SPRITE_SIZE, render: renderSprite },
+      sprite: { ...SPRITE_SIZE, render },
       lighting: LIGHTING,
       animations: ANIMATIONS,
       behaviors: BEHAVIORS,
