@@ -6,6 +6,7 @@
  */
 
 const warn = (msg) => console.warn(`[nomoz sheets] ${msg}`);
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const isPos = (n) => Number.isInteger(n) && n > 0;
 const isNat = (n) => Number.isInteger(n) && n >= 0;
 const isPoint = (a) => Array.isArray(a) && a.length === 2 && a.every(Number.isFinite);
@@ -29,7 +30,7 @@ function normalizeSheet(id, raw) {
 
 function normalizeClip(id, raw, sheets) {
   if (!raw || typeof raw !== 'object') throw new Error('is not an object');
-  const sheet = sheets[raw.sheet];
+  const sheet = has(sheets, raw.sheet) ? sheets[raw.sheet] : null;
   if (!sheet) throw new Error(`uses unknown sheet "${raw.sheet}"`);
   const total = sheet.columns * sheet.rows;
 
@@ -128,8 +129,15 @@ export function normalizeManifest(raw) {
       warn(`clip "${id}" skipped: ${err.message}`);
     }
   }
+  // a `next` that names no clip would crash the player; a one-shot just ends
+  for (const [id, clip] of Object.entries(out.clips)) {
+    if (clip.next !== null && !has(out.clips, clip.next)) {
+      warn(`clip "${id}": next "${clip.next}" is not a clip; ignored`);
+      out.clips[id] = Object.freeze({ ...clip, next: null });
+    }
+  }
   for (const [i, rule] of (Array.isArray(raw.select) ? raw.select : []).entries()) {
-    if (rule && typeof rule.when === 'object' && rule.when && out.clips[rule.clip]) {
+    if (rule && typeof rule.when === 'object' && rule.when && has(out.clips, rule.clip)) {
       out.select.push(Object.freeze({ when: rule.when, clip: rule.clip }));
     } else {
       warn(`select rule ${i} skipped: needs a "when" object and a known clip`);
