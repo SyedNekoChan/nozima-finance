@@ -60,7 +60,7 @@ function check() {
   let bad = 0;
   let done = 0;
   for (const dir of existsSync(ARTDIR) ? readdirSync(ARTDIR, { withFileTypes: true }) : []) {
-    if (dir.isDirectory() && dir.name !== 'source' && !ART[dir.name]) {
+    if (dir.isDirectory() && !['source', 'review'].includes(dir.name) && !ART[dir.name]) {
       console.log(`problem: art/${dir.name} is not in spec.js`);
       bad++;
     }

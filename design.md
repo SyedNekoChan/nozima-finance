@@ -605,6 +605,8 @@ src/pets/
     index.js           the NOMOZ.EXE definition (registered first)
     config.js          appearances, overrides, lighting, equipped items
     sprites.js         pixel art, pose / frame composition, prop drawers
+    spritesheet/       optional sprite-sheet renderer (off by default), its
+                       art, build / validate / audit tools and tests
     financial.js       NOMOZ.EXE's financial reactions (data)
     props.js           world props: terminal, depth anomaly, yarn, bowl, wisp,
                        portal, glyph ring, trinkets, chart, sky, vessel,
@@ -697,6 +699,31 @@ frame art those fields select lives in `nomoz/sprites.js`:
   overlays go in `ITEM_KINDS` (`text`, `block` (the blue flame), `obj`,
   `crown`, `coin`, `sparkle`, `glyph`) or `FX_KINDS` (keyed effects). Add a
   pixel-row table and one entry; each asset is defined once and shared.
+
+#### Sprite-sheet renderer (optional, off by default)
+
+`nomoz/spritesheet/` can draw the cat from PNG sheets instead of
+`sprites.js`. `SPRITE_RENDERER.mode` in `nomoz/config.js` selects it;
+the default is `'procedural'`, and the procedural cat is also the fallback
+for a failed or still-loading sheet and for any state no clip covers. Sheet
+mode uses a 96 x 64 box (`SHEET_SPRITE_SIZE`); the procedural drawing sits
+in a 56 x 60 area at the bottom centre, so effects, items and cues keep
+their coordinates and follow the art's head through per-frame anchors.
+
+- `manifest.js` lists sheets, clips and ordered `select` rules (first match
+  wins; `when` takes a value, an array, `true` / `false` and the derived
+  `moving`). `clips.js` validates it (invalid entries are skipped with a
+  warning, never thrown) and does selection and frame timing.
+- `renderer.js` plays the clips (timers, one-shots, reduced motion), adds the
+  silhouette lighting, and redraws the eyes and whiskers live.
+- Art lives in `art/<id>/<n>.png` (source of truth) and is assembled into
+  `sheets/`; `anchors.js` is generated. See `spritesheet/SPEC.md` for
+  conventions and for which frames are approved art and which were built by
+  code and still await real SpriteForge work.
+- Tooling and tests: `npm run sheets:build`, `sheets:validate`,
+  `sheets:audit` (every pose / view / leg state must select a clip) and
+  `npm test` (unit tests, approved-frame hash guard, the three tools in
+  strict mode). CI runs `npm test` before the build.
 
 #### Vanity / equipment
 
