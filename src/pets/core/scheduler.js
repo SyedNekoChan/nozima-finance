@@ -1,5 +1,5 @@
 import { SCHEDULER } from '../config.js';
-import { makeScript } from './toolkit.js';
+import { compressBeats, makeScript } from './toolkit.js';
 import { rnd } from './rng.js';
 import { canReact, weightFor } from './behaviors.js';
 
@@ -262,10 +262,17 @@ export class PetScheduler {
       return;
     }
 
-    const end = this.reduced ? planned * SCHEDULER.reducedDurationFactor : planned;
+    // Reduced motion plays the same script shorter and with fewer steps;
+    // normal motion plays it exactly as planned.
+    let beats = S.beats.sort((a, z) => a.t - z.t);
+    let end = planned;
+    if (this.reduced) {
+      beats = compressBeats(beats, SCHEDULER.reducedDurationFactor, SCHEDULER.reducedBeatSlotMs);
+      end = planned * SCHEDULER.reducedDurationFactor;
+    }
 
     this.current = id;
-    this.run(S.beats.sort((a, z) => a.t - z.t), Math.max(end, SCHEDULER.minBehaviorMs));
+    this.run(beats, Math.max(end, SCHEDULER.minBehaviorMs));
   }
 
   run(beats, end) {

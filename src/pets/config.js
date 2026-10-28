@@ -57,7 +57,10 @@ export const SCHEDULER = {
   historyLength: 4, // recent behaviors that are down-weighted
   historyPenalty: 0.4,
   reducedGapFactor: 1.5, // reduced motion: slower cadence
-  reducedDurationFactor: 1.3,
+  // reduced motion plays a behavior's script at this fraction of its time
+  // and folds beats closer than reducedBeatSlotMs into one step
+  reducedDurationFactor: 0.5,
+  reducedBeatSlotMs: 150,
   stepMs: 480, // one walking step
   nervousStepMs: 320,
   ambientMs: Math.round(DUR.ambient * 1000),

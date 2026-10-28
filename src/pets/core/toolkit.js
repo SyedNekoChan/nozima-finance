@@ -153,3 +153,41 @@ export function sweep(c, S, t0, stops) {
 
 // Where an item sits in the sprite space decides where the eyes go.
 export const gazeForX = (x, spriteW) => (x < spriteW * 0.36 ? 'l' : x > spriteW * 0.64 ? 'r' : 'c');
+
+/*
+ * Reduced motion: the same script, played shorter and with fewer visible
+ * steps. Beat times scale by `factor`, and beats that then fall in the same
+ * `slotMs` window are folded into one patch (earliest time), so a blink or a
+ * quick glance simply never shows. Folding keeps patch semantics: later keys
+ * win, overlay / prop operations stay in order, and a full `fx` / `props`
+ * replacement discards the operations queued before it. Applying the result
+ * leaves the view exactly where applying the original beats would.
+ */
+export function compressBeats(beats, factor, slotMs) {
+  const out = [];
+  let slot = -1;
+  for (const { t, patch } of beats) {
+    const at = Math.round(t * factor);
+    const k = Math.floor(at / slotMs);
+    const last = out[out.length - 1];
+    if (last && k === slot) {
+      last.patch = foldPatch(last.patch, patch);
+    } else {
+      out.push({ t: at, patch: { ...patch } });
+      slot = k;
+    }
+  }
+  return out;
+}
+
+function foldPatch(a, b) {
+  const out = { ...a };
+  for (const [ops, full] of [['propOps', 'props'], ['fxOps', 'fx']]) {
+    if (b[full] !== undefined) delete out[ops]; // a full replacement wipes what came before
+    if (b[ops]) out[ops] = [...(out[ops] || []), ...b[ops]];
+  }
+  for (const [key, value] of Object.entries(b)) {
+    if (key !== 'propOps' && key !== 'fxOps') out[key] = value;
+  }
+  return out;
+}

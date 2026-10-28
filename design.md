@@ -419,9 +419,11 @@ behaviors, and it is independent of tabs:
   stream intact.
 - A behavior that throws is disabled for the session and the scheduler
   moves on; a failing `apply` patch is logged and skipped.
-- Reduced motion: behaviors flagged `moves` are never chosen, durations
-  stretch ×1.3 and pauses ×1.5, the animation clock stops, glides and
-  fades are instant. Only stationary behaviors remain.
+- Reduced motion: behaviors flagged `moves` are never chosen, a behavior's
+  script plays at half its time (`reducedDurationFactor`) with beats closer
+  than 150 ms folded into one step (`compressBeats`: a blink or flick never
+  shows, the final posture is unchanged), pauses stretch ×1.5, the animation
+  clock stops, glides and fades are instant. Only stationary behaviors remain.
 
 ### Behavior library
 
