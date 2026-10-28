@@ -152,7 +152,8 @@ Z-depth (`src/pets/core/space.js`, numbers in `WORLD` in
 - World position (X, Y, Z), facing, current behavior, the scheduler, the
   random seed and animation progress persist across tab changes, modal
   open/close and ordinary UI updates. Nothing ever teleports, respawns,
-  resets or relocates to stay visible; foreground content may cover it.
+  resets or relocates to stay visible; foreground content may cover it
+  (the one exception is the hidden Nomoz game, below).
 - Only a physical viewport resize may clamp the position back into range.
 - Stacking: layer z-0, behind tab content (z-10), the OVER BUDGET readout
   (z-20), header (z-30), footer and modals (z-50+). The layer is
@@ -166,6 +167,32 @@ Z-depth (`src/pets/core/space.js`, numbers in `WORLD` in
 - A fresh runtime seed on every page load decides the first position,
   depth, facing, pose, gaze, the first delay (up to ~3s) and the first
   behavior. There is no fixed loop.
+
+### Hidden Nomoz game: integration boundary and the cat exception
+
+A hidden RPG lives in `src/rpg/` (design: `docs/nomoz/`). It is isolated from
+the finance application: its own store, its own IndexedDB database
+(`nomoz-rpg`), and no imports of the finance store, finance database, currency
+helpers or the pet's mood bridge. Finance code touches it at exactly three
+points:
+
+- `App.jsx` mounts `RpgMount`, which renders nothing until the game is
+  activated and then a full-screen overlay above the finance tree.
+- `PunchCard.jsx` calls `tryActivateFromAmount` first in its submit handler
+  (after the double-submit guard). Only the exact, case-sensitive phrase
+  `Possibilities are possible` in the amount of a **new, non-transfer** entry
+  matches; no transaction is created or changed and every other input behaves
+  as before.
+- `Anomaly.jsx` asks `usePetPresence` whether to mount the pet.
+
+The cat exception: after the game's theft scene has been saved, the pet is not
+mounted at all (its scheduler and timers stop; `anomalyEvent`s are discarded
+meanwhile). The finance side stores nothing about it. The cat returns only
+after a future rescue has been successfully persisted in the RPG database. If
+the RPG save cannot be read the pet is withheld rather than assumed present,
+and a failed read never changes any data. A browser that never activated the
+game never creates the RPG database and shows the pet as usual. The RPG never
+uses `anomalyEvent`.
 
 ### Financial states
 

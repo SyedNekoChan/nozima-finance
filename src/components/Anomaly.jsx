@@ -10,6 +10,7 @@ import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
 import { DUR, EASE } from '../lib/motion.js';
 import { deriveBudgetProximity, deriveNomozMood } from '../lib/nomoz.js';
+import { usePetPresence } from '../rpg/gate.js';
 
 /*
  * View fields handed to the pet's sprite renderer. A pet's rig reads the
@@ -325,6 +326,19 @@ export default function Anomaly() {
   // The registered pet shown in the backdrop (NOMOZ.EXE unless configured).
   const pet = getActivePet();
 
+  // Nomoz bridge: the cat is mounted only once its state is known and it has
+  // not been stolen (an unreadable RPG save keeps it out until it can be read). Unmounting stops the pet's scheduler and timers outright.
+  // This is the one documented exception to "the pet is never removed or reset".
+  const presence = usePetPresence();
+  const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
+  const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
+
+  // With no pet mounted nothing consumes finance events; drop them so a
+  // stale reaction cannot replay when the cat returns.
+  useEffect(() => {
+    if ((presence === 'missing' || presence === 'unresolved') && anomalyEvent) clearAnomalyEvent();
+  }, [presence, anomalyEvent, clearAnomalyEvent]);
+
   return (
     <>
       {/*
@@ -332,7 +346,7 @@ export default function Anomaly() {
         background presence that picks open backdrop space rather than
         sitting on top of anything.
       */}
-      {pet && (
+      {pet && presence === 'present' && (
         <PetErrorBoundary key={pet.id}>
           <Pet pet={pet} />
         </PetErrorBoundary>

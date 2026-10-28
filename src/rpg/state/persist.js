@@ -1,12 +1,21 @@
-import { getRpgDb } from './db.js';
-import { STORY_STAGES } from '../data/content.js';
+import { getRpgDb, RPG_DB_NAME } from './db.js';
+import { STORY_STAGES, OPENING_STEPS } from '../data/content.js';
+import { CLASS_IDS } from '../data/classes/index.js';
 
 export const SAVE_ID = 'main';
-export const SAVE_SCHEMA_VERSION = 1;
+export const SAVE_SCHEMA_VERSION = 2;
 const OPEN_TIMEOUT_MS = 8000;
 
 // Each entry upgrades a save from version N to N + 1.
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  // v1 (Phase 1 placeholder) had no story progress: it starts the opening.
+  1: (save) => ({
+    ...save,
+    schemaVersion: 2,
+    catMissing: false,
+    story: { stage: STORY_STAGES.OPENING, openingStep: OPENING_STEPS.PORTAL },
+  }),
+};
 
 export class RpgStorageError extends Error {
   constructor(code, message, cause) {
@@ -24,7 +33,8 @@ export function createInitialSave() {
     schemaVersion: SAVE_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,
-    story: { stage: STORY_STAGES.FOUNDATION },
+    catMissing: false,
+    story: { stage: STORY_STAGES.OPENING, openingStep: OPENING_STEPS.PORTAL },
   };
 }
 
@@ -63,7 +73,22 @@ function migrate(record) {
     if (!step) throw new RpgStorageError('corrupt', 'The RPG save cannot be upgraded.');
     save = step(save);
   }
-  if (!isPlainObject(save.story)) {
+  const step = save.story?.openingStep;
+  // `protagonist` is additive and optional (absent = no class chosen yet), so
+  // existing v2 saves need no migration. A class can only exist after entering.
+  const hero = save.protagonist;
+  const heroOk =
+    hero === undefined ||
+    (isPlainObject(hero) &&
+      (hero.classId === null || (CLASS_IDS.includes(hero.classId) && step === OPENING_STEPS.ENTERED)));
+  const valid =
+    heroOk &&
+    isPlainObject(save.story) &&
+    typeof save.catMissing === 'boolean' &&
+    Object.values(OPENING_STEPS).includes(step) &&
+    // the cat is only ever missing once the theft has been persisted
+    (step === OPENING_STEPS.PORTAL ? save.catMissing === false : save.catMissing === true);
+  if (!valid) {
     throw new RpgStorageError('corrupt', 'The RPG save is incomplete.');
   }
   return save;
@@ -92,4 +117,25 @@ export async function writeSave(save) {
     throw new RpgStorageError('write-failed', 'The RPG save could not be written.', err);
   }
   return record;
+}
+
+// Read-only startup check used by the pet shell. Never creates the database:
+// if the browser can list databases and 'nomoz-rpg' is absent, nobody has
+// activated the RPG and the cat cannot be missing. Anything unreadable
+// (unavailable, timed out, corrupt, newer) rejects: it is NOT evidence that
+// the cat is present, and the caller must treat it as unresolved.
+export async function peekCatMissing() {
+  // no IndexedDB at all: no save can exist in this browser context
+  if (typeof indexedDB === 'undefined') return false;
+  if (typeof indexedDB.databases === 'function') {
+    let dbs;
+    try {
+      dbs = await indexedDB.databases();
+    } catch (err) {
+      throw new RpgStorageError('unavailable', 'RPG storage is unavailable.', err);
+    }
+    if (!dbs.some((d) => d.name === RPG_DB_NAME)) return false;
+  }
+  const save = await loadSave();
+  return save ? save.catMissing === true : false;
 }

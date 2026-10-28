@@ -16,6 +16,7 @@ import Reveal from '../../components/Reveal.jsx';
 import FieldError from '../../components/FieldError.jsx';
 import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import useHeldValue from '../../hooks/useHeldValue.js';
+import { tryActivateFromAmount } from '../../rpg/gate.js';
 
 export default function PunchCard({
   isOpen,
@@ -276,6 +277,16 @@ export default function PunchCard({
   const handleSave =
     async () => {
       if (isSubmitting) {
+        return;
+      }
+
+      // Hidden entry: raw string, new non-transfer entries only, before any parsing or saving.
+      if (
+        !editingTx &&
+        type !== 'TRANSFER' &&
+        tryActivateFromAmount(amountInput)
+      ) {
+        onClose();
         return;
       }
 
