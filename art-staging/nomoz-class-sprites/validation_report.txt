@@ -1,0 +1,127 @@
+PASS  shared colours (outline, skin ramp, blush, eye dark/white) are identical in all five classes
+PASS  class-specific colours are unique to their class (no colour shared between two classes beyond the shared set)  -> []
+INFO  === swordsman ===
+PASS  swordsman: RGBA 240x192 (= base v2 sheet size), alpha only 0/255
+PASS  swordsman: every colour is in the declared palette (26 colours, <= 30)  -> 26 used of 26
+PASS  swordsman: no empty frame and >=1px transparent padding in all 24 frames  -> min padding 1px
+PASS  swordsman: 24 distinct frames
+PASS  swordsman: lowest pixel is on the base ground row y=44 in every frame  -> []
+PASS  swordsman: every frame has >=3 ground-contact pixels on y=44  -> []
+PASS  swordsman: eyes, brows, blush/mouth pixels of base v2 appear unchanged at the same positions in all 24 frames (shared face, same head anchor)  -> []
+PASS  swordsman: class silhouette contains the base v2 silhouette in all head/torso/arm rows (same chibi proportions, nothing thinner)  -> 0 px []
+PASS  swordsman: legs and boots also contain the base v2 leg silhouette (same stance and foot placement)  -> 0 px []
+PASS  swordsman: head and hand anchors equal humanoid base v2 in all 24 frames  -> []
+PASS  swordsman: <=3 connected parts per frame and no stray pixel groups (< 6 px)  -> []
+INFO  swordsman: opaque non-outline pixels touching background (selective outline allowed for flame/feather/glint tips): 174 over the sheet
+PASS  swordsman/down: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.56,+0.56,+0.55,+0.56,+0.56,+0.56 v +0.48,+0.47,+0.47,+0.48,+0.48,+0.48
+PASS  swordsman/left: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.56,+0.56,+0.56,+0.56,+0.57,+0.56 v +0.56,+0.56,+0.46,+0.56,+0.46,+0.55
+PASS  swordsman/right: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +1.00,+1.00,+1.00,+1.00,+1.00,+1.00 v +0.67,+0.67,+0.62,+0.67,+0.56,+0.66
+PASS  swordsman/up: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.56,+0.56,+0.56,+0.56,+0.56,+0.56 v +0.28,+0.27,+0.27,+0.28,+0.28,+0.28
+INFO  swordsman: head-aligned change between neighbouring frames incl. attachments (planted weapons and body-anchored items shift relative to the head by design): max 74 px
+PASS  swordsman: silhouette centroid x moves <= 1.5px between neighbouring frames  -> max 0.22px
+PASS  swordsman: hair/headwear (base face + overlay, attachments removed) is pixel-identical in all six frames of each direction when aligned to the head anchor  -> []
+INFO  swordsman: head-aligned differences idle0 vs idle1 over the head window rows (weapon/torso overlap rows only): [('down', 57), ('left', 5), ('right', 5), ('up', 68)]
+INFO  === hunter ===
+PASS  hunter: RGBA 240x192 (= base v2 sheet size), alpha only 0/255
+PASS  hunter: every colour is in the declared palette (22 colours, <= 30)  -> 22 used of 22
+PASS  hunter: no empty frame and >=1px transparent padding in all 24 frames  -> min padding 1px
+PASS  hunter: 24 distinct frames
+PASS  hunter: lowest pixel is on the base ground row y=44 in every frame  -> []
+PASS  hunter: every frame has >=3 ground-contact pixels on y=44  -> []
+PASS  hunter: eyes, brows, blush/mouth pixels of base v2 appear unchanged at the same positions in all 24 frames (shared face, same head anchor)  -> []
+PASS  hunter: class silhouette contains the base v2 silhouette in all head/torso/arm rows (same chibi proportions, nothing thinner)  -> 0 px []
+PASS  hunter: legs and boots also contain the base v2 leg silhouette (same stance and foot placement)  -> 0 px []
+PASS  hunter: head and hand anchors equal humanoid base v2 in all 24 frames  -> []
+PASS  hunter: <=3 connected parts per frame and no stray pixel groups (< 6 px)  -> []
+INFO  hunter: opaque non-outline pixels touching background (selective outline allowed for flame/feather/glint tips): 376 over the sheet
+PASS  hunter/down: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.82,+0.82,+0.81,+0.82,+0.82,+0.82 v +0.40,+0.38,+0.37,+0.40,+0.40,+0.40
+PASS  hunter/left: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.64,+0.65,+0.63,+0.64,+0.63,+0.64 v +0.65,+0.64,+0.64,+0.66,+0.61,+0.66
+PASS  hunter/right: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +1.00,+1.00,+1.00,+1.00,+1.00,+1.00 v +0.54,+0.53,+0.52,+0.56,+0.54,+0.53
+PASS  hunter/up: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.56,+0.55,+0.55,+0.56,+0.56,+0.56 v +0.30,+0.29,+0.28,+0.30,+0.31,+0.30
+INFO  hunter: head-aligned change between neighbouring frames incl. attachments (planted weapons and body-anchored items shift relative to the head by design): max 64 px
+PASS  hunter: silhouette centroid x moves <= 1.5px between neighbouring frames  -> max 0.33px
+PASS  hunter: hair/headwear (base face + overlay, attachments removed) is pixel-identical in all six frames of each direction when aligned to the head anchor  -> []
+INFO  hunter: head-aligned differences idle0 vs idle1 over the head window rows (weapon/torso overlap rows only): [('down', 61), ('left', 6), ('right', 6), ('up', 6)]
+INFO  === assassin ===
+PASS  assassin: RGBA 240x192 (= base v2 sheet size), alpha only 0/255
+PASS  assassin: every colour is in the declared palette (24 colours, <= 30)  -> 23 used of 24
+PASS  assassin: no empty frame and >=1px transparent padding in all 24 frames  -> min padding 1px
+PASS  assassin: 24 distinct frames
+PASS  assassin: lowest pixel is on the base ground row y=44 in every frame  -> []
+PASS  assassin: every frame has >=3 ground-contact pixels on y=44  -> []
+PASS  assassin: eyes, brows, blush/mouth pixels of base v2 appear unchanged at the same positions in all 24 frames (shared face, same head anchor)  -> []
+INFO  assassin: blush/mouth pixels hidden by the scarf mask (class design): 48 px over the sheet; eyes and brows always visible
+PASS  assassin: class silhouette contains the base v2 silhouette in all head/torso/arm rows (same chibi proportions, nothing thinner)  -> 0 px []
+PASS  assassin: legs and boots also contain the base v2 leg silhouette (same stance and foot placement)  -> 0 px []
+PASS  assassin: head and hand anchors equal humanoid base v2 in all 24 frames  -> []
+PASS  assassin: <=3 connected parts per frame and no stray pixel groups (< 6 px)  -> []
+INFO  assassin: opaque non-outline pixels touching background (selective outline allowed for flame/feather/glint tips): 330 over the sheet
+PASS  assassin/down: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.88,+0.92,+0.88,+0.88,+0.88,+0.88 v +0.32,+0.37,+0.32,+0.32,+0.36,+0.32
+PASS  assassin/left: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.59,+0.59,+0.60,+0.60,+0.60,+0.59 v +0.28,+0.28,+0.27,+0.30,+0.21,+0.29
+PASS  assassin/right: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +1.00,+1.00,+1.00,+1.00,+1.00,+1.00 v +0.71,+0.68,+0.68,+0.72,+0.64,+0.70
+PASS  assassin/up: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.53,+0.52,+0.52,+0.53,+0.52,+0.53 v +0.39,+0.37,+0.37,+0.39,+0.40,+0.39
+INFO  assassin: head-aligned change between neighbouring frames incl. attachments (planted weapons and body-anchored items shift relative to the head by design): max 14 px
+PASS  assassin: silhouette centroid x moves <= 1.5px between neighbouring frames  -> max 0.30px
+PASS  assassin: hair/headwear (base face + overlay, attachments removed) is pixel-identical in all six frames of each direction when aligned to the head anchor  -> []
+INFO  assassin: head-aligned differences idle0 vs idle1 over the head window rows (weapon/torso overlap rows only): []
+INFO  === mage ===
+PASS  mage: RGBA 240x192 (= base v2 sheet size), alpha only 0/255
+PASS  mage: every colour is in the declared palette (25 colours, <= 30)  -> 25 used of 25
+PASS  mage: no empty frame and >=1px transparent padding in all 24 frames  -> min padding 1px
+PASS  mage: 24 distinct frames
+PASS  mage: lowest pixel is on the base ground row y=44 in every frame  -> []
+PASS  mage: every frame has >=3 ground-contact pixels on y=44  -> []
+PASS  mage: eyes, brows, blush/mouth pixels of base v2 appear unchanged at the same positions in all 24 frames (shared face, same head anchor)  -> []
+PASS  mage: class silhouette contains the base v2 silhouette in all head/torso/arm rows (same chibi proportions, nothing thinner)  -> 0 px []
+PASS  mage: head and hand anchors equal humanoid base v2 in all 24 frames  -> []
+PASS  mage: <=3 connected parts per frame and no stray pixel groups (< 6 px)  -> []
+INFO  mage: opaque non-outline pixels touching background (selective outline allowed for flame/feather/glint tips): 420 over the sheet
+PASS  mage/down: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.69,+0.69,+0.69,+0.70,+0.70,+0.70 v +0.68,+0.70,+0.67,+0.69,+0.68,+0.69
+PASS  mage/left: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.60,+0.60,+0.60,+0.59,+0.60,+0.59 v +0.67,+0.67,+0.67,+0.69,+0.62,+0.68
+PASS  mage/right: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +1.00,+1.00,+1.00,+1.00,+1.00,+1.00 v +0.72,+0.72,+0.69,+0.75,+0.72,+0.74
+PASS  mage/up: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.48,+0.47,+0.48,+0.49,+0.48,+0.48 v +0.62,+0.59,+0.61,+0.64,+0.62,+0.64
+INFO  mage: head-aligned change between neighbouring frames incl. attachments (planted weapons and body-anchored items shift relative to the head by design): max 89 px
+PASS  mage: silhouette centroid x moves <= 1.5px between neighbouring frames  -> max 0.18px
+PASS  mage: hair/headwear (base face + overlay, attachments removed) is pixel-identical in all six frames of each direction when aligned to the head anchor  -> []
+INFO  mage: head-aligned differences idle0 vs idle1 over the head window rows (weapon/torso overlap rows only): [('down', 69), ('left', 31), ('right', 31), ('up', 69)]
+INFO  === necromancer ===
+PASS  necromancer: RGBA 240x192 (= base v2 sheet size), alpha only 0/255
+PASS  necromancer: every colour is in the declared palette (22 colours, <= 30)  -> 21 used of 22
+PASS  necromancer: no empty frame and >=1px transparent padding in all 24 frames  -> min padding 1px
+PASS  necromancer: 24 distinct frames
+PASS  necromancer: lowest pixel is on the base ground row y=44 in every frame  -> []
+PASS  necromancer: every frame has >=3 ground-contact pixels on y=44  -> []
+PASS  necromancer: eyes, brows, blush/mouth pixels of base v2 appear unchanged at the same positions in all 24 frames (shared face, same head anchor)  -> []
+PASS  necromancer: class silhouette contains the base v2 silhouette in all head/torso/arm rows (same chibi proportions, nothing thinner)  -> 0 px []
+PASS  necromancer: head and hand anchors equal humanoid base v2 in all 24 frames  -> []
+PASS  necromancer: <=3 connected parts per frame and no stray pixel groups (< 6 px)  -> []
+INFO  necromancer: opaque non-outline pixels touching background (selective outline allowed for flame/feather/glint tips): 373 over the sheet
+PASS  necromancer/down: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.65,+0.65,+0.66,+0.66,+0.66,+0.66 v +0.32,+0.32,+0.33,+0.36,+0.35,+0.33
+PASS  necromancer/left: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.46,+0.46,+0.46,+0.47,+0.46,+0.47 v +0.27,+0.25,+0.29,+0.28,+0.25,+0.28
+PASS  necromancer/right: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +1.00,+1.00,+1.00,+1.00,+1.00,+1.00 v +0.31,+0.29,+0.29,+0.34,+0.32,+0.34
+PASS  necromancer/up: lit from the upper left in every frame, cloth/hair/metal ramps (horizontal tone score >= +0.15, vertical >= 0.00; skin excluded: hood/brim cast shadows are intentional)  -> h +0.46,+0.45,+0.46,+0.46,+0.46,+0.46 v +0.11,+0.09,+0.11,+0.14,+0.13,+0.12
+INFO  necromancer: head-aligned change between neighbouring frames incl. attachments (planted weapons and body-anchored items shift relative to the head by design): max 111 px
+PASS  necromancer: silhouette centroid x moves <= 1.5px between neighbouring frames  -> max 0.15px
+PASS  necromancer: hair/headwear (base face + overlay, attachments removed) is pixel-identical in all six frames of each direction when aligned to the head anchor  -> []
+INFO  necromancer: head-aligned differences idle0 vs idle1 over the head window rows (weapon/torso overlap rows only): [('down', 92), ('left', 83), ('right', 67), ('up', 91)]
+INFO  silhouette difference (XOR/union, idle0, minimum over the four directions): swordsman-hunter 0.13; swordsman-assassin 0.13; swordsman-mage 0.19; swordsman-necromancer 0.14; hunter-assassin 0.11; hunter-mage 0.18; hunter-necromancer 0.19; assassin-mage 0.18; assassin-necromancer 0.18; mage-necromancer 0.18
+INFO  class-specific silhouette = pixels outside the shared base v2 silhouette (hats, hoods, capes, hems, weapons); pairwise Jaccard distance (min, mean over four directions): swordsman-hunter 0.64/0.76; swordsman-assassin 0.78/0.87; swordsman-mage 0.79/0.90; swordsman-necromancer 0.69/0.86; hunter-assassin 0.83/0.90; hunter-mage 0.74/0.77; hunter-necromancer 0.80/0.85; assassin-mage 0.83/0.91; assassin-necromancer 0.82/0.92; mage-necromancer 0.51/0.66
+INFO  extension pixels per class (down,left,right,up): swordsman [103, 139, 139, 94]; hunter [148, 206, 206, 80]; assassin [77, 42, 42, 52]; mage [179, 227, 227, 150]; necromancer [176, 227, 227, 168]
+PASS  every class adds >= 40 class-specific silhouette pixels (hat/hood/cape/hem/weapon) beyond the shared body in every direction  -> {}
+PASS  class-specific silhouettes of every pair differ (mean Jaccard distance over four directions >= 0.60, minimum >= 0.35)  -> {}
+PASS  class colour languages are clearly distinct (hue/neutral-value histogram distance of non-skin, non-outline pixels >= 0.30 between every pair)  -> []
+INFO  hue-histogram distance range: 0.58-0.97
+INFO  silhouette height x width at idle0 (down,left,right,up): swordsman [(43, 28), (43, 26), (43, 26), (43, 28)]; hunter [(43, 29), (43, 27), (43, 27), (43, 26)]; assassin [(43, 30), (43, 27), (43, 27), (43, 30)]; mage [(43, 27), (43, 29), (43, 29), (43, 27)]; necromancer [(43, 27), (43, 29), (43, 29), (43, 26)]
+PASS  swordsman: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  hunter: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  assassin: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  mage: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  necromancer: rebuilt sheet == staged PNG (pixel/byte exact)
+PASS  metadata JSON equals regenerated metadata for all five classes
+PASS  rebuilt gallery and per-class contact sheets (1x/2x/5x) == staged previews (pixel exact)
+PASS  rebuilt silhouette sheet == staged
+PASS  exported parts/*/*.txt match the source modules
+PASS  required docs present (SPEC.md, CLASS_DESIGN.md)
+PASS  base v2 dependency hashes in metadata still match the files used to build
+
+FAILS: []

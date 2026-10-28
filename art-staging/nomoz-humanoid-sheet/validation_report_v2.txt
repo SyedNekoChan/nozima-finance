@@ -1,0 +1,73 @@
+PASS  body: RGBA 240x192  -> RGBA (240, 192)
+PASS  body: alpha only 0/255  -> [0, 255]
+PASS  hair: RGBA 240x192  -> RGBA (240, 192)
+PASS  hair: alpha only 0/255  -> [0, 255]
+PASS  comp: RGBA 240x192  -> RGBA (240, 192)
+PASS  comp: alpha only 0/255  -> [0, 255]
+PASS  mask: RGBA 240x192  -> RGBA (240, 192)
+PASS  mask: alpha only 0/255  -> [0, 255]
+PASS  body: colours all in declared 23-colour palette  -> 20 used
+PASS  hair: colours all in declared 23-colour palette  -> 5 used
+PASS  comp: colours all in declared 23-colour palette  -> 23 used
+PASS  composite == body + hair (pixel exact)
+PASS  staged body sheet == rebuild from source/parts_v2.py
+PASS  staged hair sheet == rebuild from source/parts_v2.py
+PASS  staged composite == rebuild from source/parts_v2.py
+PASS  staged underlayer mask == recomputed from body grids
+PASS  underlayer mask lies inside body alpha  -> []
+PASS  every clothing-coloured body pixel is covered by the mask  -> []
+PASS  hair confined to head window (x9..30,y2..23)  -> []
+PASS  every hair pixel lies over a body pixel (head silhouette contains hair)  -> []
+PASS  no empty frames
+PASS  no frame touches its border (>=1px padding)  -> min padding 2px
+PASS  lowest body pixel is on ground row y=44 in all 24 frames  -> []
+PASS  24 distinct frames (all pairs differ, whole sheet)
+PASS  every frame has >=6 ground-contact pixels on y=44  -> []
+PASS  head anchor: x fixed at 9 and y = 3 + bob + breath in every frame/direction  -> []
+PASS  measured head-top row from the PNG matches the head anchor  -> []
+PASS  shirt top row follows only the documented body bob (<=1px of expectation)  -> []
+PASS  front/back hand anchors within 1px of 32+bob  -> []
+PASS  side hand anchors at y=32+bob  -> []
+PASS  left/right hand anchors are mirror images (x -> 39-x)  -> []
+PASS  left: contact poses (walk0/walk2) spread the feet wider than idle (13,13 vs 7 px)
+PASS  left/walk1: passing pose shows a lifted foot (>=6px sole outline run on y=42)  -> longest outline run 6px
+PASS  left/walk3: passing pose shows a lifted foot (>=6px sole outline run on y=42)  -> longest outline run 8px
+PASS  right: contact poses (walk0/walk2) spread the feet wider than idle (13,13 vs 7 px)
+PASS  right/walk1: passing pose shows a lifted foot (>=6px sole outline run on y=42)  -> longest outline run 6px
+PASS  right/walk3: passing pose shows a lifted foot (>=6px sole outline run on y=42)  -> longest outline run 8px
+PASS  down/walk0: one foot planted on y=44, the stepping foot clear of the ground  -> ground px 6, lifted px 6
+PASS  down/walk2: one foot planted on y=44, the stepping foot clear of the ground  -> ground px 6, lifted px 6
+PASS  up/walk0: one foot planted on y=44, the stepping foot clear of the ground  -> ground px 6, lifted px 6
+PASS  up/walk2: one foot planted on y=44, the stepping foot clear of the ground  -> ground px 6, lifted px 6
+PASS  horizontal centroid change between neighbouring frames <=1.5px (idle0->idle1, walk steps)  -> max 0.32px
+PASS  per-direction centroid x drift over 6 frames <=2.5px  -> [('down', 0.1), ('left', 0.33), ('right', 0.33), ('up', 0.1)]
+INFO  centroid x per direction (idle0..walk3): down 19.5,19.5,19.5,19.5,19.5,19.5; left 19.6,19.6,19.6,19.3,19.6,19.3; right 19.4,19.4,19.4,19.7,19.4,19.7; up 19.5,19.5,19.5,19.5,19.5,19.5
+INFO  v1 horizontal light score (+1 = light from left) per frame: down +0.70,+0.70,+0.70,+0.71,+0.70,+0.71; left +0.68,+0.68,+0.70,+0.69,+0.69,+0.68; right +0.71,+0.70,+0.74,+0.71,+0.71,+0.71; up +0.75,+0.75,+0.74,+0.75,+0.74,+0.75
+INFO  v1 vertical light score (+1 = light from above): down +0.63,+0.63,+0.62,+0.63,+0.62,+0.63; left +0.35,+0.35,+0.30,+0.35,+0.33,+0.36; right +0.45,+0.45,+0.42,+0.45,+0.40,+0.41; up +0.60,+0.60,+0.59,+0.60,+0.59,+0.60
+INFO  v2 horizontal light score (+1 = light from left) per frame: down +0.68,+0.69,+0.68,+0.69,+0.68,+0.69; left +0.66,+0.66,+0.68,+0.68,+0.68,+0.67; right +0.61,+0.61,+0.60,+0.63,+0.63,+0.63; up +0.69,+0.69,+0.68,+0.69,+0.68,+0.69
+INFO  v2 vertical light score (+1 = light from above): down +0.62,+0.61,+0.61,+0.62,+0.60,+0.62; left +0.36,+0.36,+0.39,+0.41,+0.39,+0.42; right +0.44,+0.44,+0.44,+0.46,+0.43,+0.46; up +0.66,+0.66,+0.65,+0.66,+0.64,+0.66
+PASS  down: every frame lit from the left (horizontal score >= +0.25)  -> min +0.68, mean +0.68
+PASS  down: every frame lit from above (vertical score >= +0.10)  -> min +0.60, mean +0.61
+PASS  left: every frame lit from the left (horizontal score >= +0.25)  -> min +0.66, mean +0.67
+PASS  left: every frame lit from above (vertical score >= +0.10)  -> min +0.36, mean +0.39
+PASS  right: every frame lit from the left (horizontal score >= +0.25)  -> min +0.60, mean +0.62
+PASS  right: every frame lit from above (vertical score >= +0.10)  -> min +0.43, mean +0.44
+PASS  up: every frame lit from the left (horizontal score >= +0.25)  -> min +0.68, mean +0.69
+PASS  up: every frame lit from above (vertical score >= +0.10)  -> min +0.64, mean +0.65
+PASS  right-facing lighting within 0.20 of left-facing (mean horizontal score)  -> left +0.67 right +0.62 (v1 right +0.71)
+INFO  v1 per-material luminance, left half minus right half (positive = light from left): down skin=+17.8,hair=+35.1,shirt=+37.5,pants=+0.0,lea=+9.0; left skin=+11.1,hair=+27.7,shirt=+37.5,pants=+16.2,lea=+18.1; right skin=+15.5,hair=+16.6,shirt=+43.6,pants=+22.8,lea=+20.5; up skin=+23.0,hair=+22.4,shirt=+37.5,pants=+0.0,lea=+9.0
+INFO  v2 per-material luminance, left half minus right half (positive = light from left): down skin=+15.4,hair=+35.1,shirt=+36.5,pants=+12.4,lea=+9.0; left skin=+12.6,hair=+26.7,shirt=+33.2,pants=+8.8,lea=+12.3; right skin=+4.7,hair=+15.6,shirt=+50.5,pants=+11.9,lea=+2.9; up skin=+30.6,hair=+22.7,shirt=+35.6,pants=+12.4,lea=+9.0
+PASS  down: all five materials (skin, hair, shirt, trousers, leather) are brighter on the left half than the right  -> {'skin': 15.4, 'hair': 35.1, 'shirt': 36.5, 'pants': 12.4, 'lea': 9.0}
+PASS  left: all five materials (skin, hair, shirt, trousers, leather) are brighter on the left half than the right  -> {'skin': 12.6, 'hair': 26.7, 'shirt': 33.2, 'pants': 8.8, 'lea': 12.3}
+PASS  right: all five materials (skin, hair, shirt, trousers, leather) are brighter on the left half than the right  -> {'skin': 4.7, 'hair': 15.6, 'shirt': 50.5, 'pants': 11.9, 'lea': 2.9}
+PASS  up: all five materials (skin, hair, shirt, trousers, leather) are brighter on the left half than the right  -> {'skin': 30.6, 'hair': 22.7, 'shirt': 35.6, 'pants': 12.4, 'lea': 9.0}
+INFO  isolated pixels (no 4-neighbour of the same colour), whole composite sheet: v1 515, v2 588
+INFO  colours used: v2 composite 23 / 23
+PASS  metadata frame 40x48, sheet 240x192, 6 cols x 4 rows
+PASS  metadata row/column order unchanged from v1
+PASS  metadata ground anchor (20,45), foot baseline 44 unchanged
+PASS  metadata per-frame anchors equal the rebuilt anchors
+PASS  metadata animation timing unchanged from v1
+PASS  metadata layer draw order and future slots unchanged from v1
+
+FAILS: []

@@ -1,0 +1,44 @@
+{
+ "set": "nm_class_sprites",
+ "version": 1,
+ "classes": [
+  {
+   "id": "nm_class_swordsman",
+   "file": "nm_class_swordsman_v1.png",
+   "metadata": "nm_class_swordsman_v1.json",
+   "sha256": "11a10f5d79152a2db4d6475f08b594b7a4260acc3420706ae7b26816adef8974"
+  },
+  {
+   "id": "nm_class_hunter",
+   "file": "nm_class_hunter_v1.png",
+   "metadata": "nm_class_hunter_v1.json",
+   "sha256": "c952176570ddb6a398dddbbe6d3d973468be9612247560efb1423ee4fb3c2416"
+  },
+  {
+   "id": "nm_class_assassin",
+   "file": "nm_class_assassin_v1.png",
+   "metadata": "nm_class_assassin_v1.json",
+   "sha256": "9956aae422cab95af1f7547fc98e3adc16eca12244046f649828adc852c16521"
+  },
+  {
+   "id": "nm_class_mage",
+   "file": "nm_class_mage_v1.png",
+   "metadata": "nm_class_mage_v1.json",
+   "sha256": "c70232e5de385ea87025e8c52ecd94fdeaf937e9be335595bbdeac6368708966"
+  },
+  {
+   "id": "nm_class_necromancer",
+   "file": "nm_class_necromancer_v1.png",
+   "metadata": "nm_class_necromancer_v1.json",
+   "sha256": "7ad4256d7dd83e3663b90c48bf02234e6d27f34ea4720313178f2a02f2859bf2"
+  }
+ ],
+ "gallery_order": [
+  "swordsman",
+  "hunter",
+  "assassin",
+  "mage",
+  "necromancer"
+ ],
+ "note": "local staging index only; not a game manifest"
+}

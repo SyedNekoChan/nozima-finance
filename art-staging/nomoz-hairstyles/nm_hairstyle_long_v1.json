@@ -1,0 +1,423 @@
+{
+ "id": "nm_hairstyle_long",
+ "version": 1,
+ "category": "hairstyle",
+ "slot": "hair",
+ "style": "long",
+ "base": {
+  "id": "nm_humanoid_base",
+  "version": 2,
+  "files_sha256": {
+   "SPEC_v2.md": "cb49206ed67a00c486fbda70102b72353878025069d86d255f7d815764c99ca1",
+   "nm_humanoid_base_v2.json": "7e226bef78a901cae87ed8aa114399629fd0a654ed20211adc4c1554a91f31ad",
+   "nm_humanoid_base_body_sheet_v2.png": "196e319836abeb1014523d24b7bd21b9c0923d21ca0346fa88f0e46ea4db483b",
+   "nm_humanoid_base_hair_default_sheet_v2.png": "b5f5a4e338d4a46eadcfa86f902dde9052396452a94e4c3935d0f4c254c325ab",
+   "nm_humanoid_base_underlayer_mask_sheet_v2.png": "a7dffc5624483a28c4a750e4c9e6ede7be48dafa6a2dc38ffe1b5c03230db149"
+  }
+ },
+ "clothing": {
+  "id": "nm_clothing_basic_adventurer",
+  "version": 1,
+  "files_sha256": {
+   "nm_clothing_basic_adventurer_sheet_v1.png": "e248e09b7d0e33b8c67ee91e63b17d71b16169fcb2df74a3f0253c784535e44d",
+   "nm_clothing_basic_adventurer_v1.json": "1d1c18de38653ccb19c4418cfe8c9c0d3eee410c7e4fcceb8457f8131aef88af"
+  }
+ },
+ "sheet": {
+  "file": "nm_hairstyle_long_v1.png",
+  "sha256": "5b6ca25c33470061f0df82ff19ccc98df333ac831853012c0d4ba6d16c640f80",
+  "width": 240,
+  "height": 192,
+  "columns": 6,
+  "rows": 4
+ },
+ "frame": {
+  "width": 40,
+  "height": 48
+ },
+ "row_order": [
+  "down",
+  "left",
+  "right",
+  "up"
+ ],
+ "column_order": [
+  "idle0",
+  "idle1",
+  "walk0",
+  "walk1",
+  "walk2",
+  "walk3"
+ ],
+ "animations": {
+  "idle": {
+   "columns": [
+    0,
+    1
+   ],
+   "frame_ms": 600,
+   "loop": true
+  },
+  "walk": {
+   "columns": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "frame_ms": 140,
+   "loop": true
+  }
+ },
+ "anchors": {
+  "head_anchor": "frame (9, 3+bob+breath); head window 22x20 (base anchors unchanged)",
+  "part_box": {
+   "width": 26,
+   "height": 31,
+   "origin_offset_from_head_anchor": [
+    -2,
+    -1
+   ]
+  },
+  "per_frame": {
+   "down/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "down/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "box_origin": [
+     7,
+     3
+    ]
+   },
+   "down/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "down/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "down/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "down/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "left/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "left/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "box_origin": [
+     7,
+     3
+    ]
+   },
+   "left/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "left/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "left/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "left/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "right/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "right/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "box_origin": [
+     7,
+     3
+    ]
+   },
+   "right/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "right/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "right/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "right/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "up/idle0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "up/idle1": {
+    "head_origin": [
+     9,
+     4
+    ],
+    "box_origin": [
+     7,
+     3
+    ]
+   },
+   "up/walk0": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "up/walk1": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   },
+   "up/walk2": {
+    "head_origin": [
+     9,
+     3
+    ],
+    "box_origin": [
+     7,
+     2
+    ]
+   },
+   "up/walk3": {
+    "head_origin": [
+     9,
+     2
+    ],
+    "box_origin": [
+     7,
+     1
+    ]
+   }
+  }
+ },
+ "layer": {
+  "draw_order": [
+   "body (nm_humanoid_base_body_sheet_v2)",
+   "clothing (nm_clothing_basic_adventurer_sheet_v1 or none)",
+   "hair: this sheet instead of nm_humanoid_base_hair_default_sheet_v2"
+  ],
+  "compositing": "alpha-over per 40x48 cell; hair is the top-most of these layers",
+  "swappable": "independent: replaces only the default hair layer; body and clothing sheets are not modified"
+ },
+ "coverage": {
+  "may_cover": [
+   "head skin",
+   "head outline pixels (hair draws its own outline)",
+   "nape/ear skin as designed per direction",
+   "clothing: shoulders/chest (long front locks), upper back (long, up view), torso back edge (long, side tail)"
+  ],
+  "must_not_cover": [
+   "eyes, brows, nose bump, blush/mouth pixels of the base head",
+   "hands and forearms (body skin at y >= 27+bob)"
+  ],
+  "overhang": {
+   "short": "none (stays inside the base head silhouette)",
+   "medium": "up to 2 px beyond the head window on the sides/top (box ox=-2, oy=-2)",
+   "long": "up to 2 px beyond the window sides; falls below the head to window row 27 (about y=30+bob)"
+  }
+ },
+ "palette": {
+  "outline": "#17121f (shared)",
+  "ramp_dark_to_light": [
+   "#5a4a2e",
+   "#977f47",
+   "#cfb46f",
+   "#f3e6ae"
+  ],
+  "lighting": "upper-left"
+ },
+ "design": "Long cut: curtain bangs around a forehead triangle, side curtains continuing into two chest locks (front), a long fall over the back (up) or behind the body (side) with a stepped tip. Pale-gold palette.",
+ "secondary_motion": {
+  "down": [
+   {
+    "from_window_row": 26,
+    "window_cols": [
+     -1,
+     10
+    ],
+    "dx_by_frame": {
+     "walk0": 1
+    }
+   },
+   {
+    "from_window_row": 26,
+    "window_cols": [
+     11,
+     22
+    ],
+    "dx_by_frame": {
+     "walk2": -1
+    }
+   }
+  ],
+  "left": [
+   {
+    "from_window_row": 25,
+    "window_cols": [
+     12,
+     22
+    ],
+    "dx_by_frame": {
+     "walk0": 1,
+     "walk2": 1
+    }
+   }
+  ],
+  "right": [
+   {
+    "from_window_row": 25,
+    "window_cols": [
+     -1,
+     9
+    ],
+    "dx_by_frame": {
+     "walk0": -1,
+     "walk2": -1
+    }
+   }
+  ],
+  "up": []
+ },
+ "authoring": {
+  "hand_typed": "window/box rows for all four directions, typed separately per direction (right-facing is not run through a mirror)",
+  "post_process": "despeckle of single mid-tone pixels (medium, long) then coordinate-placed strand strokes; see hair_parts.py"
+ },
+ "excludes": [
+  "headwear",
+  "accessories",
+  "alternate outfits",
+  "weapons"
+ ]
+}

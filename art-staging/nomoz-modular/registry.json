@@ -1,0 +1,262 @@
+{
+ "kit": "nomoz-modular-humanoid",
+ "version": "0.2.0-stage1",
+ "status": "unapproved",
+ "canvas": [
+  44,
+  48
+ ],
+ "scale": "1 art px = 1 PNG px; render at integer scale, nearest-neighbour",
+ "rules": "All parts share the 44x48 canvas at origin (0,0): composite by layer ascending, no offsets. One item per slot; 'excludes' lists parts that cannot be combined.",
+ "outline": "#010101",
+ "light": "upper-left",
+ "anchors": {
+  "feet_baseline_y": 46,
+  "axis_x": 21.5,
+  "head_box": [
+   10,
+   3,
+   33,
+   22
+  ],
+  "neck": [
+   21.5,
+   23
+  ],
+  "hand_right_grip": [
+   31.5,
+   36
+  ],
+  "hand_left": [
+   11.5,
+   36
+  ]
+ },
+ "ramps": {
+  "skin": [
+   "#a07f70",
+   "#d2af9c",
+   "#f0d7c1"
+  ],
+  "hair": [
+   "#2b1d16",
+   "#5a3f2a",
+   "#8b6a44"
+  ],
+  "cloth": [
+   "#17304a",
+   "#245070",
+   "#3a7f93",
+   "#6cbdb0"
+  ],
+  "cap": [
+   "#6b2f1f",
+   "#9a4a2a",
+   "#c8793a",
+   "#e8b866"
+  ],
+  "pants": [
+   "#2a2433",
+   "#443b52",
+   "#6a5f7d"
+  ],
+  "trim": [
+   "#382a21",
+   "#5a3f2a",
+   "#8b6a44"
+  ],
+  "steel": [
+   "#4f4f4f",
+   "#737373",
+   "#b5b5b5",
+   "#e8e8e8"
+  ],
+  "wood": [
+   "#382a21",
+   "#5a3f2a",
+   "#7d5a3c"
+  ]
+ },
+ "ramp_note": "ramps are listed dark->light; recolour by swapping a ramp with same length and value order. Fixed: outline #010101, eye #1d1628, white #ffffff.",
+ "presets": {
+  "cloth": {
+   "forest_green": [
+    "#1f3a2a",
+    "#2f5a3c",
+    "#4f8a54",
+    "#78b36f"
+   ],
+   "ember_red": [
+    "#4a1a2a",
+    "#722a38",
+    "#a8443f",
+    "#d4745a"
+   ]
+  }
+ },
+ "components": [
+  {
+   "id": "nm_body_base",
+   "file": "components/nm_body_base.png",
+   "category": "body",
+   "slot": "body",
+   "layer": 10,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "skin",
+    "pants",
+    "trim"
+   ],
+   "requires": [],
+   "excludes": []
+  },
+  {
+   "id": "nm_head_base",
+   "file": "components/nm_head_base.png",
+   "category": "head",
+   "slot": "head",
+   "layer": 20,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "skin"
+   ],
+   "requires": [
+    "nm_body_base"
+   ],
+   "excludes": []
+  },
+  {
+   "id": "nm_hair_short",
+   "file": "components/nm_hair_short.png",
+   "category": "hair",
+   "slot": "headwear",
+   "layer": 40,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "hair"
+   ],
+   "requires": [
+    "nm_head_base"
+   ],
+   "excludes": [
+    "nm_cap_round"
+   ]
+  },
+  {
+   "id": "nm_cap_round",
+   "file": "components/nm_cap_round.png",
+   "category": "headwear",
+   "slot": "headwear",
+   "layer": 40,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "cap"
+   ],
+   "requires": [
+    "nm_head_base"
+   ],
+   "excludes": [
+    "nm_hair_short"
+   ]
+  },
+  {
+   "id": "nm_tunic_short",
+   "file": "components/nm_tunic_short.png",
+   "category": "clothing",
+   "slot": "clothing",
+   "layer": 30,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "cloth",
+    "trim",
+    "steel"
+   ],
+   "requires": [
+    "nm_body_base"
+   ],
+   "excludes": [
+    "nm_coat_long"
+   ]
+  },
+  {
+   "id": "nm_coat_long",
+   "file": "components/nm_coat_long.png",
+   "category": "clothing",
+   "slot": "clothing",
+   "layer": 30,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "cloth",
+    "trim"
+   ],
+   "requires": [
+    "nm_body_base"
+   ],
+   "excludes": [
+    "nm_tunic_short"
+   ]
+  },
+  {
+   "id": "nm_sword_short",
+   "file": "components/nm_sword_short.png",
+   "category": "weapon",
+   "slot": "weapon",
+   "layer": 50,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "steel",
+    "trim",
+    "wood"
+   ],
+   "requires": [
+    "nm_body_base"
+   ],
+   "excludes": [
+    "nm_axe_hand"
+   ]
+  },
+  {
+   "id": "nm_axe_hand",
+   "file": "components/nm_axe_hand.png",
+   "category": "weapon",
+   "slot": "weapon",
+   "layer": 50,
+   "size": [
+    44,
+    48
+   ],
+   "ramps": [
+    "steel",
+    "wood",
+    "trim"
+   ],
+   "requires": [
+    "nm_body_base"
+   ],
+   "excludes": [
+    "nm_sword_short"
+   ]
+  }
+ ]
+}

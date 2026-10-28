@@ -1,0 +1,23 @@
+PASS  body: mode RGBA and size 240x192  -> RGBA (240, 192)
+PASS  body: alpha is only 0/255  -> [0, 255]
+PASS  hair: mode RGBA and size 240x192  -> RGBA (240, 192)
+PASS  hair: alpha is only 0/255  -> [0, 255]
+PASS  comp: mode RGBA and size 240x192  -> RGBA (240, 192)
+PASS  comp: alpha is only 0/255  -> [0, 255]
+PASS  mask: mode RGBA and size 240x192  -> RGBA (240, 192)
+PASS  mask: alpha is only 0/255  -> [0, 255]
+PASS  body: every colour belongs to the declared palette  -> 20 colours used of 23
+PASS  hair: every colour belongs to the declared palette  -> 5 colours used of 23
+PASS  comp: every colour belongs to the declared palette  -> 23 colours used of 23
+PASS  composite equals body + hair composited
+PASS  no empty frames  -> []
+PASS  no frame touches its border (transparent padding >=1px)  -> minimum padding 2px
+PASS  lowest body pixel sits on ground row y=44 in every frame  -> []
+PASS  sheet cells are independent (frame crops tile the sheet exactly)
+PASS  hair stays inside the head box (x9..30, y2..23)  -> []
+PASS  horizontal centroid jitter between neighbouring frames <= 1.5px  -> max 0.11px (idle->idle, walk->walk)
+PASS  per-direction centroid drift across all 6 frames <= 2.5px  -> [('down', 0.1), ('left', 0.11), ('right', 0.11), ('up', 0.1)]
+PASS  no duplicated frames inside a direction  -> []
+PASS  head and hair parts share one 22x20 window in every direction  -> {'head_down': (22, 20), 'head_up': (22, 20), 'head_left': (22, 20), 'hair_down': (22, 20), 'hair_up': (22, 20), 'hair_left': (22, 20)}
+PASS  lighting heuristic: left half brighter than right (direction mean >0 and >=5 of 6 frames >0)  -> {'down': [31.6, 31.8, 32.8, 31.1, 31.4, 31.7], 'left': [45.1, 44.8, 35.9, 43.5, 46.8, 40.9], 'right': [2.5, 2.7, 2.6, 3.9, -7.2, 4.3], 'up': [22.7, 22.7, 22.8, 22.7, 23.2, 22.3]}
+PASS  underlayer mask lies inside body alpha

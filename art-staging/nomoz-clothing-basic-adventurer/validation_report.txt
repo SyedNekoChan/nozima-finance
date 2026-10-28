@@ -1,0 +1,54 @@
+PASS  clothing sheet is RGBA 240x192 (= base v2 sheet size)  -> RGBA (240, 192)
+PASS  alpha is only 0/255
+PASS  every colour is in the declared outfit palette (20 outfit colours + shared outline)  -> 21 of 21 used
+PASS  outfit palette is disjoint from the default underlayer colours (outline excepted)  -> []
+PASS  base v2 files unchanged since the outfit was built (sha256 match)
+PASS  metadata sheet sha256 matches the staged PNG
+PASS  metadata frame/rows/columns/animations equal base v2
+PASS  no clothing pixel outside the underlayer mask (no unintended body coverage / overhang)  -> []
+PASS  every underlayer-mask pixel is covered (clothing alpha == mask alpha, 24 frames)  -> []
+PASS  staged composite == body + clothing + hair (documented draw order, pixel exact)
+PASS  no default-underlayer colour is visible in any composited frame (24 frames)  -> 0 exposed px []
+PASS  body skin and eye pixels are untouched by the clothing layer (hands, neck, face)  -> []
+PASS  composite silhouette (alpha) == base v2 composite silhouette (no gaps, no clipping, nothing added)
+PASS  hair/clothing overlap only on identical outline-colour pixels (so their draw order cannot change the result)  -> 30 shared outline pixels, 0 with different colours
+INFO  shared hair/clothing pixels: [('up', 'idle0'), ('up', 'idle1'), ('up', 'walk0'), ('up', 'walk1'), ('up', 'walk2'), ('up', 'walk3')] (head-bottom outline pixels in the up view that the base mask includes because they touch the collar)
+PASS  clothing keeps >=1px transparent padding inside every frame cell  -> min 3px
+PASS  24 distinct clothing frames
+PASS  every cloth-coloured underlayer pixel was painted by an outfit part (no reliance on fill)  -> []
+INFO  outline-colour fill used on 168 underlayer outline pixels across the sheet; outfit paint clipped by body occluders (head/hands) on 362 pixels
+PASS  first coloured torso row = 24+bob (23+bob in the up view, which has collar trim on the top row), belt top = 31+bob, lowest boot pixel y=44 in all 24 frames (base anchors)  -> []
+PASS  buckle: centre-front (down), front-left (left), front-right (right), none on the back (up); hidden only when the near arm swings forward (side walk2)  -> []
+PASS  clothing centroid x moves <=1.5px between neighbouring frames (incl. walk loop walk3->walk0 wrap, idle0->idle1)  -> max 1.26px
+PASS  belt row moves <=1px between neighbouring frames  -> max 1px
+INFO  tunic-green pixel count per frame: down 94,94,94,94,94,94; left 29,29,29,29,28,29; right 29,29,29,29,28,29; up 104,104,104,104,104,104
+PASS  tunic pixel count varies <=12% within each direction (no pop between frames)
+INFO  down: horizontal light score per frame +0.85,+0.85,+0.84,+0.85,+0.84,+0.85; vertical +0.82,+0.82,+0.81,+0.82,+0.81,+0.82
+PASS  down: every frame lit from the left (horizontal tone score >= +0.25)  -> min +0.84
+PASS  down: every frame lit from above (vertical tone score >= +0.10)  -> min +0.81
+INFO  left: horizontal light score per frame +1.00,+1.00,+1.00,+1.00,+1.00,+1.00; vertical +1.00,+1.00,+0.90,+1.00,+0.85,+1.00
+PASS  left: every frame lit from the left (horizontal tone score >= +0.25)  -> min +1.00
+PASS  left: every frame lit from above (vertical tone score >= +0.10)  -> min +0.85
+INFO  right: horizontal light score per frame +1.00,+1.00,+1.00,+1.00,+1.00,+1.00; vertical +1.00,+1.00,+1.00,+1.00,+1.00,+1.00
+PASS  right: every frame lit from the left (horizontal tone score >= +0.25)  -> min +1.00
+PASS  right: every frame lit from above (vertical tone score >= +0.10)  -> min +1.00
+INFO  up: horizontal light score per frame +0.80,+0.80,+0.80,+0.81,+0.79,+0.81; vertical +0.89,+1.00,+0.89,+0.89,+0.89,+0.89
+PASS  up: every frame lit from the left (horizontal tone score >= +0.25)  -> min +0.79
+PASS  up: every frame lit from above (vertical tone score >= +0.10)  -> min +0.89
+INFO  down: per-material luminance left half minus right half tunic=+41.7, trousers=+21.4, boots=+16.9
+PASS  down: tunic, trousers and boots are each brighter on the left half than the right  -> {'tunic': 41.7, 'trousers': 21.4, 'boots': 16.9}
+INFO  left: per-material luminance left half minus right half tunic=+32.6, trousers=+9.1, boots=+6.4
+PASS  left: tunic, trousers and boots are each brighter on the left half than the right  -> {'tunic': 32.6, 'trousers': 9.1, 'boots': 6.4}
+INFO  right: per-material luminance left half minus right half tunic=+61.7, trousers=+12.9, boots=+10.2
+PASS  right: tunic, trousers and boots are each brighter on the left half than the right  -> {'tunic': 61.7, 'trousers': 12.9, 'boots': 10.2}
+INFO  up: per-material luminance left half minus right half tunic=+38.6, trousers=+21.4, boots=+16.9
+PASS  up: tunic, trousers and boots are each brighter on the left half than the right  -> {'tunic': 38.6, 'trousers': 21.4, 'boots': 16.9}
+PASS  tunic mean colour differs clearly from the default shirt (RGB distance > 40)  -> 113
+PASS  trousers mean colour differs clearly from the default trousers (distance > 40)  -> 53
+PASS  rebuilt clothing sheet == staged PNG (pixel/byte exact)
+PASS  rebuilt composite == staged composite PNG (pixel/byte exact)
+PASS  rebuilt 1x/2x/5x contact previews == staged previews (pixel exact)
+PASS  metadata equals a regenerated metadata block
+PASS  exported parts/*.txt match outfit_parts.py
+
+FAILS: []
