@@ -84,6 +84,9 @@ function normalizeClip(id, raw, sheets) {
     throw new Error('anchors must list one entry per clip frame');
   }
 
+  // the ground row for the floor shadow when the art is off the ground (a leap)
+  if (raw.floor !== undefined && !isNat(raw.floor)) throw new Error('floor must be a row number');
+
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
 
@@ -101,6 +104,7 @@ function normalizeClip(id, raw, sheets) {
     anchor: raw.anchor || null,
     under: raw.lighting !== 'baked',
     anchors: anchorList,
+    floor: raw.floor ?? null,
     dynamic: Object.freeze({ head, base, whiskers: dyn.whiskers === true }),
   });
 }

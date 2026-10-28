@@ -108,7 +108,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           }
         });
       }
-      sil = { mask, px, footY: Math.max(2, Math.min(ch - 2, bottom)), feet: [x0 + 2, Math.max(x0 + 2, x1 - 2)], poolX: cw / 2 - 0.5 };
+      sil = { mask, px, footY: clip.floor ?? Math.max(2, Math.min(ch - 2, bottom)), feet: [x0 + 2, Math.max(x0 + 2, x1 - 2)], poolX: cw / 2 - 0.5 };
       silhouettes.set(key, sil);
     }
     return sil;

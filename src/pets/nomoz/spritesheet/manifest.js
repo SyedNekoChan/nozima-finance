@@ -43,54 +43,81 @@
  * Frames face LEFT (the cat's head on the left); `facing > 0` mirrors the
  * whole canvas, as for the procedural cat.
  */
+import { ANCHORS } from './anchors.js';
+import { ART, FRAME, sheetId } from './spec.js';
+
 const sheetUrl = (name) => new URL(`./sheets/${name}.png`, import.meta.url).href;
-const frame = (art, columns) => ({ src: sheetUrl(`nomoz_${art}`), frameWidth: 96, frameHeight: 64, columns, rows: 1 });
 
-// Where the crown and the chest coin sit on each piece of art (canvas
-// coordinates, top-left of the 8 x 4 crown and the 8 x 8 coin).
-const HEAD_FRONT = { crown: [33, 11], chest: [33, 29] };
+// one sheet per art folder: a single row of 96 x 64 frames
+const sheets = Object.fromEntries(
+  Object.entries(ART).map(([id, a]) => [
+    sheetId(id),
+    { src: sheetUrl(sheetId(id)), frameWidth: FRAME.width, frameHeight: FRAME.height, columns: a.frames, rows: 1 },
+  ])
+);
 
-export const SHEET_MANIFEST = {
-  sheets: {
-    nomoz_idle_front: frame('idle_front', 4),
-    nomoz_walk_side: frame('walk_side', 3),
-    nomoz_sit_threeq: frame('sit_threeq', 1),
-    nomoz_sit_doze: frame('sit_doze', 1),
-    nomoz_sit_groom: frame('sit_groom', 1),
-    nomoz_sit_rear: frame('sit_rear', 1),
-    nomoz_curl: frame('curl', 1),
-    nomoz_stretch: frame('stretch', 1),
-  },
-  clips: {
-    // sitting, facing us: breathing between the two open-eye frames
-    idle_front: { sheet: 'nomoz_idle_front', frames: [0, 1], ms: 1000, anchors: HEAD_FRONT },
-    // eyes closed (blink, happy, asleep)
-    idle_front_closed: { sheet: 'nomoz_idle_front', frames: [3], anchors: HEAD_FRONT },
-    walk_side: {
-      sheet: 'nomoz_walk_side',
-      frames: [0, 1, 2],
-      ms: 320,
-      anchors: [{ crown: [9, 12], chest: [9, 30] }, { crown: [9, 12], chest: [9, 30] }, { crown: [9, 12], chest: [9, 30] }],
-    },
-    sit_threeq: { sheet: 'nomoz_sit_threeq', frames: [0], anchors: { crown: [26, 5], chest: [26, 24] } },
-    sit_doze: { sheet: 'nomoz_sit_doze', frames: [0], anchors: { crown: [55, 10], chest: [55, 28] } },
-    sit_groom: { sheet: 'nomoz_sit_groom', frames: [0], anchors: { crown: [35, 9], chest: null } },
-    sit_rear: { sheet: 'nomoz_sit_rear', frames: [0], anchors: { crown: [37, 4], chest: null } },
-    curl: { sheet: 'nomoz_curl', frames: [0], anchors: { crown: null, chest: null } },
-    stretch: { sheet: 'nomoz_stretch', frames: [0], anchors: { crown: null, chest: null } },
-  },
-  // First match wins. Each rule also names what the art does NOT cover (raised
-  // paws, the open book), so those states keep the procedural cat.
-  select: [
-    { when: { pose: 'curl' }, clip: 'curl' },
-    { when: { pose: 'stretch' }, clip: 'stretch' },
-    { when: { pose: 'stand', moving: true, view: 'side', pawL: false, pawR: false, book: false }, clip: 'walk_side' },
-    { when: { pose: 'sit', view: 'rear', book: false }, clip: 'sit_rear' },
-    { when: { pose: 'sit', view: 'frontQ', book: false }, clip: 'sit_threeq' },
-    { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false, book: false }, clip: 'sit_groom' },
-    { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false, book: false }, clip: 'sit_groom' },
-    { when: { pose: 'sit', view: 'front', moving: false, eyes: 'closed', droop: true, pawL: false, pawR: false, book: false }, clip: 'sit_doze' },
-    { when: { pose: 'sit', view: 'front', moving: false, eyes: ['closed', 'blink', 'happy'], pawL: false, pawR: false, book: false }, clip: 'idle_front_closed' },
-    { when: { pose: 'sit', view: 'front', moving: false, pawL: false, pawR: false, book: false }, clip: 'idle_front' },
-  ],
+// a clip over some frames of one art folder; the vanity anchors are measured
+// from the frames (anchors.js, written by `node build.mjs anchors`)
+const clip = (art, frames, extra = {}) => ({
+  sheet: sheetId(art),
+  frames,
+  anchors: frames.map((i) => ANCHORS[art][i]),
+  ...extra,
+});
+
+const VIEWS = ['front', 'frontQ', 'side', 'rearQ', 'rear'];
+const WALK = 320; // ms per frame: three frames = two steps (480 ms each)
+const CREEP = 400;
+
+const clips = {
+  idle_front: clip('idle_front', [0, 1], { ms: 1000 }), // breathing, eyes open
+  idle_front_closed: clip('idle_front', [3]), // eyes closed (blink, happy, asleep)
+  sit_threeq: clip('sit_threeq', [0]),
+  sit_doze: clip('sit_doze', [0]),
+  sit_groom: clip('sit_groom', [0]),
+  sit_rear: clip('sit_rear', [0]),
+  curl: clip('curl', [0]),
+  stretch: clip('stretch', [0]),
+  low_front: clip('low_front', [0, 1], { ms: 1000 }),
+  loaf_front: clip('loaf_front', [0, 1], { ms: 1000 }),
+  // the leap is raised off the ground: the floor shadow stays on row 61
+  leap_front: clip('leap_front', [0], { floor: 61 }),
+  leap_side: clip('leap_side', [0], { floor: 61 }),
 };
+for (const view of VIEWS) {
+  clips[`walk_${view}`] = clip(`walk_${view === 'side' ? 'side' : view}`, [0, 1, 2], { ms: WALK });
+  clips[`stand_${view}`] = clip(`walk_${view}`, [1]); // arriving or waiting on four legs
+  clips[`creep_${view}`] = clip(`creep_${view}`, [0, 1, 2], { ms: CREEP });
+  clips[`crouch_${view}`] = clip(`creep_${view}`, [1]);
+}
+
+// What none of this art shows: a raised forepaw (except grooming) and the open
+// book. Rules name them so those states keep the procedural cat.
+const FREE = { pawL: false, pawR: false, book: false };
+
+const select = [
+  { when: { pose: 'curl' }, clip: 'curl' },
+  { when: { pose: 'stretch' }, clip: 'stretch' },
+  { when: { pose: 'loaf', ...FREE }, clip: 'loaf_front' },
+  { when: { pose: 'low', ...FREE }, clip: 'low_front' },
+  // hopping (legs 3)
+  { when: { pose: 'stand', legs: 3, view: 'front', ...FREE }, clip: 'leap_front' },
+  { when: { pose: 'stand', legs: 3, view: ['frontQ', 'side', 'rearQ'], ...FREE }, clip: 'leap_side' },
+  // walking, crouched walking and standing still, each in its own view
+  ...VIEWS.flatMap((view) => [
+    { when: { pose: 'stand', moving: true, view, ...FREE }, clip: `walk_${view}` },
+    { when: { pose: 'stand', moving: false, view, ...FREE }, clip: `stand_${view}` },
+    { when: { pose: 'crouch', moving: true, view, ...FREE }, clip: `creep_${view}` },
+    { when: { pose: 'crouch', moving: false, view, ...FREE }, clip: `crouch_${view}` },
+  ]),
+  // sitting
+  { when: { pose: 'sit', view: ['rear', 'rearQ'], book: false }, clip: 'sit_rear' },
+  { when: { pose: 'sit', view: ['frontQ', 'side'], book: false }, clip: 'sit_threeq' },
+  { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false, book: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false, book: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', moving: false, eyes: 'closed', droop: true, ...FREE }, clip: 'sit_doze' },
+  { when: { pose: 'sit', view: 'front', moving: false, eyes: ['closed', 'blink', 'happy'], ...FREE }, clip: 'idle_front_closed' },
+  { when: { pose: 'sit', view: 'front', moving: false, ...FREE }, clip: 'idle_front' },
+];
+
+export const SHEET_MANIFEST = { sheets, clips, select };
