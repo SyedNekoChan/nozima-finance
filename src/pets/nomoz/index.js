@@ -8,6 +8,7 @@ import {
   LIGHTING,
   REACTIONS_MAP,
   REST_PATCH,
+  SHEET_SPRITE_SIZE,
   SPRITE_RENDERER,
   SPRITE_SIZE,
   WORLD_OVERRIDES,
@@ -29,12 +30,12 @@ import { createSheetRenderer } from './spritesheet/renderer.js';
  */
 function build() {
   try {
-    const render =
-      SPRITE_RENDERER.mode === 'sheet' ? createSheetRenderer({ manifest: SHEET_MANIFEST }) : renderSprite;
+    const sheet = SPRITE_RENDERER.mode === 'sheet';
+    const render = sheet ? createSheetRenderer({ manifest: SHEET_MANIFEST }) : renderSprite;
     return definePet({
       id: 'nomoz',
       name: 'NOMOZ.EXE',
-      sprite: { ...SPRITE_SIZE, render },
+      sprite: { ...(sheet ? SHEET_SPRITE_SIZE : SPRITE_SIZE), render },
       lighting: LIGHTING,
       animations: ANIMATIONS,
       behaviors: BEHAVIORS,

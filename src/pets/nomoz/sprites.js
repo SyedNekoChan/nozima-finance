@@ -891,13 +891,16 @@ function rimLight(cat, light) {
 
 // Dithered backlight just outside the silhouette + lit floor pool with a
 // black contact shadow under the paws. Drawn beneath the cat.
-function drawUnder(under, cat, light, footY, footX0, footX1) {
-  const { cx, rx, ry, solid, dy } = LIGHTING.pool;
+function drawUnder(under, cat, light, footY, footX0, footX1, poolX = LIGHTING.pool.cx) {
+  const { rx, ry, solid, dy } = LIGHTING.pool;
+  const cx = poolX;
   const cy = footY + dy;
+  const W = under[0].length;
+  const H = under.length;
 
   // floor pool
-  for (let y = footY - 2; y < SPRITE_H; y++) {
-    for (let x = 0; x < SPRITE_W; x++) {
+  for (let y = footY - 2; y < H; y++) {
+    for (let x = 0; x < W; x++) {
       const nx = (x - cx) / rx;
       const ny = (y - cy) / ry;
       const d = nx * nx + ny * ny;
@@ -914,14 +917,14 @@ function drawUnder(under, cat, light, footY, footX0, footX1) {
   if (light < LIGHTING.auraFromLevel) return;
 
   // aura
-  for (let y = 0; y < SPRITE_H; y++) {
-    for (let x = 0; x < SPRITE_W; x++) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
       if (cat[y][x] !== '.' || (x + y) % 2) continue;
       const near =
         (y > 0 && cat[y - 1][x] !== '.') ||
         (x > 0 && cat[y][x - 1] !== '.') ||
-        (x < SPRITE_W - 1 && cat[y][x + 1] !== '.') ||
-        (y < SPRITE_H - 1 && cat[y + 1][x] !== '.');
+        (x < W - 1 && cat[y][x + 1] !== '.') ||
+        (y < H - 1 && cat[y + 1][x] !== '.');
       if (near && under[y][x] === '.') under[y][x] = 'a';
     }
   }
@@ -1695,17 +1698,19 @@ function drawProps(ctx, p, hx, hy, vanity) {
 
 let scratch = null;
 
-function layers() {
-  if (!scratch) {
+// Scratch canvases the size of the target canvas (the procedural 56 x 60, or
+// the larger box of the sprite-sheet path).
+function layers(cw, ch) {
+  if (!scratch || scratch.cw !== cw || scratch.ch !== ch) {
     const mk = () => {
       const cv = document.createElement('canvas');
-      cv.width = SPRITE_W;
-      cv.height = SPRITE_H;
+      cv.width = cw;
+      cv.height = ch;
       return cv;
     };
     const a = mk();
     const b = mk();
-    scratch = { a, ac: a.getContext('2d'), b, bc: b.getContext('2d') };
+    scratch = { cw, ch, a, ac: a.getContext('2d'), b, bc: b.getContext('2d') };
   }
   return scratch;
 }
@@ -1721,19 +1726,23 @@ const GLITCH_SHIFTS = {
   3: [[30, 34, -4], [50, 54, 3]],
 };
 
-function shiftTable(plan) {
-  const t = new Array(SPRITE_H).fill(0);
-  for (const [y0, y1, dx] of plan) for (let y = y0; y <= y1; y++) t[y] = dx;
+// Per-row sideways shifts; plan rows are procedural rows, `oy` places them
+// in a taller canvas.
+function shiftTable(plan, rows, oy) {
+  const t = new Array(rows).fill(0);
+  for (const [y0, y1, dx] of plan) for (let y = y0; y <= y1; y++) if (y + oy < rows) t[y + oy] = dx;
   return t;
 }
 
-function paintGrid(ctx, g) {
-  for (let y = 0; y < SPRITE_H; y++) {
-    for (let x = 0; x < SPRITE_W; x++) {
+// Paints a character grid at an offset (grids are procedural 56 x 60 unless
+// the caller built them for the whole canvas).
+function paintGrid(ctx, g, ox = 0, oy = 0) {
+  for (let y = 0; y < g.length; y++) {
+    for (let x = 0; x < g[y].length; x++) {
       const ch = g[y][x];
       if (ch === '.') continue;
       ctx.fillStyle = PALETTE[ch];
-      ctx.fillRect(x, y, 1, 1);
+      ctx.fillRect(x + ox, y + oy, 1, 1);
     }
   }
 }
@@ -1743,18 +1752,33 @@ function paintGrid(ctx, g) {
  *      book, crown, crownLift, coin, droop, glitch, frame, light,
  *      pawL, pawR, ears, tail, focus, pupils, bookPaw, bookShift, fx }
  * vanity: the pet's vanity registry (worn items).
- * The caller's ctx is a SPRITE_W x SPRITE_H canvas context. The base art
- * has its tail on the right (as in the concept art); facing > 0 mirrors it.
+ * The caller's ctx is a canvas context of SPRITE_W x SPRITE_H, or a larger
+ * one (the sprite-sheet path): the procedural cat, its effects, items and
+ * cues are then drawn in a SPRITE_W x SPRITE_H area centred horizontally and
+ * resting on the bottom edge, so every procedural coordinate stays valid.
+ * The base art has its tail on the right (as in the concept art); facing > 0
+ * mirrors the whole canvas.
  *
  * body (optional, used by the sprite-sheet path in ./spritesheet): replaces
- * the procedural fur with other body art while everything else (anchors,
- * pupils, lighting, vanity, effects, stress / glitch) still runs here.
- *   { under?: false, paint(ac, { grid, hx, hy, view, pose, footY, feet })
- *     -> falsy to use the procedural body, or { over?: false } }
+ * the procedural fur with other body art while everything else (pupils,
+ * lighting, vanity, effects, stress / glitch) still runs here.
+ *   { under?: false | { mask, footY, feet, poolX },
+ *     paint(ac, { grid, hx, hy, ox, oy, light, view, pose, footY, feet })
+ *     -> falsy to use the procedural body, or
+ *        { over?: false, anchor?: { hx, hy, chest, chestTurn } } }
+ *   `under`: undefined = the procedural floor pool and aura, false = none,
+ *   an object = pool and aura from a silhouette mask in canvas coordinates.
+ *   `paint` draws in canvas coordinates; `anchor` places the vanity items
+ *   (canvas coordinates) for art whose head and chest are not where the
+ *   procedural ones are.
  * p.replay marks a redraw of an unchanged state (the pupil does not ease).
  */
 export function renderSprite(ctx, p, vanity, body = null) {
-  const { a, ac, b, bc } = layers();
+  const CW = ctx.canvas ? ctx.canvas.width : SPRITE_W;
+  const CH = ctx.canvas ? ctx.canvas.height : SPRITE_H;
+  const ox = (CW - SPRITE_W) >> 1;
+  const oy = CH - SPRITE_H;
+  const { a, ac, b, bc } = layers(CW, CH);
   const flip = p.facing > 0;
   const stressed = p.mood === 'stressed';
   const light = Math.max(0, Math.min(2, p.light ?? 1));
@@ -1788,84 +1812,119 @@ export function renderSprite(ctx, p, vanity, body = null) {
 
   const { cat, over, hx, hy, footY, feet, cueY, chest, chestTurn = 0 } = buildCat(q);
   const lit = rimLight(cat, light);
-  const under = makeGrid();
-  drawUnder(under, lit, light, footY, feet[0], feet[1]);
 
-  ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
-  if (!body || body.under !== false) paintGrid(ac, under);
+  // the procedural floor pool and aura, in procedural coordinates
+  const paintProceduralUnder = () => {
+    const under = makeGrid();
+    drawUnder(under, lit, light, footY, feet[0], feet[1]);
+    paintGrid(ac, under, ox, oy);
+  };
+
+  ac.clearRect(0, 0, CW, CH);
+  const maskUnder = body && body.under && typeof body.under === 'object' ? body.under : null;
+  if (maskUnder) {
+    const under = Array.from({ length: CH }, () => Array(CW).fill('.'));
+    drawUnder(under, maskUnder.mask, light, maskUnder.footY, maskUnder.feet[0], maskUnder.feet[1], maskUnder.poolX);
+    paintGrid(ac, under);
+  } else if (!body || body.under !== false) {
+    paintProceduralUnder();
+  }
   let drawn = null;
   if (body) {
     try {
-      drawn = body.paint(ac, { grid: lit, hx, hy, view: q.view, pose: q.pose, footY, feet });
+      drawn = body.paint(ac, { grid: lit, hx, hy, ox, oy, light, view: q.view, pose: q.pose, footY, feet });
     } catch (err) {
       drawn = null;
     }
     if (!drawn) {
       // the body art could not be drawn: start again with the procedural cat
-      ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
-      paintGrid(ac, under);
+      ac.clearRect(0, 0, CW, CH);
+      paintProceduralUnder();
     }
   }
-  if (!drawn) paintGrid(ac, lit);
-  if (!drawn || drawn.over !== false) paintGrid(ac, over);
-  drawProps(ac, { ...q, chest, chestTurn }, hx, hy, vanity);
+  if (!drawn) paintGrid(ac, lit, ox, oy);
+  if (!drawn || drawn.over !== false) paintGrid(ac, over, ox, oy);
+  if (drawn && drawn.anchor) {
+    const an = drawn.anchor;
+    drawProps(ac, { ...q, chest: an.chest, chestTurn: an.chestTurn || 0 }, an.hx, an.hy, vanity);
+  } else {
+    ac.save();
+    ac.translate(ox, oy);
+    drawProps(ac, { ...q, chest, chestTurn }, hx, hy, vanity);
+    ac.restore();
+  }
 
-  bc.clearRect(0, 0, SPRITE_W, SPRITE_H);
+  bc.clearRect(0, 0, CW, CH);
   bc.save();
   if (flip) {
-    bc.translate(SPRITE_W, 0);
+    bc.translate(CW, 0);
     bc.scale(-1, 1);
   }
   bc.drawImage(a, 0, 0);
   bc.restore();
 
-  ctx.clearRect(0, 0, SPRITE_W, SPRITE_H);
+  ctx.clearRect(0, 0, CW, CH);
+
+  // procedural-space overlays (effects, items, cues, stress marks)
+  const inProcedural = (fn) => {
+    ctx.save();
+    ctx.translate(ox, oy);
+    try {
+      fn();
+    } finally {
+      ctx.restore();
+    }
+  };
 
   // effects behind the cat (an orbiting star passing behind it...)
-  drawFx(ctx, p.fx, true, stressed, p.frame || 0);
+  inProcedural(() => drawFx(ctx, p.fx, true, stressed, p.frame || 0));
 
   const plan = [];
   if (stressed) plan.push(...STRESS_SHIFTS[p.frame % 2]);
   if (p.glitch && GLITCH_SHIFTS[p.glitch]) plan.push(...GLITCH_SHIFTS[p.glitch]);
-  const shifts = shiftTable(plan);
+  const shifts = shiftTable(plan, CH, oy);
 
   // cyan ghost for the glitch
   if (p.glitch) {
-    ac.clearRect(0, 0, SPRITE_W, SPRITE_H);
+    ac.clearRect(0, 0, CW, CH);
     ac.drawImage(b, 0, 0);
     ac.globalCompositeOperation = 'source-in';
     ac.fillStyle = PALETTE.C;
-    ac.fillRect(0, 0, SPRITE_W, SPRITE_H);
+    ac.fillRect(0, 0, CW, CH);
     ac.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 0.32;
     ctx.drawImage(a, 2, 0);
     ctx.globalAlpha = 1;
   }
 
-  for (let y = 0; y < SPRITE_H; y++) {
-    ctx.drawImage(b, 0, y, SPRITE_W, 1, shifts[y], y, SPRITE_W, 1);
+  for (let y = 0; y < CH; y++) {
+    ctx.drawImage(b, 0, y, CW, 1, shifts[y], y, CW, 1);
   }
 
   if (stressed) {
     // cracks: sparse missing pixels through the fur
     for (let y = 6; y < 57; y++) {
       for (let x = 8; x < 48; x++) {
-        if ((x * 7 + y * 13 + (p.frame % 2) * 5) % 37 === 0) ctx.clearRect(x, y, 1, 1);
+        if ((x * 7 + y * 13 + (p.frame % 2) * 5) % 37 === 0) ctx.clearRect(x + ox, y + oy, 1, 1);
       }
     }
 
-    const f = p.frame % 2;
-    fillPixels(ctx, DROP, f ? 5 : 8, f ? 9 : 5, paletteColor);
-    fillPixels(ctx, DROP, f ? 49 : 47, f ? 5 : 11, paletteColor);
-    drawText(ctx, f ? '?' : '!', 0, f ? 22 : 18, PALETTE.R);
-    drawText(ctx, f ? 'X' : '?', 52, f ? 16 : 20, PALETTE.R);
+    inProcedural(() => {
+      const f = p.frame % 2;
+      fillPixels(ctx, DROP, f ? 5 : 8, f ? 9 : 5, paletteColor);
+      fillPixels(ctx, DROP, f ? 49 : 47, f ? 5 : 11, paletteColor);
+      drawText(ctx, f ? '?' : '!', 0, f ? 22 : 18, PALETTE.R);
+      drawText(ctx, f ? 'X' : '?', 52, f ? 16 : 20, PALETTE.R);
+    });
   }
 
   // unmirrored overlays: cue text and held items
-  if (p.cue) {
-    const w = textWidth(p.cue);
-    drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, stressed ? 0 : cueY, stressed ? PALETTE.R : PALETTE.C);
-  }
-  drawItem(ctx, p.item, stressed, p.frame || 0);
-  drawFx(ctx, p.fx, false, stressed, p.frame || 0);
+  inProcedural(() => {
+    if (p.cue) {
+      const w = textWidth(p.cue);
+      drawText(ctx, p.cue, stressed ? Math.round((SPRITE_W - w) / 2) : SPRITE_W - 1 - w, stressed ? 0 : cueY, stressed ? PALETTE.R : PALETTE.C);
+    }
+    drawItem(ctx, p.item, stressed, p.frame || 0);
+    drawFx(ctx, p.fx, false, stressed, p.frame || 0);
+  });
 }

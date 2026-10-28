@@ -1,55 +1,53 @@
 /*
  * NOMOZ.EXE sprite-sheet production spec, as data. The human-readable
- * version is ./SPEC.md; ./validate.mjs checks the manifest and the PNGs
- * against this file. Derived from the implementation: views from
- * core/toolkit.js (VIEW_RING), poses from sprites.js (POSES, TURN_POSES),
- * gait timing from src/pets/config.js (SCHEDULER.stepMs, frameMs).
+ * version is ./SPEC.md; ./build.mjs and ./validate.mjs check the art and the
+ * manifest against this file.
+ *
+ * The art follows the user's reference sheet (art/source/reference.webp): a
+ * fluffy long-haired black cat with round yellow eyes and a big curled tail.
+ * Frames are 96 x 64, larger than the 56 x 60 procedural box, because the
+ * reference cat walks about 87 px long at the pet's pixel density. Sheet
+ * mode therefore uses a larger sprite box (SHEET_SPRITE_SIZE in ../config.js).
  */
-export const FRAME = { width: 56, height: 60 }; // SPRITE_SIZE in ../config.js
-export const VIEWS = ['front', 'frontQ', 'side', 'rearQ', 'rear']; // = sheet row order
-/* Tight head-relative rectangles [x, y, w, h] kept procedural (front view); see SPEC.md. */
-export const DYNAMIC = {
-  front: { head: [[5, 10, 8, 8], [19, 10, 8, 8], [14, 20, 4, 2], [12, 22, 8, 4]] },
-  side: { head: [[1, 10, 8, 8], [-3, 16, 9, 8]] },
-};
-
+export const FRAME = { width: 96, height: 64 };
+export const FLOOR = 62; // exclusive: paws end on row 61, the box keeps 2 rows below
 export const SHEET_DIR = 'src/pets/nomoz/spritesheet/sheets';
 
 /*
- * One sheet per group: columns = frames, rows = VIEWS (row i is VIEWS[i];
- * front-only groups have one row per pose). Clip ids are `<group>_<view>`
- * (or `<group>` for front-only poses), sheet ids and files `nomoz_<group>`.
+ * One art folder per pose family: art/<id>/<n>.png (n from 0), assembled into
+ * sheets/nomoz_<id>.png as a single row of `frames` frames. `from` says where
+ * the frames come from; 'reference' ones are converted from the user's sheet
+ * (art/source/convert_reference.py) and can be hand-finished in SpriteForge,
+ * 'todo' ones are not in the reference and have to be drawn in its style.
  */
-export const GROUPS = {
-  idle: { pose: 'sit', moving: false, frames: 2, ms: 1000, loop: true, views: VIEWS },
-  stand: { pose: 'stand', moving: false, frames: 2, ms: 1000, loop: true, views: VIEWS },
-  walk: { pose: 'stand', moving: true, frames: 4, ms: 240, loop: true, views: VIEWS },
-  creep: { pose: 'crouch', moving: true, frames: 4, ms: 240, loop: true, views: VIEWS },
-  crouch: { pose: 'crouch', moving: false, frames: 2, ms: 1000, loop: true, views: VIEWS },
-  leap: { pose: 'stand', legs: 3, frames: 1, ms: 1000, loop: true, views: VIEWS },
-  stretch: { pose: 'stretch', frames: 2, ms: 1000, loop: true, views: ['front'] },
-  low: { pose: 'low', frames: 2, ms: 1000, loop: true, views: ['front'] },
-  loaf: { pose: 'loaf', frames: 2, ms: 1000, loop: true, views: ['front'] },
-  curl: { pose: 'curl', frames: 2, ms: 1000, loop: true, views: ['front'] },
+export const ART = {
+  idle_front: { frames: 4, from: 'reference', note: 'sitting, facing us: open, open (tail shifted), wink, eyes closed' },
+  walk_side: { frames: 3, from: 'reference', note: 'walking cycle, facing left; head-aligned' },
+  sit_threeq: { frames: 1, from: 'reference', note: 'sitting, three-quarter view facing left' },
+  sit_doze: { frames: 1, from: 'reference', note: 'sitting, head lowered, eyes closed' },
+  sit_groom: { frames: 1, from: 'reference', note: 'sitting, licking a paw' },
+  sit_rear: { frames: 1, from: 'reference', note: 'sitting, seen from behind' },
+  curl: { frames: 1, from: 'reference', note: 'curled up asleep' },
+  stretch: { frames: 1, from: 'reference', note: 'full-body stretch (scaled to fit the box)' },
+  walk_front: { frames: 3, from: 'todo', note: 'walking toward the viewer' },
+  walk_frontQ: { frames: 3, from: 'todo', note: 'three-quarter front walk' },
+  walk_rearQ: { frames: 3, from: 'todo', note: 'three-quarter rear walk' },
+  walk_rear: { frames: 3, from: 'todo', note: 'walking away' },
+  creep_front: { frames: 3, from: 'todo', note: 'crouched creep, front' },
+  creep_frontQ: { frames: 3, from: 'todo', note: 'crouched creep, three-quarter front' },
+  creep_side: { frames: 3, from: 'todo', note: 'crouched creep, side' },
+  creep_rearQ: { frames: 3, from: 'todo', note: 'crouched creep, three-quarter rear' },
+  creep_rear: { frames: 3, from: 'todo', note: 'crouched creep, rear' },
+  leap_front: { frames: 1, from: 'todo', note: 'mid-hop, front' },
+  leap_side: { frames: 1, from: 'todo', note: 'mid-hop, side' },
+  sit_side: { frames: 1, from: 'todo', note: 'sitting in profile' },
+  low_front: { frames: 2, from: 'todo', note: 'head down, body low (reading, eating)' },
+  loaf_front: { frames: 2, from: 'todo', note: 'lying with paws tucked' },
 };
 
-export const sheetId = (group) => `nomoz_${group}`;
-export const clipId = (group, view) => (GROUPS[group].views.length > 1 ? `${group}_${view}` : group);
+export const sheetId = (art) => `nomoz_${art}`;
 
-/* Every clip the full migration needs: id -> { group, view, row, frames }. */
-export function requiredClips() {
-  const out = {};
-  for (const [group, g] of Object.entries(GROUPS)) {
-    g.views.forEach((view) => {
-      out[clipId(group, view)] = { group, view, row: VIEWS.indexOf(view), frames: g.frames, ms: g.ms };
-    });
-  }
-  return out;
-}
-
-/* Expected PNG size of a group's sheet. */
-export function sheetSize(group) {
-  const g = GROUPS[group];
-  const rows = g.views.length > 1 ? VIEWS.length : 1;
-  return { width: FRAME.width * g.frames, height: FRAME.height * rows, columns: g.frames, rows };
+/* Expected PNG size of an art folder's sheet. */
+export function sheetSize(art) {
+  return { width: FRAME.width * ART[art].frames, height: FRAME.height, columns: ART[art].frames, rows: 1 };
 }

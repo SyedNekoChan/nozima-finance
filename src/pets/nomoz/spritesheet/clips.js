@@ -72,6 +72,18 @@ function normalizeClip(id, raw, sheets) {
     throw new Error('dynamic rectangles must be [x, y, w, h] whole numbers');
   }
 
+  // where the vanity items sit on this art (canvas coordinates): the crown's
+  // and the chest coin's top-left, or null when hidden. One object for the
+  // clip, or one per sheet frame used.
+  const anchorList = raw.anchors === undefined ? null : Array.isArray(raw.anchors) ? raw.anchors : [raw.anchors];
+  const okSpot = (v) => v === null || v === undefined || isPoint(v);
+  if (anchorList && !anchorList.every((a) => a && okSpot(a.crown) && okSpot(a.chest))) {
+    throw new Error('anchors need crown / chest as [x, y] or null');
+  }
+  if (anchorList && Array.isArray(raw.anchors) && raw.anchors.length !== frames.length) {
+    throw new Error('anchors must list one entry per clip frame');
+  }
+
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
 
@@ -88,6 +100,7 @@ function normalizeClip(id, raw, sheets) {
     pivot: raw.pivot || null,
     anchor: raw.anchor || null,
     under: raw.lighting !== 'baked',
+    anchors: anchorList,
     dynamic: Object.freeze({ head, base, whiskers: dyn.whiskers === true }),
   });
 }

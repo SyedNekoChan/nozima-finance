@@ -64,6 +64,14 @@ export const SPRITE_SIZE = { width: 56, height: 60 };
 export const SPRITE_RENDERER = { mode: 'procedural' };
 
 /*
+ * Sprite box of the 'sheet' mode: the reference-style cat is larger than the
+ * procedural one (96 x 64 frames, see spritesheet/spec.js). The procedural
+ * cat is drawn centred inside it, so it stays the per-frame fallback. Keep
+ * width - 56 even. Procedural mode keeps SPRITE_SIZE.
+ */
+export const SHEET_SPRITE_SIZE = { width: 96, height: 64 };
+
+/*
  * Lighting. The cat stays solid black and is revealed by light, never by
  * recolouring: directional rim levels per depth (top/left, corner, right),
  * the lit floor pool, its black contact shadow and the dithered aura.
