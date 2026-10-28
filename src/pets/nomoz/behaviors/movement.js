@@ -292,7 +292,7 @@ export const edgeExit = defineBehavior({
       sx: left ? -hw * 1.4 : W_ + hw * 1.4,
       facing: left ? -1 : 1,
       gaze: left ? 'l' : 'r',
-      pose: 'sit',
+      pose: 'stand', // walking out: a sitting pose has no gait (sheet art would slide)
       transitionMs: out,
       ease: 'out',
       offscreen: true,
@@ -315,7 +315,7 @@ export const edgeExit = defineBehavior({
     const inn = rnd(c.rng, 2200, 3200);
     S.at(hide + 80, { sx: dest.sx, transitionMs: inn, ease: 'out' });
     flick(S, hide + 80, inn);
-    S.at(hide + 80 + inn, { offscreen: false, gaze: 'c', view: 'frontQ' });
+    S.at(hide + 80 + inn, { offscreen: false, gaze: 'c', view: 'frontQ', pose: 'sit', legs: 0 });
     S.at(hide + 80 + inn + TURN_MS, { view: 'front' });
     return hide + inn + 700;
   },
