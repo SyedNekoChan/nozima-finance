@@ -1,0 +1,162 @@
+{
+ "id": "nm_clothing_basic_adventurer",
+ "version": 1,
+ "category": "clothing",
+ "slot": "outfit",
+ "base": {
+  "id": "nm_humanoid_base",
+  "version": 2,
+  "files_sha256": {
+   "SPEC_v2.md": "cb49206ed67a00c486fbda70102b72353878025069d86d255f7d815764c99ca1",
+   "nm_humanoid_base_v2.json": "7e226bef78a901cae87ed8aa114399629fd0a654ed20211adc4c1554a91f31ad",
+   "nm_humanoid_base_body_sheet_v2.png": "196e319836abeb1014523d24b7bd21b9c0923d21ca0346fa88f0e46ea4db483b",
+   "nm_humanoid_base_hair_default_sheet_v2.png": "b5f5a4e338d4a46eadcfa86f902dde9052396452a94e4c3935d0f4c254c325ab",
+   "nm_humanoid_base_composite_sheet_v2.png": "fbcb40e7ca2f869f0c9ddb9434a3f7eeb2cb50392b595db63572e8240b881c37",
+   "nm_humanoid_base_underlayer_mask_sheet_v2.png": "a7dffc5624483a28c4a750e4c9e6ede7be48dafa6a2dc38ffe1b5c03230db149"
+  }
+ },
+ "sheet": {
+  "file": "nm_clothing_basic_adventurer_sheet_v1.png",
+  "sha256": "e248e09b7d0e33b8c67ee91e63b17d71b16169fcb2df74a3f0253c784535e44d",
+  "width": 240,
+  "height": 192,
+  "columns": 6,
+  "rows": 4
+ },
+ "frame": {
+  "width": 40,
+  "height": 48
+ },
+ "row_order": [
+  "down",
+  "left",
+  "right",
+  "up"
+ ],
+ "column_order": [
+  "idle0",
+  "idle1",
+  "walk0",
+  "walk1",
+  "walk2",
+  "walk3"
+ ],
+ "animations": {
+  "idle": {
+   "columns": [
+    0,
+    1
+   ],
+   "frame_ms": 600,
+   "loop": true
+  },
+  "walk": {
+   "columns": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "frame_ms": 140,
+   "loop": true
+  }
+ },
+ "anchors": {
+  "reuses": "nm_humanoid_base_v2.json anchors (ground [20,45], foot baseline y=44, head window, hand anchors); clothing carries no anchors of its own",
+  "measured_in_validation": {
+   "torso_top_y": "23+bob",
+   "belt_top_y": "31+bob (front/back/side)",
+   "boot_sole_bottom_y": 44
+  }
+ },
+ "layer": {
+  "name": "clothing_outfit",
+  "draw_order": [
+   "body (nm_humanoid_base_body_sheet_v2)",
+   "clothing_outfit (this sheet)",
+   "hair (nm_humanoid_base_hair_default_sheet_v2)"
+  ],
+  "compositing": "alpha-over, per frame, same 40x48 cell",
+  "notes": [
+   "clothing replaces the default underlayer (shirt, trousers, boots); transparent pixels reveal base skin/outline",
+   "hair is drawn after clothing; hair never overlaps clothing in any frame (validated)"
+  ]
+ },
+ "coverage": {
+  "contract": "clothing alpha == nm_humanoid_base_underlayer_mask_sheet_v2.png alpha, pixel exact, in all 24 frames",
+  "overhang": "none; no clothing pixel lies outside the underlayer mask (no hem/cuff overhang, no neck or hand coverage)",
+  "outline_fill": "underlayer outline pixels not painted by an outfit part are filled with outline colour O (#17121f)"
+ },
+ "palette": {
+  "outline": "#17121f (shared with base)",
+  "ramps": {
+   "tunic": [
+    "#1d3a2e",
+    "#2f5a3e",
+    "#4a8049",
+    "#74a95a"
+   ],
+   "trim": [
+    "#7a6a4c",
+    "#b5a47e",
+    "#e6d9b4"
+   ],
+   "leather": [
+    "#2b1a12",
+    "#5a3a22",
+    "#8b5e32"
+   ],
+   "brass": [
+    "#8a6420",
+    "#d3a33f",
+    "#f4d98a"
+   ],
+   "trousers": [
+    "#3d3629",
+    "#62573b",
+    "#8a7a52"
+   ],
+   "boots": [
+    "#1e1416",
+    "#34231f",
+    "#54382b",
+    "#7c5740"
+   ]
+  },
+  "colors_including_outline": 21,
+  "lighting": "upper-left"
+ },
+ "design": {
+  "name": "Basic Adventurer",
+  "pieces": [
+   "green field tunic with linen collar lacing, placket and sleeve cuffs",
+   "leather belt with brass buckle (front/side), plain belt (back)",
+   "khaki trousers",
+   "dark chestnut boots with tan cuff band and welt sole"
+  ],
+  "excludes": [
+   "weapons",
+   "accessories",
+   "armor variants",
+   "alternate outfits"
+  ]
+ },
+ "authoring": {
+  "hand_typed": [
+   "torso front/back/left/right",
+   "sleeves (front, side stand/fwd/back, left+right facing)",
+   "front/back legs"
+  ],
+  "derived_then_checked": [
+   "side-view leg pose variants: role-based recolour of base leg pose geometry (needed for exact coverage)",
+   "right-facing legs: mirrored draft of the left-facing legs, tones re-ordered so light stays upper-left"
+  ]
+ },
+ "future_slots": [
+  "hair/head variants",
+  "clothing/armor (use underlayer mask for coverage)",
+  "weapon",
+  "off-hand",
+  "accessories"
+ ]
+}

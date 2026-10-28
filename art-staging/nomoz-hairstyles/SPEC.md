@@ -1,0 +1,11 @@
+# Nomoz hairstyle set v1 (staged, unapproved): short, medium, long
+Three interchangeable hair layers for humanoid base v2 (`../nomoz-humanoid-sheet/`) worn with Basic Adventurer (`../nomoz-clothing-basic-adventurer/`). All three existing folders are unchanged.
+- Files: `nm_hairstyle_{short,medium,long}_v1.png` (+ `.json`). Each is 240x192 RGBA, 40x48 frames, 6 cols x 4 rows, rows down/left/right/up, cols idle0, idle1, walk0-walk3; timing, ground anchor (20,45) and head anchor (9, 3+bob+breath) are the base's.
+- Draw order per frame: body -> clothing (optional) -> hair. Each hairstyle replaces `nm_humanoid_base_hair_default_sheet_v2.png`; swap by loading another sheet. Body and clothing are never modified.
+- Palettes: short ink/blue-grey `#232131 #3b384f #5f5a78 #9089ae`; medium auburn `#4a1f1a #7a3524 #b0552d #dc8d4c`; long pale gold `#5a4a2e #977f47 #cfb46f #f3e6ae`; shared outline `#17121f`. Upper-left lighting.
+- Coverage: hair may cover head skin, head outline, ears/nape as designed, and (long) shoulders/chest/upper back. It must not cover eyes, brows, nose bump, blush/mouth, or hands/forearms. Medium may overhang the head window by up to 2 px; long also falls below it (window row 27). Short stays inside the base head silhouette. Hair draws its own outline; exterior hair edges are outline colour.
+- Part boxes (offset from head anchor): short 22x20 at (0,0); medium 26x24 at (-2,-2); long 26x31 at (-2,-1).
+- Secondary motion: short none; medium side-view hem tips and down-view lock tips shift 1 px on walk contacts; long side tails and down-view chest-lock tips shift 1 px on walk contacts; up views are static. The head-anchored region is identical in all frames of a direction.
+- Source: `source/hair_parts.py` (hand-typed rows per style and direction, patches, strand strokes; text copies in `source/parts/`), `source/build_hairstyles.py`, `source/validate_hairstyles.py`.
+- Build: `python3 -I source/build_hairstyles.py`. Validate: `python3 -I source/validate_hairstyles.py` -> `validation_report.txt`.
+- Previews: `preview/nm_hairstyles_contact_{1,2,5}x_v1.png` (three styles side by side, all directions and animations, base + outfit) and `preview/nm_hairstyle_<style>_composite_sheet_v1.png`.
