@@ -74,6 +74,21 @@ export const SCHEDULER = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Ambient life (see core/ambient.js)                                  */
+/* ------------------------------------------------------------------ */
+
+export const AMBIENT = {
+  blink: {
+    firstMs: [1500, 4500],
+    everyMs: [3200, 8000], // between blinks while the eyes are plainly open
+    retryMs: [900, 2200], // when a behavior's expression is on the face
+    closedMs: 140,
+    doubleChance: 0.18, // now and then a quick second blink
+    doubleGapMs: 240,
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* Environmental encounters (rare, shared defaults)                    */
 /* ------------------------------------------------------------------ */
 

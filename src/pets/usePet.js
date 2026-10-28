@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { REACTIONS } from '../lib/nomoz.js';
-import { SCHEDULER } from './config.js';
+import { AMBIENT, SCHEDULER } from './config.js';
+import { startAmbientBlink } from './core/ambient.js';
 import { attachInteractions } from './core/interactions.js';
 import { createRng, pick, rnd, runtimeSeed } from './core/rng.js';
 import { FinancialDirector } from './finance/director.js';
@@ -252,6 +253,19 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
       if (schedRef.current === sch) schedRef.current = null;
     };
   }, [pet, placed, commit]);
+
+  // Ambient blinking between and during behaviors. Not under reduced motion,
+  // and not in the stressed look (its eyes are drawn pale and fixed).
+  const blinks = placed && !reduced && mood !== 'stressed';
+  useEffect(() => {
+    if (!blinks) return undefined;
+    return startAmbientBlink({
+      rng: createRng(runtimeSeed()),
+      getView: () => curRef.current,
+      apply: commit,
+      timing: AMBIENT.blink,
+    });
+  }, [blinks, commit]);
 
   // Financial mood / breakpoint / motion preference changed: the same
   // scheduler abandons its current behavior and carries on.

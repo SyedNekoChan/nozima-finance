@@ -804,6 +804,17 @@ never override the stressed or prosperous appearance.
   frame changes (a few times per second at most), not an animation loop;
   there are no per-frame React updates beyond that clock.
 
+#### Ambient blinking
+
+`core/ambient.js` (`AMBIENT.blink` in `pets/config.js`) runs beside the
+scheduler: every 3.2-8 s it closes plainly open eyes for 140 ms (one blink in
+five is a quick double). Behaviors only blinked inside their own scripts, so
+the eyes could stay open for a minute or more (measured over simulated hours:
+a median 9 s but 42% of gaps over 12 s, up to 82 s). It never touches a
+behavior's own expression (closed, down, wide, happy, a blink in progress),
+is off while off-screen, under reduced motion and in the stressed look, and
+reopens eyes it left closed when stopped.
+
 ### Reduced motion
 
 With `prefers-reduced-motion: reduce` the initial placement is still
