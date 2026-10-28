@@ -10,7 +10,8 @@
     "test": "node --test src/pets/nomoz/spritesheet/*.test.mjs",
     "sheets:build": "node src/pets/nomoz/spritesheet/build.mjs sheets",
     "sheets:validate": "node src/pets/nomoz/spritesheet/validate.mjs --strict",
-    "sheets:audit": "node src/pets/nomoz/spritesheet/audit.mjs --strict"
+    "sheets:audit": "node src/pets/nomoz/spritesheet/audit.mjs --strict",
+    "test:browser": "node --test --test-timeout=120000 src/pets/nomoz/spritesheet/browser/*.browser.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

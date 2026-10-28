@@ -723,7 +723,12 @@ their coordinates and follow the art's head through per-frame anchors.
 - Tooling and tests: `npm run sheets:build`, `sheets:validate`,
   `sheets:audit` (every pose / view / leg state must select a clip) and
   `npm test` (unit tests, approved-frame hash guard, the three tools in
-  strict mode). CI runs `npm test` before the build.
+  strict mode). CI runs `npm test` before the build. `npm run test:browser` runs real-Chromium
+  tests (Playwright, looked up locally or in the global npm root; skipped with a
+  reason when absent, not run in CI): the shipped sheets through the real
+  renderer at desktop and mobile sizes, frame timing, reduced motion, fallback,
+  tab hiding, and the full app with sheet mode switched on in memory by a
+  Vite plugin (the source stays `'procedural'`).
 
 #### Vanity / equipment
 
