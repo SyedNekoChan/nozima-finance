@@ -423,7 +423,8 @@ behaviors, and it is independent of tabs:
   script plays at half its time (`reducedDurationFactor`) with beats closer
   than 150 ms folded into one step (`compressBeats`: a blink or flick never
   shows, the final posture is unchanged), pauses stretch ×1.5, the animation
-  clock stops, glides and fades are instant. Only stationary behaviors remain.
+  clock stops, glides and fades are instant, and `lean` / `glitch` fields are
+  dropped from every beat (`reducedDropFields`). Only stationary behaviors remain.
 
 ### Behavior library
 

@@ -61,6 +61,8 @@ export const SCHEDULER = {
   // and folds beats closer than reducedBeatSlotMs into one step
   reducedDurationFactor: 0.5,
   reducedBeatSlotMs: 150,
+  // view fields that only shuffle or flicker the sprite: never applied under reduced motion
+  reducedDropFields: ['lean', 'glitch'],
   stepMs: 480, // one walking step
   nervousStepMs: 320,
   ambientMs: Math.round(DUR.ambient * 1000),

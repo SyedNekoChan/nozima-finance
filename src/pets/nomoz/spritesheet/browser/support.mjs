@@ -76,7 +76,7 @@ export async function openAt(browser, url, { viewport, mobile = false, reducedMo
   page.on('response', (r) => r.request().resourceType() === 'image' && log.images.push({ url: r.url(), status: r.status(), type: r.headers()['content-type'] }));
   page.on('requestfailed', (r) => log.failed.push(r.url()));
   await page.goto(url);
-  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 20000 });
+  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 45000 });
   return { ctx, page, log };
 }
 

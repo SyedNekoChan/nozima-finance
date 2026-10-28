@@ -191,3 +191,18 @@ function foldPatch(a, b) {
   }
   return out;
 }
+
+/*
+ * Reduced motion: drops fields that only exist to move or flicker the sprite
+ * (a lean is a one-pixel shuffle, a glitch a flicker) from every beat. A beat
+ * left empty is removed. The posture the behavior ends in is unaffected,
+ * because the resting values of these fields are what the view already holds.
+ */
+export function withoutFields(beats, fields) {
+  const out = [];
+  for (const { t, patch } of beats) {
+    const kept = Object.fromEntries(Object.entries(patch).filter(([k]) => !fields.includes(k)));
+    if (Object.keys(kept).length) out.push({ t, patch: kept });
+  }
+  return out;
+}

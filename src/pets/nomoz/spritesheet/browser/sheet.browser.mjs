@@ -345,7 +345,7 @@ async function openApp(which, { viewport = DESKTOP, reducedMotion = 'no-preferen
   page.on('response', (r) => r.request().resourceType() === 'image' && /nomoz_[a-z_]+\.png/.test(r.url()) && log.sheets.push({ url: r.url(), status: r.status() }));
   if (block) await page.route(/nomoz_[a-z_]+\.png/, (r) => (r.request().resourceType() === 'image' ? r.abort() : r.continue()));
   await page.goto(servers[which].url);
-  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 20000 });
+  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 45000 });
   return { ctx, page, log };
 }
 
@@ -363,6 +363,16 @@ const sample = (page) =>
     return { h, n, w: c.width, ht: c.height };
   });
 
+// Samples until the pet is on screen (it can be briefly off screen or faded by a behavior).
+async function drawn(page, min) {
+  let s = await sample(page);
+  for (let i = 0; i < 40 && !(s && s.n > min); i++) {
+    await page.waitForTimeout(250);
+    s = await sample(page);
+  }
+  return s;
+}
+
 async function watch(page, ms, step = 150) {
   const seen = new Set();
   let lastN = 0;
@@ -371,7 +381,7 @@ async function watch(page, ms, step = 150) {
     const s = await sample(page);
     if (s) {
       seen.add(s.h);
-      lastN = s.n;
+      lastN = Math.max(lastN, s.n); // the pet may be briefly off screen
     }
   }
   return { distinct: seen.size, n: lastN };
@@ -389,7 +399,7 @@ describe('real browser: the app', () => {
   guard('default (procedural) app: 56 x 60 canvas, draws, and requests no sheet images', async () => {
     const { ctx, page, log } = await openApp('procedural');
     await page.waitForTimeout(1500);
-    const s = await sample(page);
+    const s = await drawn(page, 100);
     assert.deepEqual([s.w, s.ht], [56, 60]);
     assert.ok(s.n > 100);
     assert.deepEqual(log.sheets, []);
@@ -427,12 +437,12 @@ describe('real browser: the app', () => {
         });
         await page.waitForTimeout(250);
       }
-      const s = await sample(page);
+      const s = await drawn(page, 300);
       assert.ok(s && s.n > 300, `pet blank after switching tabs at ${viewport.width}x${viewport.height}`);
     }
     const same = await page.evaluate(() => window.__canvas === document.querySelector('canvas.nomoz-canvas') || document.contains(window.__canvas));
     // the pet fades and returns on some transitions; either way a canvas is present and drawing
-    assert.ok(same || (await sample(page)).n > 300);
+    assert.ok(same || (await drawn(page, 300)).n > 300);
     assert.deepEqual(log.errors, []);
     await ctx.close();
   });

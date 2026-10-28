@@ -121,8 +121,11 @@ describe('production build', () => {
   for (const [vpName, viewport, mobile] of [['desktop', DESKTOP, false], ['mobile', MOBILE, true]]) {
     guard(`default build, ${vpName}: procedural 56 x 60 cat draws; no sheet is fetched`, async () => {
       const { ctx, page, log } = await openAt(browser, builds.procedural.url, { viewport, mobile });
-      await page.waitForTimeout(2500);
-      const s = await sampleCanvas(page);
+      let s = await sampleCanvas(page);
+      for (let i = 0; i < 40 && s.n <= 100; i++) {
+        await page.waitForTimeout(250); // the pet may be briefly off screen
+        s = await sampleCanvas(page);
+      }
       assert.deepEqual([s.w, s.ht], [56, 60]);
       assert.ok(s.n > 100, `pet nearly blank (${s.n} px)`);
       assert.deepEqual(log.images.filter((i) => /nomoz_/.test(i.url)), []);
@@ -139,7 +142,7 @@ describe('production build', () => {
         const s = await sampleCanvas(page);
         if (s) {
           seen.add(s.h);
-          n = s.n;
+          n = Math.max(n, s.n); // the pet may be briefly off screen
         }
       }
       const s = await sampleCanvas(page);

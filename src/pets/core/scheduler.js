@@ -1,5 +1,5 @@
 import { SCHEDULER } from '../config.js';
-import { compressBeats, makeScript } from './toolkit.js';
+import { compressBeats, makeScript, withoutFields } from './toolkit.js';
 import { rnd } from './rng.js';
 import { canReact, weightFor } from './behaviors.js';
 
@@ -267,7 +267,7 @@ export class PetScheduler {
     let beats = S.beats.sort((a, z) => a.t - z.t);
     let end = planned;
     if (this.reduced) {
-      beats = compressBeats(beats, SCHEDULER.reducedDurationFactor, SCHEDULER.reducedBeatSlotMs);
+      beats = compressBeats(withoutFields(beats, SCHEDULER.reducedDropFields), SCHEDULER.reducedDurationFactor, SCHEDULER.reducedBeatSlotMs);
       end = planned * SCHEDULER.reducedDurationFactor;
     }
 

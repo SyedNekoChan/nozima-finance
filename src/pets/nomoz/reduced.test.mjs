@@ -171,3 +171,53 @@ test('compressBeats: scales time, folds close beats in order, keeps overlay-oper
   assert.deepEqual(Object.keys(view.fx), ['b']);
   assert.deepEqual(beats[0], { t: 0, patch: { eyes: 'blink' } }, 'input is not mutated');
 });
+
+/* ---------------- the reduced-motion policy, end to end through the scheduler ---------------- */
+
+test('reduced motion: nothing the scheduler applies moves, leans, glitches or walks the pet', () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  const found = [];
+  try {
+    for (const b of pet.behaviors) {
+      if (b.moves) continue;
+      for (const mood of ['idle', 'content', 'stressed']) {
+        if (!(b.weights?.[mood] > 0 || (!b.weights && b.moods.includes(mood)) || b.reactMoods.includes(mood))) continue;
+        for (const seed of [1, 2]) {
+          const r = runBehavior(b.id, { reduced: true, seed, mood });
+          if (!r.applied.length) continue; // not eligible for this context
+          assert.ok(r.done, `${b.id} (${mood}) completes under reduced motion`);
+          for (const { patch } of r.applied) {
+            for (const key of ['sx', 'sy', 'z', 'lean', 'glitch', 'offscreen']) if (key in patch && patch[key]) found.push(`${b.id}: ${key}`);
+            if (patch.transitionMs > 0) found.push(`${b.id}: transitionMs ${patch.transitionMs}`);
+            if (patch.legs === 1 || patch.legs === 2 || patch.legs === 3) found.push(`${b.id}: legs ${patch.legs}`);
+            if (patch.propOps?.some(([, spec]) => spec)) found.push(`${b.id}: world prop`);
+          }
+          const rest = r.final;
+          assert.equal(rest.lean, 0, `${b.id}: ends leaning`);
+          assert.equal(rest.glitch, 0, `${b.id}: ends glitching`);
+          assert.equal(rest.legs, 0, `${b.id}: ends mid-step`);
+          assert.deepEqual(rest.fx, {}, `${b.id}: overlay effects left behind`);
+          assert.deepEqual(rest.props, {}, `${b.id}: props left behind`);
+        }
+      }
+    }
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual([...new Set(found)], []);
+});
+
+test('normal motion still uses leans and glitches (the policy is reduced-only)', () => {
+  const seen = new Set();
+  for (const id of ['groom', 'unsettledLook']) {
+    for (const seed of [1, 2, 3, 4]) {
+      const r = runBehavior(id, { reduced: false, seed, mood: id === 'unsettledLook' ? 'stressed' : 'idle' });
+      for (const { patch } of r.applied) {
+        if (patch.lean) seen.add('lean');
+        if (patch.glitch) seen.add('glitch');
+      }
+    }
+  }
+  assert.deepEqual([...seen].sort(), ['glitch', 'lean']);
+});
