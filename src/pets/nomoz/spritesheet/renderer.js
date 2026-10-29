@@ -10,10 +10,13 @@ import { bendTail, breathAt, decodeTail, fadeLeft, lickAt, mouthLick, newTailSta
  * It wraps the procedural renderer instead of replacing it. Every frame the
  * procedural renderer still runs in full (pupil easing and gaze, the head
  * anchor the vanity items use, lighting, stress / glitch passes, effects,
- * cues, items), and when a clip applies it is handed a "body" hook that
- * paints the sheet frame where the procedural fur would go, plus any
- * `dynamic` procedural regions the clip keeps on top. When no clip
- * applies, or anything about the clip fails, it simply draws procedurally.
+ * cues, items), and it is always handed a "body" hook that paints a sheet
+ * frame where the procedural fur would go, plus any `dynamic` procedural
+ * regions the clip keeps on top. The procedural CAT itself is never drawn
+ * while this renderer is active, not even for one frame: when the wanted
+ * clip cannot be shown (its sheet is still loading or failed, no rule
+ * matches, a paint failed) the frame on screen is held, else the default
+ * sitting frame is used, else nothing is drawn until a sheet is ready.
  *
  * Playback: one small controller per canvas context (a WeakMap entry, no
  * shared timers). It owns the active clip and its start time, keeps it
@@ -47,7 +50,11 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   if (!man.select.length) return fallback;
 
   const states = new WeakMap();
-  const bad = new Set(); // clip ids that failed once; drawn procedurally from then on
+  const bad = new Set(); // clip ids that failed once; their frames are replaced by the held / default sheet frame from then on
+
+  // Every sheet is small (about 70 KB in all): start loading all of them now, so a clip's sheet is nearly always ready
+  // the first time it is wanted.
+  for (const sheet of Object.values(man.sheets)) getSheetImage(sheet.src);
 
   const fail = (id, why) => {
     if (!bad.has(id)) console.warn(`[nomoz sheets] clip "${id}" disabled: ${why}`);
@@ -337,9 +344,11 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const sy = bent ? 0 : rect.y;
     const sil = () => silhouette(clip, index, src, { ...rect, x: sx, y: sy }, ox, oy, cw, ch, !!bent);
 
-    if (fx && fx.record) fx.record({ clip, image, rect, ox, oy });
-    return {
+    if (fx && fx.record) fx.record({ clip, sheet, image, index, rect, ox, oy });
+    const body = {
       under: clip.under ? sil() : false,
+      noProcedural: true, // if this body cannot paint, the procedural cat is still not drawn: draw() holds a sheet frame instead
+      failed: false,
       paint(ac, info) {
         try {
           ac.imageSmoothingEnabled = false;
@@ -391,10 +400,12 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           return { over: whiskers, anchor };
         } catch (err) {
           fail(clip.id, err.message);
+          body.failed = true;
           return false;
         }
       },
     };
+    return body;
   }
 
   // The tail's bend and the tongue for this redraw: { amp, phase, lick, holder, animating }.
@@ -438,6 +449,62 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     return fx;
   }
 
+  /*
+   * The body for `clip` at time `now`: { body, wait }, or null when it cannot be shown right now: its sheet is still
+   * loading (a redraw is queued for when it settles), failed, or is smaller than its frame grid.
+   */
+  function bodyFor(ctx, c, clip, now) {
+    const sheet = man.sheets[clip.sheet];
+    const entry = getSheetImage(sheet.src);
+    if (entry.status === 'loading') {
+      entry.listeners.add(c.onReady);
+      return null;
+    }
+    if (entry.status !== 'ready' || !fitsImage(sheet, entry.image.naturalWidth, entry.image.naturalHeight)) {
+      fail(clip.id, entry.status === 'ready' ? 'the sheet is smaller than its frame grid' : 'the sheet failed to load');
+      return null;
+    }
+    if (!c.shown) {
+      c.shown = true;
+      c.t0 = now;
+    }
+    const reduced = prefersReducedMotion();
+    const pos = reduced ? { index: clip.still, wait: Infinity } : frameAt(clip, now - c.t0);
+    const fx = motionFor(c, clip, c.params, now, reduced);
+    fx.record = (f) => {
+      c.last = { ...f, at: now };
+    };
+    const body = makeBody(clip, sheet, entry.image, pos.index, ctx.canvas.width, ctx.canvas.height, fx);
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    let wait = hidden ? pos.wait : Math.min(pos.wait, fx.wait);
+    // the tail and the tongue move between frames: come back soon (not at all when the tab is hidden)
+    if (fx.animating && !hidden) wait = Math.min(wait, fx.lick ? 60 : 100);
+    return { body, wait };
+  }
+
+  /*
+   * A sheet frame to show when the wanted one cannot be drawn: the frame that is already on screen (so a pose waits for
+   * its sheet without a flicker), else the default sitting frame, else null (nothing is drawn). Never the procedural cat.
+   */
+  function holdBody(ctx, c) {
+    const cw = ctx.canvas.width;
+    const ch = ctx.canvas.height;
+    const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, fade: null, wait: Infinity, record: null };
+    const last = c.last;
+    if (last && !bad.has(last.clip.id)) return makeBody(last.clip, last.sheet, last.image, last.index, cw, ch, still);
+    // the default: the clip of the last (most general) rule, else any rule's clip whose sheet is ready
+    for (const rule of [...man.select].reverse()) {
+      const clip = man.clips[rule.clip];
+      if (!clip || bad.has(clip.id)) continue;
+      const sheet = man.sheets[clip.sheet];
+      const entry = getSheetImage(sheet.src);
+      if (entry.status === 'ready' && fitsImage(sheet, entry.image.naturalWidth, entry.image.naturalHeight)) {
+        return makeBody(clip, sheet, entry.image, clip.still, cw, ch, still);
+      }
+    }
+    return null;
+  }
+
   function draw(ctx, c, replay) {
     clearTimeout(c.timer);
     c.timer = 0;
@@ -446,42 +513,35 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const wanted = selectClip(man, c.params);
     const clip = settle(c, wanted && !bad.has(wanted.id) ? wanted : null, now);
 
-    let body = null;
-    let wait = Infinity;
-    if (clip) {
-      const sheet = man.sheets[clip.sheet];
-      const entry = getSheetImage(sheet.src);
-      if (entry.status === 'loading') {
-        entry.listeners.add(c.onReady);
-      } else if (entry.status === 'ready' && fitsImage(sheet, entry.image.naturalWidth, entry.image.naturalHeight)) {
-        if (!c.shown) {
-          c.shown = true;
-          c.t0 = now;
-        }
-        const reduced = prefersReducedMotion();
-        const pos = reduced ? { index: clip.still, wait: Infinity } : frameAt(clip, now - c.t0);
-        const fx = motionFor(c, clip, c.params, now, reduced);
-        fx.record = (f) => {
-          c.last = { ...f, at: now };
-        };
-        body = makeBody(clip, sheet, entry.image, pos.index, ctx.canvas.width, ctx.canvas.height, fx);
-        const hidden = typeof document !== 'undefined' && document.hidden;
-        wait = hidden ? pos.wait : Math.min(pos.wait, fx.wait);
-        // the tail and the tongue move between frames: come back soon (not at all when the tab is hidden)
-        if (fx.animating && !hidden) wait = Math.min(wait, fx.lick ? 60 : 100);
-      } else {
-        fail(clip.id, entry.status === 'ready' ? 'the sheet is smaller than its frame grid' : 'the sheet failed to load');
-      }
-    }
-
+    let shown = clip ? bodyFor(ctx, c, clip, now) : null;
+    let body = shown && shown.body;
+    let wait = shown ? shown.wait : Infinity;
     const params = replay ? { ...c.params, replay: true } : c.params;
-    try {
-      fallback(ctx, params, c.vanity, body);
-    } catch (err) {
-      if (!body) throw err;
-      fail(clip.id, err.message);
-      fallback(ctx, params, c.vanity, null);
-      return;
+
+    const paint = (b) => {
+      try {
+        fallback(ctx, params, c.vanity, b);
+      } catch (err) {
+        if (!b) throw err;
+        fail(b.clipId || (clip && clip.id) || 'body', err.message);
+        b.failed = true;
+      }
+      return !b.failed;
+    };
+
+    if (!body || !paint(body)) {
+      // the wanted frame is not available (loading, failed, no rule, or its paint failed): hold a sheet frame instead
+      body = holdBody(ctx, c);
+      wait = Infinity;
+      if (!body) {
+        // nothing of the sheet cat can be drawn yet: draw nothing (never the procedural cat); a queued redraw follows the load
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        return;
+      }
+      if (!paint(body)) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        return;
+      }
     }
 
     if (body && wait < Infinity && ctx.canvas?.isConnected !== false) {
@@ -507,9 +567,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     try {
       draw(ctx, c, false);
     } catch (err) {
-      // never leave the pet frozen: the procedural cat draws this frame
-      console.warn('[nomoz sheets] falling back to procedural drawing:', err);
-      fallback(ctx, p, vanity);
+      // the frame on screen stays (the procedural cat is never drawn in its place)
+      console.warn('[nomoz sheets] drawing stopped for this frame:', err);
     }
   };
 }

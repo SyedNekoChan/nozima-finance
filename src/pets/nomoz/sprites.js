@@ -1763,7 +1763,7 @@ function paintGrid(ctx, g, ox = 0, oy = 0) {
  * body (optional, used by the sprite-sheet path in ./spritesheet): replaces
  * the procedural fur with other body art while everything else (pupils,
  * lighting, vanity, effects, stress / glitch) still runs here.
- *   { under?: false | { mask, footY, feet, poolX },
+ *   { under?: false | { mask, footY, feet, poolX }, noProcedural?: true (a failed paint draws no cat, not the procedural one),
  *     paint(ac, { grid, hx, hy, ox, oy, light, view, pose, footY, feet, face })
  *     -> falsy to use the procedural body, or
  *        { over?: false, anchor?: { hx, hy, chest, chestTurn } } }
@@ -1856,7 +1856,8 @@ export function renderSprite(ctx, p, vanity, body = null) {
       paintProceduralUnder();
     }
   }
-  if (!drawn) paintGrid(ac, lit, ox, oy);
+  // a sheet body that could not paint is never replaced by the procedural cat (the sheet renderer holds a sheet frame)
+  if (!drawn && !(body && body.noProcedural)) paintGrid(ac, lit, ox, oy);
   if (!drawn || drawn.over !== false) paintGrid(ac, over, ox, oy);
   // Where procedural coordinates land on the canvas. By default the 56 x 60
   // area is centred (ox, oy). Art that places its own head carries an anchor:

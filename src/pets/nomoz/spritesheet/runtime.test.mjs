@@ -54,6 +54,7 @@ function fakeContext(width, height, alpha = () => 255) {
     drawImage: (...a) => calls.push(['drawImage', ...a]),
     fillRect: (...a) => calls.push(['fillRect', ...a]),
     clearRect: (...a) => calls.push(['clearRect', ...a]),
+    putImageData: () => {},
     getImageData: (x, y, w, h) => {
       const data = new Uint8ClampedArray(w * h * 4);
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) data[(j * w + i) * 4 + 3] = alpha(x + i, y + j);
@@ -164,35 +165,102 @@ test('loader: a zero-size image counts as failed; no Image global fails without 
 /* Fallback                                                            */
 /* ------------------------------------------------------------------ */
 
-test('renderer: procedural while loading, sheet once ready', () => {
-  const { render, calls, ctx, image } = setup();
-  render(ctx, P({}), null);
-  assert.equal(calls.at(-1).body, null, 'loading draws procedurally');
-  image().load(192, 64);
-  assert.ok(calls.at(-1).body, 'redrawn with the sheet when it settles');
+// two sheets (a, b) and one clip each, so one sheet can be on screen while the other is loading or broken
+function setup2() {
+  const a = `sheet${++uid}.png`;
+  const b = `sheet${++uid}.png`;
+  const manifest = {
+    sheets: {
+      a: { src: a, frameWidth: 96, frameHeight: 64, columns: 1, rows: 1 },
+      b: { src: b, frameWidth: 96, frameHeight: 64, columns: 1, rows: 1 },
+    },
+    clips: { sit: { sheet: 'a', frames: [0] }, walk: { sheet: 'b', frames: [0] } },
+    select: [{ when: { pose: 'stand' }, clip: 'walk' }, { when: { pose: 'sit' }, clip: 'sit' }],
+  };
+  const calls = [];
+  const fallback = (ctx, p, v, body) => {
+    calls.push({ p, body });
+    if (body) body.paint(ctx, { light: 1, face: null, ox: 0, oy: 0, hx: 0, hy: 0, grid: [] });
+  };
+  const render = createSheetRenderer({ manifest, fallback });
+  const img = (src) => images.find((i) => i.src === src);
+  return { render, calls, ctx: fakeContext(96, 64), a: () => img(a), b: () => img(b) };
+}
+const noProcedural = (calls) => assert.deepEqual(calls.filter((c) => !c.body), [], 'the procedural cat was drawn');
+
+test('renderer: all sheets start loading at once, before any clip is wanted', () => {
+  const t = setup2();
+  assert.equal(images.length, 2);
+  assert.ok(t.a() && t.b());
 });
 
-test('renderer: a failed sheet or an undersized one draws procedurally and disables the clip', () => {
+test('renderer: while the sheet loads nothing is drawn (never the procedural cat), then the sheet cat appears', () => {
+  const { render, calls, ctx, image } = setup();
+  render(ctx, P({}), null);
+  assert.equal(calls.length, 0, 'the procedural cat is not asked for');
+  assert.ok(ctx.calls.some((c) => c[0] === 'clearRect'), 'the canvas is cleared, nothing drawn');
+  image().load(192, 64);
+  assert.ok(calls.at(-1).body, 'redrawn with the sheet when it settles');
+  noProcedural(calls);
+});
+
+test('renderer: a pose whose sheet is still loading holds the frame on screen instead of flashing the procedural cat', () => {
+  const t = setup2();
+  t.a().load(96, 64);
+  t.render(t.ctx, P({ pose: 'sit' }), null);
+  assert.ok(t.calls.at(-1).body);
+  const drawn = shown(t.ctx).length;
+  t.render(t.ctx, P({ pose: 'stand' }), null); // sheet b has not loaded yet
+  assert.ok(t.calls.at(-1).body, 'a body is still handed over');
+  assert.ok(shown(t.ctx).length > drawn, 'and the sit frame was drawn again, not the procedural cat');
+  t.b().load(96, 64);
+  noProcedural(t.calls);
+});
+
+test('renderer: a failed or undersized sheet never falls back to the procedural cat: the frame on screen is held', () => {
   let t = setup();
   t.render(t.ctx, P({}), null);
   t.image().fail();
-  assert.equal(t.calls.at(-1).body, null);
+  assert.equal(t.calls.filter((c) => !c.body).length, 0);
+  assert.equal(t.calls.length, 0, 'nothing on screen to hold: nothing is drawn');
   assert.ok(warnings.some((w) => /disabled/.test(w)));
 
   images = [];
   t = setup();
   t.render(t.ctx, P({}), null);
   t.image().load(96, 64); // needs 192 x 64
-  assert.equal(t.calls.at(-1).body, null);
+  assert.equal(t.calls.length, 0);
   assert.ok(warnings.some((w) => /smaller than its frame grid/.test(w)));
+
+  images = [];
+  const u = setup2();
+  u.a().load(96, 64);
+  u.render(u.ctx, P({ pose: 'sit' }), null);
+  u.render(u.ctx, P({ pose: 'stand' }), null);
+  u.b().fail(); // its clip is disabled; the sit frame stays
+  u.render(u.ctx, P({ pose: 'stand' }), null);
+  assert.ok(u.calls.length >= 3);
+  noProcedural(u.calls);
 });
 
-test('renderer: a state with no clip is drawn procedurally', () => {
+test('renderer: a state with no clip holds the frame on screen', () => {
   const { render, calls, ctx, image } = setup();
   render(ctx, P({}), null);
   image().load(192, 64);
+  const n = calls.length;
   render(ctx, P({ pose: 'curl' }), null);
-  assert.equal(calls.at(-1).body, null);
+  assert.equal(calls.length, n + 1);
+  assert.ok(calls.at(-1).body, 'the previous sheet frame, not the procedural cat');
+});
+
+test('renderer: with no frame on screen yet, a failed clip shows the default (sitting) frame', () => {
+  const t = setup2();
+  t.a().load(96, 64);
+  t.render(t.ctx, P({ pose: 'stand' }), null); // b is loading, nothing has been drawn yet: the default sit frame stands in
+  assert.ok(t.calls.at(-1).body);
+  assert.ok(shown(t.ctx).length >= 1);
+  t.b().fail();
+  noProcedural(t.calls);
 });
 
 test('renderer: an unusable manifest returns the fallback itself', () => {
@@ -201,7 +269,7 @@ test('renderer: an unusable manifest returns the fallback itself', () => {
   assert.equal(createSheetRenderer({ manifest: null, fallback }), fallback);
 });
 
-test('renderer: if the body fails to paint, that frame is redrawn procedurally', () => {
+test('renderer: if the body fails to paint, that frame is redrawn from a sheet frame, never procedurally', () => {
   const src = `sheet${++uid}.png`;
   const manifest = {
     sheets: { s: { src, frameWidth: 96, frameHeight: 64, columns: 1, rows: 1 } },
@@ -209,17 +277,19 @@ test('renderer: if the body fails to paint, that frame is redrawn procedurally',
     select: [{ when: {}, clip: 'c' }],
   };
   const seen = [];
+  let boom = false;
   const fallback = (ctx, p, v, body) => {
     seen.push(!!body);
-    if (body) throw new Error('boom');
+    if (body && boom) throw new Error('boom');
+    if (body) body.paint(ctx, { light: 1, face: null, ox: 0, oy: 0, hx: 0, hy: 0, grid: [] });
   };
   const ctx = fakeContext(96, 64);
   const render = createSheetRenderer({ manifest, fallback });
   render(ctx, P({}), null);
-  images[0].load(96, 64);
-  assert.deepEqual(seen.slice(-2), [true, false]);
-  render(ctx, P({}), null);
-  assert.equal(seen.at(-1), false, 'the failing clip stays disabled');
+  images[0].load(96, 64); // a good frame is on screen
+  boom = true;
+  render(ctx, P({}), null); // every body now throws: the frame is not replaced by the procedural cat
+  assert.ok(seen.every(Boolean), `procedural draw seen: ${JSON.stringify(seen)}`);
 });
 
 /* ------------------------------------------------------------------ */
@@ -302,9 +372,10 @@ test('playback: reduced motion shows the still frame and schedules nothing', () 
 
 test('playback: redraws are flagged replay; direct renders are not', () => {
   const { render, ctx, image, calls } = setup();
+  image().load(192, 64);
   render(ctx, P({ pose: 'stand', legs: 1 }), null);
   assert.equal(calls.at(-1).p.replay, undefined);
-  image().load(192, 64);
+  advance(150);
   assert.equal(calls.at(-1).p.replay, true);
 });
 

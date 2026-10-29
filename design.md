@@ -707,8 +707,9 @@ frame art those fields select lives in `nomoz/sprites.js`:
 
 `nomoz/spritesheet/` can draw the cat from PNG sheets instead of
 `sprites.js`. `SPRITE_RENDERER.mode` in `nomoz/config.js` selects it;
-the shipped value is `'sheet'`; `'procedural'` is the one-line revert, and the procedural cat is also the fallback
-for a failed or still-loading sheet and for any state no clip covers. Sheet
+the shipped value is `'sheet'`; `'procedural'` is the one-line revert. In sheet mode the procedural cat is never drawn,
+not even for a frame: all sheets load when the renderer is created, and a state whose sheet is loading, failed or
+unmatched keeps the frame on screen (`flash.browser.mjs`). Sheet
 mode uses a 96 x 64 box (`SHEET_SPRITE_SIZE`); the procedural drawing sits
 in a 56 x 60 area at the bottom centre, so effects, items and cues keep
 their coordinates and follow the art's head through per-frame anchors.

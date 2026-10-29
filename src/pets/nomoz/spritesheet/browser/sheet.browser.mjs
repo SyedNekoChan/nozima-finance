@@ -72,7 +72,7 @@ before(async () => {
     sheetData[f.replace('.png', '')] = readFileSync(join(SHEETS, 'sheets', f)).toString('base64');
   }
   servers.procedural = await startVite('procedural');
-  servers.sheet = await startVite('sheet');
+  servers.sheet = await startVite('sheet', { proceduralProbe: true });
   servers.shipped = await startVite();
 });
 
@@ -112,6 +112,10 @@ async function harness(context) {
       return m;
     };
     const base = { mood: 'content', frame: 0, light: 1, facing: -1, view: 'front', pose: 'sit', legs: 0, gaze: 'c', eyes: 'closed', mouth: 'idle', lean: 0, fx: {} };
+    const spy = (ctx, p, v, body) => {
+      if (!body) window.__proc = (window.__proc || 0) + 1;
+      return T.renderSprite(ctx, p, v, body);
+    };
     const make = (render) => {
       const c = document.createElement('canvas');
       c.width = 96;
@@ -131,8 +135,10 @@ async function harness(context) {
       base,
       make,
       opaque,
-      real: () => T.createSheetRenderer({ manifest: manifestWith((id) => 'data:image/png;base64,' + sheets[id]) }),
-      broken: () => T.createSheetRenderer({ manifest: manifestWith((id) => `data:image/png;base64,AAAA${id}`) }),
+      // the renderers count every time they hand a frame to the procedural cat (window.__proc): in sheet mode it must stay 0
+      real: () => T.createSheetRenderer({ manifest: manifestWith((id) => 'data:image/png;base64,' + sheets[id]), fallback: spy }),
+      broken: () => T.createSheetRenderer({ manifest: manifestWith((id) => `data:image/png;base64,AAAA${id}`), fallback: spy }),
+      proceduralDraws: () => window.__proc || 0,
       plain: T.renderSprite,
       vanity: T.vanity,
       wait: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -178,11 +184,12 @@ describe('real browser: renderer with the shipped sheets', () => {
           render(a.g, p, H.vanity);
           H.plain(b.g, p, H.vanity);
           const o1 = H.opaque(a.c);
-          out.push({ name, sheet: H.hash(a.c) !== H.hash(b.c), n: o1.n, bottom: o1.bottom, corner: o1.corner, w: a.c.width, h: a.c.height });
+          out.push({ name, procedural: H.proceduralDraws(), sheet: H.hash(a.c) !== H.hash(b.c), n: o1.n, bottom: o1.bottom, corner: o1.corner, w: a.c.width, h: a.c.height });
         }
         return out;
       }, SCENES);
       for (const r of res) {
+        assert.equal(r.procedural, 0, `${r.name}: the procedural cat was drawn`);
         assert.equal(r.sheet, true, `${r.name}: drawn procedurally, not from the sheet`);
         assert.ok(r.n > 300, `${r.name}: nearly blank (${r.n} px)`);
         assert.equal(r.corner, 0, `${r.name}: top-left corner is not transparent`);
@@ -355,23 +362,22 @@ describe('real browser: renderer with the shipped sheets', () => {
     await ctx.close();
   });
 
-  guard('fallback: unloadable sheets leave the procedural cat, pixel-identical, with no exception', async () => {
+  guard('missing assets: unloadable sheets draw nothing, never the procedural cat, with no exception', async () => {
     const ctx = await browser.newContext({ viewport: DESKTOP });
     const { page, errors } = await harness(ctx);
     const r = await page.evaluate(async () => {
       const H = window.H;
       const render = H.broken();
       const a = H.make(render);
-      const b = H.make(H.plain);
       const p = { ...H.base };
       render(a.g, p, H.vanity);
       await H.wait(300);
       render(a.g, p, H.vanity);
-      H.plain(b.g, p, H.vanity);
-      return { same: H.hash(a.c) === H.hash(b.c), n: H.opaque(a.c).n };
+      render(a.g, { ...p, pose: 'stand', view: 'side', legs: 1 }, H.vanity);
+      return { procedural: H.proceduralDraws(), n: H.opaque(a.c).n };
     });
-    assert.equal(r.same, true);
-    assert.ok(r.n > 300);
+    assert.equal(r.procedural, 0, 'the old procedural cat was drawn');
+    assert.equal(r.n, 0, 'nothing is drawn when no sheet frame exists at all');
     assert.deepEqual(errors, []);
     await ctx.close();
   });
@@ -545,10 +551,12 @@ describe('real browser: the app', () => {
     await ctx.close();
   });
 
-  guard('fallback (app): with every sheet request failing the procedural cat is drawn, no exceptions', async () => {
+  guard('missing assets (app): with every sheet request failing the procedural cat is never drawn, no exceptions', async () => {
     const { ctx, page, log } = await openApp('sheet', { block: true });
     const r = await watch(page, 3500);
-    assert.ok(r.n > 100, `pet blank after sheet failure (${r.n} px)`);
+    // (in dev Vite inlines the smallest sheets as data URLs, which cannot be blocked: a held sheet frame may show)
+    const procedural = await page.evaluate(() => (window.__nomozProcedural || []).length);
+    assert.equal(procedural, 0, `the old procedural cat was drawn ${procedural} times (${r.n} px on screen)`);
     assert.deepEqual(log.errors, []);
     assert.ok(log.warnings.some((w) => /nomoz sheets/.test(w)), 'expected a "could not load" warning');
     await ctx.close();

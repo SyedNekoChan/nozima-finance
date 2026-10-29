@@ -62,6 +62,29 @@ export function schedulerProbePlugin() {
   };
 }
 
+/*
+ * Test-server only: records every canvas draw that ends up as the procedural cat (window.__nomozProcedural), so a test
+ * can assert that the sheet cat is never replaced by it, not even for one frame. It rewrites sprites.js in memory:
+ * renderSprite's own "no sheet body was painted" branch is the single place a procedural cat gets drawn.
+ */
+export function proceduralProbePlugin() {
+  return {
+    name: 'nomoz-procedural-probe-for-test',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.split('?')[0].endsWith('/src/pets/nomoz/sprites.js')) return null;
+      // the one statement that paints the procedural cat when no sheet body painted (with or without the noProcedural guard)
+      const re = /if \(!drawn((?: && !\(body && body\.noProcedural\))?)\) paintGrid\(ac, lit, ox, oy\);/;
+      const m = re.exec(code);
+      if (!m) throw new Error('procedural probe: sprites.js no longer has the procedural paint branch');
+      return code.replace(
+        re,
+        `if (!drawn${m[1]}) { if (typeof window !== 'undefined') (window.__nomozProcedural ||= []).push({ t: Math.round(performance.now()), pose: p.pose, view: p.view, legs: p.legs, bodyGiven: !!body }); paintGrid(ac, lit, ox, oy); }`
+      );
+    },
+  };
+}
+
 /* the mode config.js ships */
 export function shippedMode() {
   const src = readFileSync(join(ROOT, 'src/pets/nomoz/config.js'), 'utf8');
@@ -69,7 +92,7 @@ export function shippedMode() {
 }
 
 /* mode: 'sheet' | 'procedural' pins the renderer; undefined runs the shipped configuration */
-export async function startVite(mode, { probe = false } = {}) {
+export async function startVite(mode, { probe = false, proceduralProbe = false } = {}) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
   const pin = mode ? modePlugin(mode) : { flipped: 0 };
@@ -77,7 +100,7 @@ export async function startVite(mode, { probe = false } = {}) {
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(mode ? [pin] : []), ...(probe ? [schedulerProbePlugin()] : [])],
+    plugins: [react(), ...(mode ? [pin] : []), ...(probe ? [schedulerProbePlugin()] : []), ...(proceduralProbe ? [proceduralProbePlugin()] : [])],
     server: { host: '127.0.0.1', port: 0, strictPort: false },
     logLevel: 'error',
     clearScreen: false,

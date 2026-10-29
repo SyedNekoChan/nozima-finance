@@ -4,8 +4,9 @@
  *   { status: 'loading' | 'ready' | 'failed', image, listeners }
  *
  * Loading never blocks or throws. A renderer that finds an entry still
- * loading draws procedurally and adds a listener to redraw when it
- * settles; a failed entry is permanent for the page (no retry storms).
+ * loading holds the frame on screen (never the procedural cat) and adds a
+ * listener to redraw when it settles; a failed entry is permanent for the
+ * page (no retry storms).
  */
 const cache = new Map();
 

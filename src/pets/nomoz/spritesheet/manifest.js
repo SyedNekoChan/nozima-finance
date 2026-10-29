@@ -5,9 +5,10 @@
  * renderer (./renderer.js), the loader (./loader.js) and the scheduler never
  * change when an asset is added: add to `sheets`, `clips` and `select`. The
  * sheets are used only when SPRITE_RENDERER.mode in ../config.js is 'sheet'
- * (it is 'procedural', the default, so nothing here draws yet). Any state
- * with no matching rule, or whose sheet fails to load, is drawn by the
- * procedural cat in ../sprites.js. Art, sizes and workflow: ./SPEC.md.
+ * (it is 'sheet', the production setting). Any state with no matching rule,
+ * or whose sheet is loading or failed, keeps the frame on screen (the
+ * default sitting frame when nothing is shown yet); the procedural cat in
+ * ../sprites.js is never drawn in sheet mode. Art, sizes and workflow: ./SPEC.md.
  *
  * SHEETS   id -> { src, frameWidth, frameHeight, columns, rows, margin?, spacing? }
  *   One row of 96 x 64 frames per art folder (see spec.js), built by
@@ -38,7 +39,7 @@
  *   an array (any of), true (set) or false (unset). `moving` is true while legs
  *   is 1, 2 or 3. Direction is the `view` field (front, frontQ, side, rearQ,
  *   rear). Name what the art does NOT cover (raised paws, the open book) so
- *   those states keep the procedural cat instead of showing a wrong frame.
+ *   those states hold the frame on screen instead of showing a wrong frame.
  *
  * Frames face LEFT (the cat's head on the left); `facing > 0` mirrors the
  * whole canvas, as for the procedural cat.
