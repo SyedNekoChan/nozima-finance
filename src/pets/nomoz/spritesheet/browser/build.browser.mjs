@@ -4,9 +4,9 @@
  *   npm run test:browser
  *
  * Builds the app twice with Vite's JS API into temporary folders:
- *   - the default configuration (SPRITE_RENDERER.mode is 'procedural'), and
- *   - the same sources with the existing SPRITE_RENDERER switch flipped to
- *     'sheet' in memory by a plugin (src/pets/nomoz/config.js is not edited).
+ *   - the shipped configuration (SPRITE_RENDERER.mode in src/pets/nomoz/config.js),
+ *   - the existing SPRITE_RENDERER switch pinned to 'sheet', and pinned to
+ *     'procedural' (the fallback renderer), by a plugin: config.js is not edited.
  * Each build is served with `vite preview` and driven at desktop and mobile
  * sizes. The sheet build must emit the shipped sheet images byte for byte
  * (or inline them), fetch them over HTTP as image/png, and render them; the
@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BASE, REQUIRED, ROOT, importFromProject, loadPlaywright, openAt, sampleCanvas, sheetModePlugin } from './support.mjs';
+import { BASE, REQUIRED, ROOT, importFromProject, loadPlaywright, openAt, sampleCanvas, modePlugin, shippedMode } from './support.mjs';
 
 const SHEET_DIR = join(ROOT, 'src/pets/nomoz/spritesheet/sheets');
 const DESKTOP = { width: 1280, height: 800 };
@@ -35,16 +35,16 @@ const unavailable = (why) => {
   skipReason = why;
 };
 
-async function buildAndServe(name, flipToSheet) {
+async function buildAndServe(name, mode) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
-  const flip = sheetModePlugin();
+  const pin = mode ? modePlugin(mode) : { flipped: 0 };
   const outDir = join(tmp, name);
   await vite.build({
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(flipToSheet ? [flip] : [])],
+    plugins: [react(), ...(mode ? [pin] : [])],
     build: { outDir, emptyOutDir: true, reportCompressedSize: false },
     logLevel: 'error',
   });
@@ -57,7 +57,7 @@ async function buildAndServe(name, flipToSheet) {
     logLevel: 'error',
   });
   const addr = server.httpServer.address();
-  return { outDir, server, url: `http://127.0.0.1:${addr.port}${BASE}`, flipped: flip.flipped };
+  return { outDir, server, url: `http://127.0.0.1:${addr.port}${BASE}`, flipped: pin.flipped };
 }
 
 before(async () => {
@@ -68,8 +68,9 @@ before(async () => {
   } catch (err) {
     return void unavailable(`Chromium could not launch: ${String(err.message).split('\n')[0]}`);
   }
-  builds.procedural = await buildAndServe('procedural', false);
-  builds.sheet = await buildAndServe('sheet', true);
+  builds.shipped = await buildAndServe('shipped');
+  builds.procedural = await buildAndServe('procedural', 'procedural');
+  builds.sheet = await buildAndServe('sheet', 'sheet');
 });
 
 after(async () => {
@@ -92,10 +93,10 @@ const jsOf = (b) =>
     .join('\n');
 
 describe('production build', () => {
-  guard('the sheet build really has sheet mode on; the default build does not', () => {
-    assert.ok(builds.sheet.flipped >= 1, 'the SPRITE_RENDERER switch was not applied');
-    assert.equal(builds.procedural.flipped, 0);
-    assert.match(readFileSync(join(ROOT, 'src/pets/nomoz/config.js'), 'utf8'), /SPRITE_RENDERER = \{ mode: 'procedural' \}/);
+  guard('the pinned builds applied their mode, and the shipped configuration is the sheet cat', () => {
+    assert.ok(builds.sheet.flipped >= 1 && builds.procedural.flipped >= 1, 'a SPRITE_RENDERER pin was not applied');
+    assert.equal(builds.shipped.flipped, 0);
+    assert.equal(shippedMode(), 'sheet');
   });
 
   guard('every shipped sheet is in the sheet build: emitted byte for byte, or inlined', () => {
@@ -119,7 +120,7 @@ describe('production build', () => {
   });
 
   for (const [vpName, viewport, mobile] of [['desktop', DESKTOP, false], ['mobile', MOBILE, true]]) {
-    guard(`default build, ${vpName}: procedural 56 x 60 cat draws; no sheet is fetched`, async () => {
+    guard(`procedural fallback build, ${vpName}: 56 x 60 cat draws; no sheet is fetched`, async () => {
       const { ctx, page, log } = await openAt(browser, builds.procedural.url, { viewport, mobile });
       let s = await sampleCanvas(page);
       for (let i = 0; i < 40 && s.n <= 100; i++) {
@@ -133,8 +134,8 @@ describe('production build', () => {
       await ctx.close();
     });
 
-    guard(`sheet build, ${vpName}: sheets load as image/png (200), a 96 x 64 canvas renders and animates`, async () => {
-      const { ctx, page, log } = await openAt(browser, builds.sheet.url, { viewport, mobile });
+    guard(`shipped build, ${vpName}: sheets load as image/png (200), a 96 x 64 canvas renders and animates`, async () => {
+      const { ctx, page, log } = await openAt(browser, builds.shipped.url, { viewport, mobile });
       const seen = new Set();
       let n = 0;
       for (let i = 0; i < 50; i++) {

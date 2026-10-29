@@ -29,7 +29,7 @@ before(async () => {
   } catch (err) {
     return void unavailable(`Chromium could not launch: ${String(err.message).split('\n')[0]}`);
   }
-  dev = await startVite(false);
+  dev = await startVite();
 });
 
 after(async () => {

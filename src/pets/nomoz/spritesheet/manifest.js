@@ -84,16 +84,17 @@ const clips = {
   leap_front: clip('leap_front', [0], { floor: 61 }),
   leap_side: clip('leap_side', [0], { floor: 61 }),
 };
-// front and rear walks are painted as left-forward, neutral, right-forward:
-// played out and back (0 1 2 1) they make a full cycle; the side-derived
-// views have their own three-frame cycle
-const cycle = (view) => (view === 'front' || view === 'rear' ? [0, 1, 2, 1] : [0, 1, 2]);
-const cycleMs = (view, ms) => (view === 'front' || view === 'rear' ? Math.round((ms * 3) / 4) : ms);
+// The approved side walk is a three-frame loop (0 1 2). Every other walk and
+// creep is contact left, passing (all four paws down: also the standing
+// pose), contact right, played out and back (0 1 2 1) for a full cycle.
+const pingPong = (art) => art !== 'walk_side';
 for (const view of VIEWS) {
-  clips[`walk_${view}`] = clip(`walk_${view}`, cycle(view), { ms: cycleMs(view, WALK) });
-  clips[`stand_${view}`] = clip(`walk_${view}`, [1]); // arriving or waiting on four legs
-  clips[`creep_${view}`] = clip(`creep_${view}`, cycle(view), { ms: cycleMs(view, CREEP) });
-  clips[`crouch_${view}`] = clip(`creep_${view}`, [1]);
+  const walkArt = `walk_${view}`;
+  const creepArt = `creep_${view}`;
+  clips[walkArt] = clip(walkArt, pingPong(walkArt) ? [0, 1, 2, 1] : [0, 1, 2], { ms: pingPong(walkArt) ? Math.round((WALK * 3) / 4) : WALK });
+  clips[`stand_${view}`] = clip(walkArt, [1]); // arriving or waiting on four legs
+  clips[creepArt] = clip(creepArt, [0, 1, 2, 1], { ms: Math.round((CREEP * 3) / 4) });
+  clips[`crouch_${view}`] = clip(creepArt, [1]);
 }
 
 // Raised forepaws other than grooming (mid / high) are not drawn: those states

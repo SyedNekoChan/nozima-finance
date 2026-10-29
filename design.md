@@ -608,7 +608,7 @@ src/pets/
     index.js           the NOMOZ.EXE definition (registered first)
     config.js          appearances, overrides, lighting, equipped items
     sprites.js         pixel art, pose / frame composition, prop drawers
-    spritesheet/       optional sprite-sheet renderer (off by default), its
+    spritesheet/       sprite-sheet renderer (the production cat), its
                        art, build / validate / audit tools and tests
     financial.js       NOMOZ.EXE's financial reactions (data)
     props.js           world props: terminal, depth anomaly, yarn, bowl, wisp,
@@ -703,11 +703,11 @@ frame art those fields select lives in `nomoz/sprites.js`:
   `crown`, `coin`, `sparkle`, `glyph`) or `FX_KINDS` (keyed effects). Add a
   pixel-row table and one entry; each asset is defined once and shared.
 
-#### Sprite-sheet renderer (optional, off by default)
+#### Sprite-sheet renderer (production)
 
 `nomoz/spritesheet/` can draw the cat from PNG sheets instead of
 `sprites.js`. `SPRITE_RENDERER.mode` in `nomoz/config.js` selects it;
-the default is `'procedural'`, and the procedural cat is also the fallback
+the shipped value is `'sheet'`; `'procedural'` is the one-line revert, and the procedural cat is also the fallback
 for a failed or still-loading sheet and for any state no clip covers. Sheet
 mode uses a 96 x 64 box (`SHEET_SPRITE_SIZE`); the procedural drawing sits
 in a 56 x 60 area at the bottom centre, so effects, items and cues keep
@@ -721,9 +721,9 @@ their coordinates and follow the art's head through per-frame anchors.
   silhouette lighting, and redraws the eyes and whiskers live.
 - Art lives in `art/<id>/<n>.png` (source of truth) and is assembled into
   `sheets/`; `anchors.js` is generated. See `spritesheet/SPEC.md` for
-  conventions and for which frames are approved art and which were built by
-  code and still await real SpriteForge work.
-- Production gate: `npm run sheets:gaps` lists the art that is still a code-built stand-in (13 folders, 33 frames at the time of writing); sheet mode stays off until it is empty, enforced by `production.test.mjs`.
+  conventions: 13 frames are approved art; the other 33 are rendered by code
+  (`art/source/render_cat.py`; not hand-drawn, not SpriteForge).
+- Production gate: `npm run sheets:gaps` separates approved, code-generated and stand-in art; sheet mode may only be on while no stand-ins remain, enforced by `production.test.mjs`.
 - Tooling and tests: `npm run sheets:build`, `sheets:validate`,
   `sheets:audit` (every pose / view / leg state must select a clip) and
   `npm test` (unit tests, approved-frame hash guard, the three tools in
@@ -731,11 +731,11 @@ their coordinates and follow the art's head through per-frame anchors.
   tests with the pinned `playwright` devDependency (browser installed by
   `npx playwright install chromium`): the shipped sheets through the real
   renderer at desktop and mobile sizes, frame timing, reduced motion, fallback,
-  tab hiding, the app on Vite dev servers, and production builds (default and
-  sheet mode) served with `vite preview`: emitted sheets match the sources byte
+  tab hiding, the app on Vite dev servers, and production builds (shipped and
+  procedural/sheet pinned) served with `vite preview`: emitted sheets match the sources byte
   for byte, load as `image/png`, and render. Sheet mode is switched on in memory
-  by a Vite plugin around the existing `SPRITE_RENDERER` constant; the source
-  stays `'procedural'`. Locally the browser tests skip with a reason when
+  by a Vite plugin around the existing `SPRITE_RENDERER` constant; the shipped
+  config is `'sheet'`. Locally the browser tests skip with a reason when
   Chromium is missing; with `CI=true` or `REQUIRE_BROWSER=1` that is an error.
   `.github/workflows/ci.yml` (pull requests, non-master pushes) and the deploy
   workflow both run `npm ci`, `npm test`, `test:browser` and the build.

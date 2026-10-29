@@ -147,8 +147,8 @@ test('shipped manifest normalizes without skipping anything', () => {
   assert.ok(result.select.length > 0);
 });
 
-test('procedural renderer stays the default; sheet box is 96 x 64', () => {
-  assert.equal(SPRITE_RENDERER.mode, 'procedural');
+test('the production pet is the sheet cat; sheet box is 96 x 64', () => {
+  assert.equal(SPRITE_RENDERER.mode, 'sheet');
   assert.deepEqual({ ...SHEET_SPRITE_SIZE }, { width: 96, height: 64 });
 });
 

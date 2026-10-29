@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -22,41 +23,49 @@ export function loadPlaywright() {
   return null;
 }
 
-export async function startVite(flipToSheet) {
+/*
+ * Pins SPRITE_RENDERER.mode to `mode` in memory (dev server and production build alike), so the tests
+ * exercise a renderer mode regardless of what config.js currently ships. config.js is never edited.
+ */
+export function modePlugin(mode) {
+  const plugin = {
+    name: `nomoz-renderer-mode-${mode}-for-test`,
+    enforce: 'pre',
+    flipped: 0,
+    transform(code, id) {
+      if (!id.split('?')[0].endsWith('/src/pets/nomoz/config.js')) return null;
+      const re = /SPRITE_RENDERER = \{ mode: '[a-z]+' \}/;
+      if (!re.test(code)) return null;
+      plugin.flipped++;
+      return code.replace(re, `SPRITE_RENDERER = { mode: '${mode}' }`);
+    },
+  };
+  return plugin;
+}
+
+/* the mode config.js ships */
+export function shippedMode() {
+  const src = readFileSync(join(ROOT, 'src/pets/nomoz/config.js'), 'utf8');
+  return /SPRITE_RENDERER = \{ mode: '([a-z]+)' \}/.exec(src)[1];
+}
+
+/* mode: 'sheet' | 'procedural' pins the renderer; undefined runs the shipped configuration */
+export async function startVite(mode) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
-  const flip = sheetModePlugin();
+  const pin = mode ? modePlugin(mode) : { flipped: 0 };
   const server = await vite.createServer({
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(flipToSheet ? [flip] : [])],
+    plugins: [react(), ...(mode ? [pin] : [])],
     server: { host: '127.0.0.1', port: 0, strictPort: false },
     logLevel: 'error',
     clearScreen: false,
   });
   await server.listen();
   const url = `http://127.0.0.1:${server.httpServer.address().port}${BASE}`;
-  return { server, url, flipped: () => flip.flipped };
-}
-
-/*
- * Flips SPRITE_RENDERER.mode to 'sheet' in memory (dev server and production
- * build alike). The source file config.js is never edited.
- */
-export function sheetModePlugin() {
-  const plugin = {
-    name: 'nomoz-sheet-mode-for-test',
-    enforce: 'pre',
-    flipped: 0,
-    transform(code, id) {
-      if (!id.split('?')[0].endsWith('/src/pets/nomoz/config.js')) return null;
-      const out = code.replace("SPRITE_RENDERER = { mode: 'procedural' }", "SPRITE_RENDERER = { mode: 'sheet' }");
-      if (out !== code) plugin.flipped++;
-      return out;
-    },
-  };
-  return plugin;
+  return { server, url, flipped: () => pin.flipped };
 }
 
 export async function importFromProject(rel) {

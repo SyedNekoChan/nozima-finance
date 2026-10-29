@@ -21,7 +21,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REQUIRED, loadPlaywright, startVite } from './support.mjs';
+import { REQUIRED, loadPlaywright, shippedMode, startVite } from './support.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHEETS = resolve(HERE, '..');
@@ -71,8 +71,9 @@ before(async () => {
   for (const f of readdirSync(join(SHEETS, 'sheets'))) {
     sheetData[f.replace('.png', '')] = readFileSync(join(SHEETS, 'sheets', f)).toString('base64');
   }
-  servers.procedural = await startVite(false);
-  servers.sheet = await startVite(true);
+  servers.procedural = await startVite('procedural');
+  servers.sheet = await startVite('sheet');
+  servers.shipped = await startVite();
 });
 
 after(async () => {
@@ -388,15 +389,19 @@ async function watch(page, ms, step = 150) {
 }
 
 describe('real browser: the app', () => {
-  guard('the Vite test server really runs sheet mode, and the default server stays procedural', async () => {
+  guard('the test servers run the renderer modes they claim; the shipped configuration is the sheet cat', async () => {
     await (await openApp('sheet')).ctx.close();
     await (await openApp('procedural')).ctx.close();
-    assert.equal(servers.sheet.flipped() > 0, true, 'config flip did not apply');
-    assert.equal(servers.procedural.flipped(), 0);
-    assert.match(readFileSync(join(SHEETS, '../config.js'), 'utf8'), /SPRITE_RENDERER = \{ mode: 'procedural' \}/);
+    assert.ok(servers.sheet.flipped() > 0, 'sheet pin did not apply');
+    assert.ok(servers.procedural.flipped() > 0, 'procedural pin did not apply');
+    assert.equal(shippedMode(), 'sheet', 'config.js should ship the sheet renderer');
+    const { ctx, page } = await openApp('shipped');
+    const s = await sample(page);
+    assert.deepEqual([s.w, s.ht], [96, 64], 'the unpinned app draws the 96 x 64 sheet cat');
+    await ctx.close();
   });
 
-  guard('default (procedural) app: 56 x 60 canvas, draws, and requests no sheet images', async () => {
+  guard('procedural fallback mode: 56 x 60 canvas, draws, and requests no sheet images', async () => {
     const { ctx, page, log } = await openApp('procedural');
     await page.waitForTimeout(1500);
     const s = await drawn(page, 100);

@@ -15,12 +15,21 @@ export const SHEET_DIR = 'src/pets/nomoz/spritesheet/sheets';
 
 /*
  * One art folder per pose family: art/<id>/<n>.png (n from 0), assembled into
- * sheets/nomoz_<id>.png as a single row of `frames` frames. `from` says where
- * the frames come from; 'reference' ones are converted from the user's sheet
- * (art/source/convert_reference.py) and can be hand-finished in SpriteForge,
- * 'built' ones are not in the reference: they are assembled from the approved
- * frames (art/source/build_missing.py). All of them can be hand-finished in
- * SpriteForge; the PNGs are the source of truth once edited.
+ * sheets/nomoz_<id>.png as a single row of `frames` frames. `from` says how
+ * the frames were made (honestly):
+ *   'reference'  converted from the user's reference sheet
+ *                (art/source/convert_reference.py); the approved art.
+ *   'generated'  rendered by code (art/source/generate_production.py via
+ *                render_cat.py: a 3-D shaded ellipsoid cat model with fur-flow
+ *                texture, quantised to the approved fur tones), with the head
+ *                and chest ruff taken from the approved frames of the matching
+ *                view (the rear three-quarter head is rendered). Neither
+ *                hand-drawn nor made in SpriteForge.
+ *   'built'      assembled from approved frames by the older
+ *                build_missing.py (cut, shifted, repeated rows); a stand-in
+ *                that blocks the production switch (gaps.mjs). None remain.
+ * The PNGs in each folder are the source of truth once a frame is edited by
+ * hand: do not regenerate over hand-finished frames.
  */
 export const ART = {
   // converted from the reference (art/source/convert_reference.py)
@@ -32,20 +41,20 @@ export const ART = {
   sit_rear: { frames: 1, from: 'reference', head: 'rear', note: 'sitting, seen from behind' },
   curl: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'curled up asleep' },
   stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'full-body stretch (scaled to fit the box)' },
-  // built from the approved frames (art/source/build_missing.py)
-  walk_front: { frames: 3, from: 'built', head: 'front', face: 'front', note: 'walking toward us: approved head and chest, painted standing legs, paws alternate' },
-  walk_frontQ: { frames: 3, from: 'built', head: 'side', face: 'threeqWalk', note: 'approved side-walk body with the three-quarter head' },
-  walk_rearQ: { frames: 3, from: 'built', head: 'side', chest: false, note: 'approved side-walk body with the rear head' },
-  walk_rear: { frames: 3, from: 'built', head: 'rear', note: 'walking away: approved rear view to the rump, painted hind legs, raised tail' },
-  creep_front: { frames: 3, from: 'built', head: 'front', face: 'front', note: 'crouched walk, front' },
-  creep_frontQ: { frames: 3, from: 'built', head: 'side', face: 'threeqWalk', note: 'crouched walk, three-quarter front' },
-  creep_side: { frames: 3, from: 'built', head: 'side', face: 'profile', note: 'crouched walk, side' },
-  creep_rearQ: { frames: 3, from: 'built', head: 'side', chest: false, note: 'crouched walk, three-quarter rear' },
-  creep_rear: { frames: 3, from: 'built', head: 'rear', note: 'crouched walk, rear' },
-  leap_front: { frames: 1, from: 'built', head: 'front', face: 'front', note: 'mid-hop, front (raised 7 px; floor shadow stays on the ground)' },
-  leap_side: { frames: 1, from: 'built', head: 'side', face: 'profile', note: 'mid-hop, side (raised 7 px)' },
-  low_front: { frames: 2, from: 'built', head: 'front', face: 'front', eyesOff: [0, 1], note: 'head down, body low (eyes closed = looking down)' },
-  loaf_front: { frames: 2, from: 'built', head: 'front', face: 'front', note: 'lying, a low loaf' },
+  // generated (art/source/generate_production.py)
+  walk_front: { frames: 3, from: 'generated', head: 'front', face: 'front', note: 'walking toward us: contact left, passing, contact right; rendered body and legs, approved head and ruff' },
+  walk_frontQ: { frames: 3, from: 'generated', head: 'threeq', face: 'threeq', note: 'walking, three-quarter view toward us, facing left; approved three-quarter head' },
+  walk_rearQ: { frames: 3, from: 'generated', head: 'rearQ', chest: false, note: 'walking away, three-quarter view, facing left; fully rendered head' },
+  walk_rear: { frames: 3, from: 'generated', head: 'rear', note: 'walking away: approved rear head, rendered haunches, hind legs and raised tail' },
+  creep_front: { frames: 3, from: 'generated', head: 'front', face: 'front', note: 'crouched stalking walk, front' },
+  creep_frontQ: { frames: 3, from: 'generated', head: 'threeq', face: 'threeq', note: 'crouched stalking walk, three-quarter front' },
+  creep_side: { frames: 3, from: 'generated', head: 'side', face: 'profile', note: 'crouched stalking walk, side' },
+  creep_rearQ: { frames: 3, from: 'generated', head: 'rearQ', chest: false, note: 'crouched stalking walk, three-quarter rear' },
+  creep_rear: { frames: 3, from: 'generated', head: 'rear', note: 'crouched stalking walk, rear' },
+  leap_front: { frames: 1, from: 'generated', head: 'front', face: 'front', note: 'mid-hop, front (raised 7 px; floor shadow stays on the ground)' },
+  leap_side: { frames: 1, from: 'generated', head: 'side', face: 'profile', note: 'mid-hop, side: forelegs reaching, hind legs pushing (raised 7 px)' },
+  low_front: { frames: 2, from: 'generated', head: 'front', face: 'front', eyesOff: [0, 1], note: 'head down, body low (eyes closed = looking down)' },
+  loaf_front: { frames: 2, from: 'generated', head: 'front', face: 'front', note: 'lying, a low loaf' },
 };
 
 /*
@@ -54,7 +63,7 @@ export const ART = {
  * the coin's is (same x, ear top + CHEST_DY[head]). `head: null` art lists its
  * own `anchors`; `chest: false` hides the coin (the chest faces away).
  */
-export const CHEST_DY = { front: 21, side: 19, threeq: 22, rear: null };
+export const CHEST_DY = { front: 21, side: 19, threeq: 22, rear: null, rearQ: null };
 /*
  * Eyes and whiskers are drawn live over the art (so pupils dilate, gaze moves
  * and the eyes blink, wink or close like the procedural cat's), at spots
@@ -82,7 +91,7 @@ export const FACE = {
   },
 };
 
-export const HEAD_COLUMNS = { front: [26, 51], side: [1, 27], threeq: [15, 47], rear: [29, 53] };
+export const HEAD_COLUMNS = { front: [26, 51], side: [1, 27], threeq: [15, 47], rear: [29, 53], rearQ: [12, 46] };
 
 export const sheetId = (art) => `nomoz_${art}`;
 

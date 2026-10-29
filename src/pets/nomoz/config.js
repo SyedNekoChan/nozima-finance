@@ -55,13 +55,17 @@ export const SPRITE_SIZE = { width: 56, height: 60 };
 
 /*
  * Which renderer draws the cat.
- *   'procedural' : the pixel-grid renderer in ./sprites.js (the default).
- *   'sheet'      : sprite-sheet clips from ./spritesheet/manifest.js, with
- *                  the procedural renderer as the per-frame fallback and
- *                  the source of dynamic overlays. With an empty manifest
- *                  it behaves exactly like 'procedural'.
+ *   'sheet'      : the production pet: sprite-sheet clips from
+ *                  ./spritesheet/manifest.js (approved reference art plus the
+ *                  generated frames, see spritesheet/SPEC.md), with the
+ *                  procedural renderer as the per-frame fallback (a sheet that
+ *                  fails to load, an unknown pose) and the source of the
+ *                  dynamic overlays and live eyes. Gated by
+ *                  spritesheet/production.test.mjs: no stand-in art allowed.
+ *   'procedural' : the pixel-grid renderer in ./sprites.js, the earlier cat,
+ *                  kept as the fallback and for tests.
  */
-export const SPRITE_RENDERER = { mode: 'procedural' };
+export const SPRITE_RENDERER = { mode: 'sheet' };
 
 /*
  * Sprite box of the 'sheet' mode: the reference-style cat is larger than the
