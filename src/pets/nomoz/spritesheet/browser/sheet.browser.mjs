@@ -345,13 +345,13 @@ async function openApp(which, { viewport = DESKTOP, reducedMotion = 'no-preferen
   page.on('response', (r) => r.request().resourceType() === 'image' && /nomoz_[a-z_]+\.png/.test(r.url()) && log.sheets.push({ url: r.url(), status: r.status() }));
   if (block) await page.route(/nomoz_[a-z_]+\.png/, (r) => (r.request().resourceType() === 'image' ? r.abort() : r.continue()));
   await page.goto(servers[which].url);
-  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 45000 });
+  await page.waitForSelector('canvas.nomoz-canvas[data-mood]', { state: 'attached', timeout: 45000 });
   return { ctx, page, log };
 }
 
 const sample = (page) =>
   page.evaluate(() => {
-    const c = document.querySelector('canvas.nomoz-canvas');
+    const c = document.querySelector('canvas.nomoz-canvas[data-mood]');
     if (!c) return null;
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let h = 0;
@@ -428,7 +428,7 @@ describe('real browser: the app', () => {
     await page.waitForTimeout(1200);
     const labels = await page.evaluate(() => [...document.querySelectorAll('footer button')].map((b) => b.getAttribute('aria-label') || b.textContent.trim()).filter(Boolean));
     assert.ok(labels.length >= 2, 'footer tabs not found');
-    await page.evaluate(() => (window.__canvas = document.querySelector('canvas.nomoz-canvas')));
+    await page.evaluate(() => (window.__canvas = document.querySelector('canvas.nomoz-canvas[data-mood]')));
     for (const viewport of [MOBILE, DESKTOP, { width: 768, height: 1024 }, DESKTOP]) {
       await page.setViewportSize(viewport);
       for (const label of [...new Set(labels)].slice(0, 4)) {
@@ -440,7 +440,7 @@ describe('real browser: the app', () => {
       const s = await drawn(page, 300);
       assert.ok(s && s.n > 300, `pet blank after switching tabs at ${viewport.width}x${viewport.height}`);
     }
-    const same = await page.evaluate(() => window.__canvas === document.querySelector('canvas.nomoz-canvas') || document.contains(window.__canvas));
+    const same = await page.evaluate(() => window.__canvas === document.querySelector('canvas.nomoz-canvas[data-mood]') || document.contains(window.__canvas));
     // the pet fades and returns on some transitions; either way a canvas is present and drawing
     assert.ok(same || (await drawn(page, 300)).n > 300);
     assert.deepEqual(log.errors, []);

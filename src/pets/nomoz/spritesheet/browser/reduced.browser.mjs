@@ -116,7 +116,7 @@ describe('real browser: reduced motion in the app', () => {
           const out = [];
           const t0 = performance.now();
           const loop = () => {
-            const c = document.querySelector('canvas.nomoz-canvas');
+            const c = document.querySelector('canvas.nomoz-canvas[data-mood]');
             if (c) {
               const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data;
               let n = 0;

@@ -76,14 +76,14 @@ export async function openAt(browser, url, { viewport, mobile = false, reducedMo
   page.on('response', (r) => r.request().resourceType() === 'image' && log.images.push({ url: r.url(), status: r.status(), type: r.headers()['content-type'] }));
   page.on('requestfailed', (r) => log.failed.push(r.url()));
   await page.goto(url);
-  await page.waitForSelector('canvas.nomoz-canvas', { state: 'attached', timeout: 45000 });
+  await page.waitForSelector('canvas.nomoz-canvas[data-mood]', { state: 'attached', timeout: 45000 });
   return { ctx, page, log };
 }
 
 /* Pixel summary of the pet canvas. */
 export const sampleCanvas = (page) =>
   page.evaluate(() => {
-    const c = document.querySelector('canvas.nomoz-canvas');
+    const c = document.querySelector('canvas.nomoz-canvas[data-mood]');
     if (!c) return null;
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     let h = 0;
