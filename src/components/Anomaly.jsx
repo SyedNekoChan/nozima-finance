@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
 import usePet from '../pets/usePet.js';
+import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import EnvProp from '../pets/EnvProp.jsx';
 import { SCHEDULER } from '../pets/config.js';
@@ -70,7 +71,7 @@ function Pet({ pet }) {
   const armed = useFinanceStore((s) => s.isLoaded);
   const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
   const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
-  const reduced = useReducedMotion() ?? false;
+  const reduced = usePrefersReducedMotion();
 
   const layerRef = useRef(null);
   const actorRef = useRef(null);

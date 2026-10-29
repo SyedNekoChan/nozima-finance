@@ -815,6 +815,10 @@ behavior's own expression (closed, down, wide, happy, a blink in progress),
 is off while off-screen, under reduced motion and in the stressed look, and
 reopens eyes it left closed when stopped.
 
+The reduced-motion setting is read live (`pets/usePrefersReducedMotion.js`): the
+stock framer-motion hook reads it once per mount, so switching the OS option on
+while the app was open left the pet blinking and walking until a reload.
+
 ### Reduced motion
 
 With `prefers-reduced-motion: reduce` the initial placement is still

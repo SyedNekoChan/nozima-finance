@@ -103,4 +103,55 @@ describe('real browser: reduced motion in the app', () => {
     assert.deepEqual(log.errors, []);
     await ctx.close();
   });
+
+  guard('switching reduced motion on while the app is open takes effect (no more ambient blinks)', async () => {
+    const { ctx, page, log } = await openAt(browser, dev.url, { viewport: { width: 1280, height: 800 }, reducedMotion: 'no-preference' });
+    await page.waitForTimeout(1500);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForTimeout(1500); // the pet restarts its scheduler on the mode change
+    // record the eye-pixel count (amber irises) every frame for 45 s
+    const caps = await page.evaluate(
+      () =>
+        new Promise((done) => {
+          const out = [];
+          const t0 = performance.now();
+          const loop = () => {
+            const c = document.querySelector('canvas.nomoz-canvas');
+            if (c) {
+              const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data;
+              let n = 0;
+              let amber = 0;
+              for (let i = 0; i < d.length; i += 4) {
+                if (!d[i + 3]) continue;
+                n++;
+                if (d[i] > 170 && d[i + 1] > 120 && d[i + 2] < 150 && d[i] - d[i + 2] > 50) amber++;
+              }
+              out.push([performance.now(), n, amber]);
+            }
+            if (performance.now() - t0 < 45000) requestAnimationFrame(loop);
+            else done(out);
+          };
+          loop();
+        })
+    );
+    // closures of the ambient blink's length (140 ms closed): the eyes drop to nothing and come back
+    let open = 0;
+    let closedAt = null;
+    const blinks = [];
+    for (const [t, n, amber] of caps) {
+      if (n < 100) continue;
+      open = Math.max(open * 0.999, amber);
+      const closed = open >= 8 && amber <= open * 0.2;
+      if (closed && closedAt === null) closedAt = t;
+      if (!closed && closedAt !== null) {
+        const ms = t - closedAt;
+        if (ms >= 115 && ms <= 175) blinks.push(Math.round(ms));
+        closedAt = null;
+      }
+    }
+    // before the fix (framer's once-per-mount value) a waking cat blinked about every 5 s; allow stray behavior closures
+    assert.ok(blinks.length <= 1, `ambient-length blinks after switching to reduced motion: ${blinks.join(', ')}`);
+    assert.deepEqual(log.errors, []);
+    await ctx.close();
+  });
 });
