@@ -278,6 +278,8 @@ export const treasure = defineActivity({
   followOn: { coinPolish: 2, crown: 2, sit: 2 },
   plan(c, S, st) {
     const A = st.A;
+    // coins go around the cat, never through it: a move from one side of its depth to the other leaves its footprint first
+    const move = (S_, id, from, to, t0, ms, o = {}) => moveProp(S_, id, from, to, t0, ms, { ...o, around: { c, pos: A.pos } });
     const n = int(c.rng, 3, 5);
     S.at(0, { pose: 'sit', legs: 0, eyes: 'open' });
     let t = rnd(c.rng, 300, 700);
@@ -300,7 +302,7 @@ export const treasure = defineActivity({
     };
     coins.forEach((k, i) => {
       const floor = clampPoint(c, A.world(-14 + (i * 28) / Math.max(1, n - 1), 23, 7), 11);
-      moveProp(S, st.id(k.id), k.at, floor, t + i * 90, 900, { every: 110, ease: EASE.in });
+      move(S, st.id(k.id), k.at, floor, t + i * 90, 900, { every: 110, ease: EASE.in });
       turnCoin(k, t + i * 90, 150, 6);
       k.at = floor;
     });
@@ -316,7 +318,7 @@ export const treasure = defineActivity({
           const s = k.at.sx < A.pos.sx ? 'l' : 'r';
           S.at(t, { [PAW[s]]: 'low' });
           const to = clampPoint(c, { ...base, sy: base.sy - i * 2 * A.px(), z: base.z + i * 0.1 }, 11);
-          moveProp(S, st.id(k.id), k.at, to, t + 100, 400, { every: 100, ease: EASE.inOut });
+          move(S, st.id(k.id), k.at, to, t + 100, 400, { every: 100, ease: EASE.inOut });
           k.at = to;
           S.at(t + 300, { [PAW[s]]: null });
           t += rnd(c.rng, 450, 700);
@@ -339,7 +341,7 @@ export const treasure = defineActivity({
           const s = k.sym === first ? 'l' : 'r';
           S.at(t, { [PAW[s]]: 'out', gaze: s });
           const to = clampPoint(c, A.world(SIGN[s] * (14 + (i % 2) * 4), 23 - (i % 3), 7 + i * 0.1), 11);
-          moveProp(S, st.id(k.id), k.at, to, t + 120, 450, { every: 110, ease: EASE.inOut });
+          move(S, st.id(k.id), k.at, to, t + 120, 450, { every: 110, ease: EASE.inOut });
           k.at = to;
           S.at(t + 350, { [PAW[s]]: null });
           t += rnd(c.rng, 500, 750);
@@ -355,7 +357,7 @@ export const treasure = defineActivity({
         const [px, py] = pawSpot('up', s);
         const tip = A.world(px - 28, py - 34, 9);
         S.at(t, { [PAW[s]]: 'up', gaze: 'u', eyes: 'open', pupils: 2 });
-        moveProp(S, st.id(k.id), k.at, tip, t, 500, { every: 100, ease: EASE.out });
+        move(S, st.id(k.id), k.at, tip, t, 500, { every: 100, ease: EASE.out });
         t += 600;
         for (let j = 0; j < 6; j++) {
           st.prop(t + j * 160, k.id, { sx: tip.sx + (j % 2 ? 1 : -1) * A.px(), turn: j % 2 ? 1 : 0, moveMs: 140 });
@@ -366,13 +368,13 @@ export const treasure = defineActivity({
           st.prop(t, k.id, { sx: tip.sx, turn: 0 });
           S.at(t, { eyes: 'happy', lean: 0 });
           t += 900;
-          moveProp(S, st.id(k.id), tip, k.at, t, 500, { every: 100, ease: EASE.inOut });
+          move(S, st.id(k.id), tip, k.at, t, 500, { every: 100, ease: EASE.inOut });
           S.at(t + 300, { [PAW[s]]: null, eyes: 'open' });
           t += 700;
         } else {
           // it slips off and rolls away
           const lost = clampPoint(c, A.world(SIGN[s] * rnd(c.rng, 14, 20), 24, 9), 11);
-          moveProp(S, st.id(k.id), tip, lost, t, 600, { every: 90, ease: EASE.in });
+          move(S, st.id(k.id), tip, lost, t, 600, { every: 90, ease: EASE.in });
           turnCoin(k, t, 110, 5);
           S.at(t, { [PAW[s]]: null, ears: 'back', eyes: 'wide', lean: 0 });
           A.look(t + 300, lost);
@@ -387,7 +389,7 @@ export const treasure = defineActivity({
         const s = k.at.sx < A.pos.sx ? 'l' : 'r';
         const face = A.world(SIGN[s] * 9, -2, 10);
         S.at(t, { [PAW[s]]: 'mid' });
-        moveProp(S, st.id(k.id), k.at, face, t, 600, { every: 100, ease: EASE.out });
+        move(S, st.id(k.id), k.at, face, t, 600, { every: 100, ease: EASE.out });
         turnCoin(k, t, 150, 4);
         t += 700;
         S.at(t, { eyes: 'down', pupils: 0, gaze: s, lean: LEAN[s] });
@@ -397,7 +399,7 @@ export const treasure = defineActivity({
         S.at(t, { cue: '!', eyes: 'wide' });
         S.at((t += 600), { cue: null, eyes: 'happy', lean: 0 });
         t += 500;
-        moveProp(S, st.id(k.id), face, k.at, t, 500, { every: 100, ease: EASE.in });
+        move(S, st.id(k.id), face, k.at, t, 500, { every: 100, ease: EASE.in });
         S.at(t + 200, { [PAW[s]]: null, eyes: 'down', pupils: 1, gaze: 'c' });
         t += 700;
       } else {
@@ -406,11 +408,20 @@ export const treasure = defineActivity({
         const dur = rnd(c.rng, 2000, 3400);
         const a0 = rnd(c.rng, 0, Math.PI * 2);
         const w = (c.rng() < 0.5 ? -1 : 1) * 2.2;
+        // the ring is wide enough to clear the cat, so a coin changes sides out in the open
+        const ring = (a) => clampPoint(c, A.world(Math.cos(a) * 31, -4 + Math.sin(a) * 3, Math.sin(a) * 26), 11);
+        // they rise from the floor to their places on the ring (round the cat, not through it)
+        coins.forEach((k, i) => {
+          const to = ring(a0 + (i * Math.PI * 2) / n);
+          move(S, st.id(k.id), k.at, to, t, 600, { every: 120, ease: EASE.inOut });
+          k.at = to;
+        });
+        t += 700;
         for (let u = 0; u <= dur; u += 130) {
           coins.forEach((k, i) => {
             const a = a0 + (i * Math.PI * 2) / n + (w * u) / 1000;
             st.prop(t + u, k.id, {
-              ...clampPoint(c, A.world(Math.cos(a) * 22, -4 + Math.sin(a) * 3, Math.sin(a) * 26), 11),
+              ...ring(a),
               moveMs: 130,
               ease: 'linear',
               turn: Math.floor(u / 130 + i) % 4,
@@ -420,8 +431,12 @@ export const treasure = defineActivity({
         S.at(t + 400, { pawL: null, pawR: null, tail: 'swish' });
         t += dur;
         coins.forEach((k, i) => {
+          k.at = ring(a0 + (i * Math.PI * 2) / n + (w * Math.floor(dur / 130) * 130) / 1000); // where the last ring beat left it
+        });
+        t += 150;
+        coins.forEach((k, i) => {
           const to = clampPoint(c, A.world(-14 + (i * 28) / Math.max(1, n - 1), 23, 7), 11);
-          st.prop(t + i * 60, k.id, { ...to, moveMs: 500, ease: 'out', turn: 0 });
+          move(S, st.id(k.id), k.at, to, t + i * 60, 500, { every: 100, ease: EASE.out, extra: () => ({ turn: 0 }) });
           k.at = to;
         });
         t += 700;
@@ -435,7 +450,7 @@ export const treasure = defineActivity({
     coins.forEach((k, i) => {
       if (away) {
         const up = clampPoint(c, { ...k.at, sy: k.at.sy - rnd(c.rng, 30, 46) * A.px(), z: k.at.z - 40 }, 11);
-        moveProp(S, st.id(k.id), k.at, up, t + i * 120, 1200, { every: 120, ease: EASE.inOut, extra: (u, j) => ({ turn: j % 4 }) });
+        move(S, st.id(k.id), k.at, up, t + i * 120, 1200, { every: 120, ease: EASE.inOut, extra: (u, j) => ({ turn: j % 4 }) });
         st.prop(t + i * 120 + 600, k.id, { fade: 0, fadeMs: 600 });
       } else {
         st.prop(t + i * 150, k.id, { fade: 0, fadeMs: 200 });

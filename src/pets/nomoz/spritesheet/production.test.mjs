@@ -48,7 +48,7 @@ test('gaps.mjs --strict exits non-zero while stand-ins remain, and --json is par
   assert.equal(JSON.parse(json.stdout).missing.length, missing.length);
 });
 
-/* ---- the generated production frames (33 frames, 13 folders) ---- */
+/* ---- the generated production frames (51 frames, 13 folders) ---- */
 const FUR = new Set(['3,3,5', '9,8,11', '14,13,16', '16,15,19', '18,18,22', '21,21,25', '24,23,27', '24,24,28', '27,27,30', '37,36,39']);
 const loadFrames = (id) =>
   readdirSync(join(HERE, 'art', id))
@@ -61,9 +61,9 @@ const lowestRow = (img) => {
   return -1;
 };
 
-test('generated frames: 13 folders, 33 frames, and the counts match spec.js', () => {
+test('generated frames: 13 folders, 51 frames, and the counts match spec.js', () => {
   assert.equal(generatedIds.length, 13);
-  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 33);
+  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 51);
   for (const id of generatedIds) assert.equal(loadFrames(id).length, ART[id].frames, id);
 });
 
@@ -112,7 +112,7 @@ test('generated frames: every frame is different art: no duplicates and no mirro
   }
 });
 
-test('generated frames: each step cycle changes the legs (the lower body differs between contact and passing frames)', () => {
+test('generated frames: each step cycle has five different leg poses (two contacts, standing, two passing)', () => {
   const lower = (img) => {
     let h = 0;
     for (let y = 44; y < 62; y++) for (let x = 0; x < img.width; x++) h = (h * 31 + img.rgba[(y * img.width + x) * 4 + 3] * (x + 1)) | 0;
@@ -120,6 +120,6 @@ test('generated frames: each step cycle changes the legs (the lower body differs
   };
   for (const id of generatedIds.filter((x) => /^(walk|creep)_/.test(x))) {
     const hs = loadFrames(id).map(lower);
-    assert.equal(new Set(hs).size, 3, `${id}: the three frames should have three different leg poses`);
+    assert.equal(new Set(hs).size, 5, `${id}: the five poses (two contacts, standing, two passing) should all differ`);
   }
 });

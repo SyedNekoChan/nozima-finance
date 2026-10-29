@@ -6,7 +6,7 @@ from gen_lib import *
 from PIL import ImageDraw
 out = sys.argv[1]; kind = sys.argv[2] if len(sys.argv) > 2 else 'walk'
 views = ['front', 'frontQ', 'side', 'rearQ', 'rear']
-rows = [(f'{kind}_{v}', [0, 1, 2] if f'{kind}_{v}' == 'walk_side' else [0, 1, 2, 1]) for v in views]
+rows = [(f'{kind}_{v}', [0, 1, 2] if f'{kind}_{v}' == 'walk_side' else [0, 3, 2, 4]) for v in views]
 Z = 5; boost = 3.4
 im = Image.new('RGBA', (4 * (W * Z + 6) + 6, len(rows) * (H * Z + 18) + 6), (66, 70, 80, 255)); d = ImageDraw.Draw(im)
 for r, (n, seq) in enumerate(rows):

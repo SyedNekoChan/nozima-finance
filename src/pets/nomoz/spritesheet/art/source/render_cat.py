@@ -97,17 +97,32 @@ def rot_y(theta):
 
 
 class Render:
-    def __init__(self, azimuth_deg, cx, seed=1, tilt_deg=0.0):
+    def __init__(self, azimuth_deg, cx, seed=1, tilt_deg=0.0, pitch_deg=0.0, pivot=(0.0, 24.0, 0.0)):
         t = math.radians(tilt_deg)  # camera looks slightly down: nearer things sit lower on screen
         Rx = np.array([[1, 0, 0], [0, math.cos(t), -math.sin(t)], [0, math.sin(t), math.cos(t)]])
         self.M = Rx @ rot_y(math.radians(azimuth_deg))  # world -> view
         self.cx = cx
         self.prims = []
         self.seed = seed
+        # the whole cat pitched about its lateral axis through `pivot` (positive: nose up), for leaps
+        a = math.radians(pitch_deg)
+        self.pitch = a
+        self.pivot = np.array(pivot, float)
+
+    def _pitched(self, c):
+        if not self.pitch: return c
+        o = c - self.pivot
+        ca, sa = math.cos(self.pitch), math.sin(self.pitch)
+        return self.pivot + np.array([o[0], o[1] * ca + o[2] * sa, -o[1] * sa + o[2] * ca])
 
     def add(self, p):
-        if isinstance(p, list): self.prims.extend(p)
-        else: self.prims.append(p)
+        items = p if isinstance(p, list) else [p]
+        for q in items:
+            if self.pitch:
+                q.c = self._pitched(q.c)
+                f = self._pitched(q.flow + self.pivot) - self.pivot
+                q.flow = f / (np.linalg.norm(f) + 1e-9)
+            self.prims.append(q)
 
     # ---- ray cast at SS x
     def cast(self):
@@ -195,6 +210,8 @@ class Render:
         f1 = noise3(a1 * 0.55, a2 * 0.55, a3 * 0.13, self.seed)
         f2 = noise3(a1 * 1.3, a2 * 1.3, a3 * 0.35, self.seed + 7)
         fur = (f1 - 0.5) * 0.20 + (f2 - 0.5) * 0.09
+        # fur locks: the level set of a slower noise stretched along the flow draws thin strokes that follow the fur
+        lock = noise3(a1 * 0.24, a2 * 0.24, a3 * 0.07, self.seed + 91)
         s = ambient + gain * lam + 0.30 * rim - 0.20 * under + fur - self.dk + bias
         s = (s - 0.5) * contrast + 0.5
         s = np.where(covered, s, 0)
@@ -203,6 +220,7 @@ class Render:
         cov = box(covered.astype(float))
         sh = box(s * covered) / np.maximum(cov, 1e-6)
         self.cov = cov
+        self.lock1 = box(lock * covered) / np.maximum(cov, 1e-6)
         self.mask = cov >= 0.5
         self.sh = sh
         # depth map at 1x for contour decisions (max over cell = nearest)
@@ -218,7 +236,7 @@ class Render:
         self.fluff1 = box(self.fl)
         return self
 
-    def to_frame(self, dither=0.35, seed=3, levels=9):
+    def to_frame(self, dither=0.35, seed=3, levels=9, smooth=0, locks=0.0, limbs=0):
         rng = np.random.default_rng(seed)
         mask = self.mask.copy()
         yy, xx = np.mgrid[0:H, 0:W]
@@ -231,6 +249,26 @@ class Render:
         sh = sh + np.where((stroke > 0.70) & (sh > 0.30), 0.20, 0.0)  - np.where(stroke < 0.24, 0.09, 0.0)
         t = np.clip(sh, 0, 1) * levels + bay * dither * 2.0
         idx = np.clip(np.round(t), 1, 9).astype(int)
+        if smooth:
+            # merge speckle into clusters: each pixel takes the commonest tone among its same-part neighbours
+            ids = self.id1
+            for _ in range(smooth):
+                pad = np.pad(idx, 1, mode='edge'); padid = np.pad(ids, 1, constant_values=-2); padm = np.pad(self.mask, 1)
+                votes = np.zeros((10, H, W))
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        nb = pad[1 + dy:H + 1 + dy, 1 + dx:W + 1 + dx]
+                        same = (padid[1 + dy:H + 1 + dy, 1 + dx:W + 1 + dx] == ids) & padm[1 + dy:H + 1 + dy, 1 + dx:W + 1 + dx]
+                        for tone in range(10): votes[tone] += same & (nb == tone)
+                top = votes.max(0)
+                cur = np.take_along_axis(votes, idx[None], 0)[0]
+                idx = np.where(cur >= top - 1, idx, votes.argmax(0))
+        if locks:
+            # a dark stroke along a fur lock, a lit pixel beside it on the lit side
+            ridge = self.mask & (np.abs(self.lock1 - 0.5) < locks) & (self.sh > 0.25)
+            lit = np.roll(np.roll(ridge, 1, 0), 1, 1) & self.mask & ~ridge
+            idx = np.where(ridge, np.maximum(1, idx - 2), idx)
+            idx = np.where(lit, np.minimum(9, idx + 1), idx)
         # fluffy silhouette: random 1px tufts on the soft parts
         nb = np.zeros_like(mask)
         for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
@@ -289,10 +327,14 @@ class Render:
             pb |= diff & far_here
             pb |= roll(diff & ~far_here, dy, dx)
         ov = ov | pb
+        self._pb = pb
         # rim: the pixel just inside a contour on the upper / left side, where the surface is lit
         rim = m2 & ~outline & (roll(outline, 1, 0) | roll(outline, 0, 1)) & (self.sh > 0.30)
         idxg = np.where(rim, np.minimum(9, idxg + 2), idxg)
         idxg = np.where(ov, np.minimum(idxg, 3), idxg)
+        if limbs:
+            # limbs read as shapes of their own: a darker line where one part passes in front of another
+            idxg = np.where(self._pb, np.minimum(idxg, limbs), idxg)
         idxg = np.where(outline, np.where(rng.random((H, W)) < 0.65, 1, 0), idxg)
         # remove lone outlier pixels (a tone far from every neighbour), which read as noise rather than fur
         for _ in range(1):

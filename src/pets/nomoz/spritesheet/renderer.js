@@ -2,6 +2,7 @@ import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
 import { fitsImage, frameAt, frameRect, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
+import { bendTail, breathAt, decodeTail, fadeLeft, lickAt, mouthLick, newTailState, stepTail, tailTarget } from './tail.js';
 
 /*
  * The sprite-sheet render path, selected by SPRITE_RENDERER in ../config.js.
@@ -21,6 +22,13 @@ import { getSheetImage } from './loader.js';
  * finishes first), follows `next` when a one-shot ends, and schedules its
  * own redraws for the next frame boundary. Redraws it triggers are flagged
  * `replay`, so the pupil eases once per state change as before.
+ *
+ * Motion on top of the still frames (./tail.js): the tail pixels listed for a
+ * frame are bent a little every ~100 ms, with a continuous phase and an
+ * amplitude that eases between states (idle, grooming, dozing, walking, swish,
+ * lash), so the tail never hangs frozen and never snaps; a grooming clip draws
+ * a tongue that strokes the paw while the head dips into it, and a scripted
+ * `mouth: 'lick'` shows the tongue at the muzzle.
  */
 
 const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -49,7 +57,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, lickAt: -1e9, wasLick: false, scratch: null, last: null, fade: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -57,6 +65,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   }
 
   const begin = (c, clip, now) => {
+    // the frame on screen fades out under the new clip (no hard cut between poses)
+    c.fade = c.last && c.last.clip !== clip ? { from: c.last, start: now } : null;
     c.clip = clip;
     c.t0 = now;
     c.shown = false; // the clock starts when its first frame is on screen
@@ -83,9 +93,11 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
 
   // Silhouette of a frame in canvas coordinates, for the floor pool and aura.
   const silhouettes = new Map();
-  function silhouette(clip, index, image, rect, ox, oy, cw, ch) {
-    const key = `${clip.id}:${index}:${cw}x${ch}`;
-    let sil = silhouettes.get(key);
+  // `source` is the sheet (rect = the frame in it) or, for a bent tail, a canvas holding just the frame (rect at 0, 0);
+  // a bent frame is not cached
+  function silhouette(clip, index, image, rect, ox, oy, cw, ch, bent = false) {
+    const key = bent ? null : `${clip.id}:${index}:${cw}x${ch}`;
+    let sil = key && silhouettes.get(key);
     if (!sil) {
       const cv = document.createElement('canvas');
       cv.width = cw;
@@ -109,7 +121,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         });
       }
       sil = { mask, px, footY: clip.floor ?? Math.max(2, Math.min(ch - 2, bottom)), feet: [x0 + 2, Math.max(x0 + 2, x1 - 2)], poolX: cw / 2 - 0.5 };
-      silhouettes.set(key, sil);
+      if (key) silhouettes.set(key, sil);
     }
     return sil;
   }
@@ -223,7 +235,75 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     }
   }
 
-  function makeBody(clip, sheet, image, index, cw, ch) {
+  /* ---------------------------------------------------------------- */
+  /* Tail and tongue                                                     */
+  /* ---------------------------------------------------------------- */
+
+  // the pixels of a sheet frame and its decoded tail, read once per frame
+  const framePixels = new Map();
+  function pixelsOf(clip, sheet, image, index, rect, an) {
+    const key = `${sheet.src}:${clip.frames[index]}`;
+    let f = framePixels.get(key);
+    if (!f) {
+      const cv = document.createElement('canvas');
+      cv.width = rect.w;
+      cv.height = rect.h;
+      const g = cv.getContext('2d', { willReadFrequently: true });
+      g.drawImage(image, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+      f = { data: g.getImageData(0, 0, rect.w, rect.h).data, tail: decodeTail(an && an.tail) };
+      framePixels.set(key, f);
+    }
+    return f;
+  }
+
+  // a small pink tongue: level 1 = the tip, 2 = out; (x, y) is its top-left
+  const TONGUE = { tip: '#ff8aa8', body: '#d9657f', edge: '#7d3047' };
+  function drawTongue(ac, at, level) {
+    if (!at || !level) return;
+    const [x, y] = at;
+    const px = (dx, dy, c) => {
+      ac.fillStyle = c;
+      ac.fillRect(x + dx, y + dy, 1, 1);
+    };
+    if (level === 1) {
+      px(0, 0, TONGUE.body);
+      px(1, 0, TONGUE.tip);
+      return;
+    }
+    px(0, 0, TONGUE.body);
+    px(1, 0, TONGUE.tip);
+    px(2, 0, TONGUE.body);
+    px(0, 1, TONGUE.edge);
+    px(1, 1, TONGUE.body);
+    px(2, 1, TONGUE.edge);
+    px(1, 2, TONGUE.edge);
+  }
+
+  // the outgoing frame, thinned by an ordered dither as it fades (hard pixels only: no blended colours)
+  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  function dissolve(ac, fx, cw, ch) {
+    const f = fx.fade.from;
+    const h = fx.holder;
+    const cv = h.fadeCv || (h.fadeCv = document.createElement('canvas'));
+    if (cv.width !== cw || cv.height !== ch) {
+      cv.width = cw;
+      cv.height = ch;
+    }
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    g.clearRect(0, 0, cw, ch);
+    g.drawImage(f.image, f.rect.x, f.rect.y, f.rect.w, f.rect.h, f.ox, f.oy, f.rect.w, f.rect.h);
+    const img = g.getImageData(0, 0, cw, ch);
+    const d = img.data;
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        if (BAYER4[(y & 3) * 4 + (x & 3)] / 16 >= fx.fade.alpha) d[(y * cw + x) * 4 + 3] = 0;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    ac.drawImage(cv, 0, 0);
+  }
+
+  function makeBody(clip, sheet, image, index, cw, ch, fx) {
     const rect = frameRect(sheet, clip.frames[index]);
     const [px, py] = clip.pivot || [sheet.frameWidth / 2, sheet.frameHeight];
     const [ax, ay] = clip.anchor || [cw / 2, ch];
@@ -241,15 +321,51 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         }
       : null;
 
+    // the frame with its tail bent, on a canvas of its own (null: the still frame)
+    let bent = null;
+    if (fx && fx.amp > 0 && an && an.tail) {
+      const f = pixelsOf(clip, sheet, image, index, rect, an);
+      const out = f.tail && bendTail(f.data, rect.w, rect.h, f.tail, fx.amp, fx.phase);
+      if (out) {
+        const cv = fx.holder.scratch || (fx.holder.scratch = document.createElement('canvas'));
+        if (cv.width !== rect.w || cv.height !== rect.h) {
+          cv.width = rect.w;
+          cv.height = rect.h;
+        }
+        cv.getContext('2d').putImageData(new ImageData(out, rect.w, rect.h), 0, 0);
+        bent = cv;
+      }
+    }
+    const src = bent || image;
+    const sx = bent ? 0 : rect.x;
+    const sy = bent ? 0 : rect.y;
+    const sil = () => silhouette(clip, index, src, { ...rect, x: sx, y: sy }, ox, oy, cw, ch, !!bent);
+
+    if (fx && fx.record) fx.record({ clip, image, rect, ox, oy });
     return {
-      under: clip.under ? silhouette(clip, index, image, rect, ox, oy, cw, ch) : false,
+      under: clip.under ? sil() : false,
       paint(ac, info) {
         try {
           ac.imageSmoothingEnabled = false;
-          ac.drawImage(image, rect.x, rect.y, rect.w, rect.h, ox, oy, rect.w, rect.h);
-          if (clip.under) rimLight(ac, silhouette(clip, index, image, rect, ox, oy, cw, ch), info.light);
+          // the head and shoulders dip a row into each lick (grooming) or with each breath (sitting)
+          const lickDip = fx && fx.lick && clip.lick ? fx.lick.dip : 0;
+          const breath = !lickDip && fx && fx.breath && clip.breathe ? 1 : 0;
+          const dip = lickDip || breath;
+          const cut = lickDip ? clip.lick.dip : breath ? clip.breathe.cut : 0;
+          if (dip && cut > 0) {
+            ac.drawImage(src, sx, sy + cut - 1, rect.w, rect.h - cut + 1, ox, oy + cut - 1, rect.w, rect.h - cut + 1);
+            ac.drawImage(src, sx, sy, rect.w, cut, ox, oy + dip, rect.w, cut);
+          } else {
+            ac.drawImage(src, sx, sy, rect.w, rect.h, ox, oy, rect.w, rect.h);
+          }
+          if (fx && fx.fade && fx.fade.alpha > 0) dissolve(ac, fx, cw, ch);
+          if (clip.under) rimLight(ac, sil(), info.light);
           drawEyes(ac, an && an.eyes, info.face, info.ox);
           drawWhiskers(ac, an && an.whiskers);
+          if (fx && fx.lick) {
+            const spot = clip.lick ? [clip.lick.at[0] + ox, clip.lick.at[1] + oy + dip] : an && an.mouth ? [an.mouth[0] - 1 + ox, an.mouth[1] + oy] : null;
+            drawTongue(ac, spot, fx.lick.tongue);
+          }
           // kept procedural regions: rectangles are in procedural space
           const keep = [...base, ...head.map(([x, y, w, h]) => [info.hx + x, info.hy + y, w, h])];
           for (const [x, y, w, h] of keep) {
@@ -272,6 +388,47 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     };
   }
 
+  // The tail's bend and the tongue for this redraw: { amp, phase, lick, holder, animating }.
+  function motionFor(c, clip, params, now, reduced) {
+    const dt = c.tickAt ? now - c.tickAt : 0;
+    c.tickAt = now;
+    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, fade: null, wait: Infinity, record: null };
+    if (reduced) {
+      c.fade = null;
+      return fx;
+    }
+    if (c.fade) {
+      const alpha = fadeLeft(now, c.fade.start);
+      if (alpha > 0) (fx.fade = { from: c.fade.from, alpha }), (fx.wait = 30);
+      else c.fade = null;
+    }
+    if (clip.breathe) {
+      const { ms } = clip.breathe;
+      fx.breath = breathAt(now, ms);
+      const t = now % ms;
+      fx.wait = Math.min(fx.wait, Math.max(16, Math.ceil((fx.breath ? 0.45 * ms : ms) - t)));
+    }
+    const target = tailTarget(params || {}, clip.sway);
+    stepTail(c.tail, dt, target);
+    fx.amp = c.tail.amp;
+    fx.phase = c.tail.phase;
+    // it keeps coming back while the tail should swing (also from rest: the swing eases in over the redraws)
+    const hasTail = !!(clip.anchors && clip.anchors.some((a) => a && a.tail));
+    fx.animating = hasTail && (target.amp > 0.08 || c.tail.amp > 0.08);
+    // grooming: licking while a paw is at the mouth; any clip: a scripted lick
+    const paw = params && (params.pawL === 'high' || params.pawR === 'high');
+    if (clip.lick && paw) {
+      fx.lick = lickAt(now);
+      fx.animating = true;
+    } else if (params && params.mouth === 'lick') {
+      if (!c.wasLick) c.lickAt = now;
+      fx.lick = mouthLick(now, c.lickAt);
+      fx.animating = true;
+    }
+    c.wasLick = !!(params && params.mouth === 'lick');
+    return fx;
+  }
+
   function draw(ctx, c, replay) {
     clearTimeout(c.timer);
     c.timer = 0;
@@ -292,11 +449,17 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           c.shown = true;
           c.t0 = now;
         }
-        const pos = prefersReducedMotion()
-          ? { index: clip.still, wait: Infinity }
-          : frameAt(clip, now - c.t0);
-        body = makeBody(clip, sheet, entry.image, pos.index, ctx.canvas.width, ctx.canvas.height);
-        wait = pos.wait;
+        const reduced = prefersReducedMotion();
+        const pos = reduced ? { index: clip.still, wait: Infinity } : frameAt(clip, now - c.t0);
+        const fx = motionFor(c, clip, c.params, now, reduced);
+        fx.record = (f) => {
+          c.last = { ...f, at: now };
+        };
+        body = makeBody(clip, sheet, entry.image, pos.index, ctx.canvas.width, ctx.canvas.height, fx);
+        const hidden = typeof document !== 'undefined' && document.hidden;
+        wait = hidden ? pos.wait : Math.min(pos.wait, fx.wait);
+        // the tail and the tongue move between frames: come back soon (not at all when the tab is hidden)
+        if (fx.animating && !hidden) wait = Math.min(wait, fx.lick ? 60 : 100);
       } else {
         fail(clip.id, entry.status === 'ready' ? 'the sheet is smaller than its frame grid' : 'the sheet failed to load');
       }

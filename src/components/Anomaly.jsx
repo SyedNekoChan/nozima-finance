@@ -7,6 +7,7 @@ import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import EnvProp from '../pets/EnvProp.jsx';
 import { SCHEDULER } from '../pets/config.js';
+import { nextSide, overlaps } from '../pets/core/layering.js';
 import { easeCss } from '../pets/motion.js';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
@@ -203,6 +204,27 @@ function Pet({ pet }) {
           .filter(([, spec]) => pet.props?.[spec.kind])
           .sort((a, b) => a[1].z - b[1].z)
       : [];
+  // Which side of the pet each prop is drawn on follows its depth, but never
+  // flips while the prop overlaps the pet's body (see pets/core/layering.js).
+  const sideRef = useRef(new Map());
+  const frontIds = new Set();
+  if (visible) {
+    const sides = sideRef.current;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const [halfW] = geo.half(view.z);
+    const unit = (halfW * 2) / SPRITE_W;
+    const hw = SPRITE_W * 0.25 * unit;
+    const hh = SPRITE_H * 0.45 * unit;
+    for (const [id, spec] of propEntries) {
+      const mem = sides.get(id);
+      const size = ((pet.props[spec.kind].width || 11) / 2) * unit;
+      const touching = !!mem && (overlaps(mem.at, view, hw, hh, size) || overlaps(spec, view, hw, hh, size));
+      const next = nextSide(mem, spec.z > view.z, touching, nowMs);
+      sides.set(id, { ...next, at: { sx: spec.sx, sy: spec.sy } });
+      if (next.front) frontIds.add(id);
+    }
+    for (const id of sides.keys()) if (!view.props || !view.props[id]) sides.delete(id);
+  }
   const renderProp = ([id, spec]) => (
     <EnvProp
       key={id}
@@ -235,7 +257,7 @@ function Pet({ pet }) {
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
       style={{ perspective: `${world.perspective}px`, perspectiveOrigin: '50% 50%' }}
     >
-      {propEntries.filter(([, spec]) => spec.z <= view.z).map(renderProp)}
+      {propEntries.filter(([id]) => !frontIds.has(id)).map(renderProp)}
       <div
         ref={actorRef}
         className="nomoz-actor"
@@ -275,7 +297,7 @@ function Pet({ pet }) {
           )}
         </AnimatePresence>
       </div>
-      {propEntries.filter(([, spec]) => spec.z > view.z).map(renderProp)}
+      {propEntries.filter(([id]) => frontIds.has(id)).map(renderProp)}
     </div>
   );
 }

@@ -54,26 +54,70 @@ export const EASE = {
 };
 
 /*
+ * The screen-space footprint of the pet's sprite body at depth z, as a
+ * half-width / half-height in px: where a prop must not change which side of
+ * the pet it is drawn on (a quarter of the sprite wide, nearly all of it tall).
+ */
+export function footprint(c, z, size = 0) {
+  const k = spritePx(c, z);
+  return { hw: (c.pet.sprite.width * 0.25 + size / 2) * k, hh: (c.pet.sprite.height * 0.45 + size / 2) * k };
+}
+
+/*
  * Moves a world prop along a straight line as a series of short linear
  * glides (the prop's own CSS transition carries it between beats).
  *   extra(u, i) adds fields per beat (a rolling frame, a bob...)
+ *   around: { c, pos, size } routes the prop around the pet. A prop is drawn
+ *   behind or in front of the pet by its depth, so a move from one side of
+ *   the pet's depth to the other must not cross the pet's body: it leaves
+ *   the footprint first (staying on its side), then changes depth in the
+ *   clear and glides on.
  * Returns the end time.
  */
-export function moveProp(S, id, from, to, t0, ms, { every = 120, ease = EASE.linear, extra } = {}) {
+export function moveProp(S, id, from, to, t0, ms, { every = 120, ease = EASE.linear, extra, around } = {}) {
+  const side = (z) => z > (around ? around.pos.z : 0); // in front of the pet (a tie is behind, as it is drawn)
   const n = Math.max(1, Math.round(ms / every));
+  let plan = null; // the rerouted path: counts of beats per leg
+  if (around && side(from.z) !== side(to.z) && n >= 5) {
+    const fp = footprint(around.c, around.pos.z, around.size ?? 11);
+    const cx = around.pos.sx;
+    const cy = around.pos.sy;
+    const inside = (p) => Math.abs(p.sx - cx) < fp.hw && Math.abs(p.sy - cy) < fp.hh;
+    // does the straight line enter the footprint?
+    let hits = false;
+    for (let i = 0; i <= 12 && !hits; i++) hits = inside({ sx: lerp(from.sx, to.sx, i / 12), sy: lerp(from.sy, to.sy, i / 12) });
+    if (hits) {
+      const dir = to.sx === cx ? (from.sx >= cx ? 1 : -1) : to.sx > cx ? 1 : -1;
+      const out = { sx: cx + dir * (fp.hw + 4), sy: lerp(from.sy, to.sy, 0.4) };
+      const a = { ...out, z: from.z };
+      const b = { ...out, z: to.z };
+      // out round the pet at the start depth, then the depth changes in the clear
+      // (two beats land there), then in at the new depth
+      const d1 = Math.hypot(a.sx - from.sx, a.sy - from.sy) + 1;
+      const d3 = Math.hypot(to.sx - b.sx, to.sy - b.sy) + 1;
+      const n1 = Math.max(1, Math.min(n - 3, Math.round(((n - 2) * d1) / (d1 + d3))));
+      plan = { a, b, n1, nz: 2 };
+    }
+  }
   const step = ms / n;
   for (let i = 1; i <= n; i++) {
     const u = i / n;
-    const k = ease(u);
+    let p;
+    if (!plan) {
+      const k = ease(u);
+      p = { sx: lerp(from.sx, to.sx, k), sy: lerp(from.sy, to.sy, k), z: lerp(from.z, to.z, k) };
+    } else if (i <= plan.n1) {
+      const f = ease(u) / Math.max(1e-6, ease(plan.n1 / n));
+      p = { sx: lerp(from.sx, plan.a.sx, f), sy: lerp(from.sy, plan.a.sy, f), z: from.z };
+    } else if (i <= plan.n1 + plan.nz) {
+      p = { sx: plan.a.sx, sy: plan.a.sy, z: lerp(from.z, to.z, (i - plan.n1) / plan.nz) };
+    } else {
+      const e0 = ease((plan.n1 + plan.nz) / n);
+      const f = (ease(u) - e0) / Math.max(1e-6, 1 - e0);
+      p = { sx: lerp(plan.b.sx, to.sx, f), sy: lerp(plan.b.sy, to.sy, f), z: to.z };
+    }
     // each beat starts a short glide that arrives at the sampled point
-    S.prop(t0 + (i - 1) * step, id, {
-      sx: lerp(from.sx, to.sx, k),
-      sy: lerp(from.sy, to.sy, k),
-      z: lerp(from.z, to.z, k),
-      moveMs: Math.round(step),
-      ease: 'linear',
-      ...(extra ? extra(u, i) : {}),
-    });
+    S.prop(t0 + (i - 1) * step, id, { ...p, moveMs: Math.round(step), ease: 'linear', ...(extra ? extra(u, i) : {}) });
   }
   return t0 + ms;
 }

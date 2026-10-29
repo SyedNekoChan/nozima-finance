@@ -1,0 +1,146 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { ANCHORS } from './anchors.js';
+import { ART } from './spec.js';
+import { SHEET_MANIFEST } from './manifest.js';
+import { bendTail, decodeTail, lickAt, mouthLick, newTailState, stepTail, sway, tailTarget } from './tail.js';
+
+// a 12 x 12 frame: a body block on the left and a tail rising on the right
+const W = 12;
+const H = 12;
+const frame = () => {
+  const px = new Uint8ClampedArray(W * H * 4);
+  const put = (x, y, v) => px.set([v, v, v, 255], (y * W + x) * 4);
+  for (let y = 6; y < 12; y++) for (let x = 0; x < 5; x++) put(x, y, 40); // body
+  for (let y = 0; y < 12; y++) for (let x = 6; x < 9; x++) put(x, y, 90); // tail
+  return px;
+};
+const TAIL = decodeTail({ x: 6, y: 0, rows: Array(12).fill('###'), base: [7, 11], tip: [7, 0] });
+const alpha = (px, x, y) => px[(y * W + x) * 4 + 3];
+
+test('decodeTail reads the # rows into a mask with the tail axis', () => {
+  assert.equal(TAIL.w, 3);
+  assert.equal(TAIL.h, 12);
+  assert.equal(TAIL.mask.reduce((a, b) => a + b, 0), 36);
+  assert.ok(Math.abs(TAIL.uy + 1) < 1e-9, 'the tail points up');
+  assert.equal(decodeTail(null), null);
+  assert.equal(decodeTail({ rows: [] }), null);
+});
+
+test('bendTail: no bend, no change; the root stays, the tip swings, the body is untouched', () => {
+  const src = frame();
+  assert.equal(bendTail(src, W, H, TAIL, 0, 1), null);
+  assert.equal(bendTail(src, W, H, null, 2, 1), null);
+  const out = bendTail(src, W, H, TAIL, 2.4, 1.5 + Math.PI / 2);
+  assert.ok(out, 'bent');
+  assert.deepEqual(Array.from(out.subarray(0, 5 * 4)), Array.from(src.subarray(0, 5 * 4)), 'the body row is unchanged');
+  for (let y = 0; y < H; y++) for (let x = 0; x < 5; x++) assert.equal(alpha(out, x, y), alpha(src, x, y), 'body pixel kept');
+  // the root rows (y 10, 11) hold still, the tip rows have moved sideways
+  for (const y of [10, 11]) for (const x of [6, 7, 8]) assert.equal(alpha(out, x, y), 255);
+  const cols = (y) => [...Array(W).keys()].filter((x) => x >= 5 && alpha(out, x, y) > 0);
+  assert.notDeepEqual(cols(0), [6, 7, 8], 'the tip moved');
+  assert.equal(cols(0).length, 3, 'and kept its width');
+});
+
+test('bendTail never paints over a body pixel and keeps the amount of tail', () => {
+  const src = frame();
+  // the tail leans into the body: body pixels at x 5 must stay body
+  for (const phase of [0.4, 1.9, 3.5, 5.2]) {
+    const out = bendTail(src, W, H, TAIL, 3, phase);
+    if (!out) continue;
+    for (let y = 6; y < 12; y++) assert.equal(out[(y * W + 4) * 4], 40, 'body colour kept');
+    let n = 0;
+    for (let i = 3; i < out.length; i += 4) if (out[i]) n++;
+    assert.ok(n >= 30 + 30 && n <= 30 + 42 + 6, `tail pixel count stays close (${n})`);
+  }
+});
+
+test('the sway wave is zero at the root and grows toward the tip', () => {
+  assert.equal(sway(0, 3, 1.2), 0);
+  const tipMax = Math.max(...[...Array(32).keys()].map((i) => Math.abs(sway(1, 3, (i / 32) * 6.28))));
+  const midMax = Math.max(...[...Array(32).keys()].map((i) => Math.abs(sway(0.5, 3, (i / 32) * 6.28))));
+  assert.ok(tipMax > midMax && midMax > 0.3);
+});
+
+test('stepTail eases amplitude and rate: the phase never jumps, a state change never snaps', () => {
+  const st = newTailState();
+  st.phase = 0;
+  const idle = tailTarget({ tail: null });
+  const lash = tailTarget({ tail: 'lash' });
+  let prev = st.phase;
+  let maxJump = 0;
+  for (let t = 0; t < 4000; t += 100) {
+    stepTail(st, 100, t < 2000 ? idle : lash);
+    let d = st.phase - prev;
+    if (d < -Math.PI) d += Math.PI * 2;
+    maxJump = Math.max(maxJump, d);
+    prev = st.phase;
+  }
+  assert.ok(maxJump < 1.3, `phase advances smoothly (${maxJump.toFixed(2)} rad per 100 ms)`);
+  const a = newTailState();
+  stepTail(a, 100, lash);
+  assert.ok(a.amp < lash.amp * 0.4, 'a new mode does not jump to full swing');
+  stepTail(a, 9999, lash);
+  assert.ok(a.amp <= lash.amp + 1e-9 && a.amp > lash.amp * 0.5, 'a long gap is capped');
+});
+
+test('the tail never hangs frozen: idle, grooming, dozing and walking all swing', () => {
+  const states = {
+    idle: { tail: null },
+    groom: { pawL: 'high', eyes: 'closed' },
+    doze: { eyes: 'closed', droop: 1 },
+    walk: { legs: 1 },
+    hop: { legs: 3 },
+    up: { tail: 'up' },
+    still: { tail: 'still' },
+  };
+  for (const [name, p] of Object.entries(states)) {
+    const t = tailTarget(p);
+    assert.ok(t.amp >= (name === 'still' ? 0.3 : 0.8), `${name} swings (${t.amp})`);
+    assert.ok(t.period >= 400 && t.period <= 6000, `${name} has a sensible period`);
+  }
+  assert.ok(tailTarget({ tail: 'swish' }).amp > tailTarget({}).amp, 'swish is bigger');
+  assert.ok(tailTarget({ mood: 'stressed' }).amp > tailTarget({ tail: 'swish' }).amp - 1, 'stressed lashes');
+  assert.equal(tailTarget({}, 0).amp, 0, 'a clip can switch the sway off');
+});
+
+test('the groom lick strokes the paw: out, dipping, in; with a pause every fifth stroke', () => {
+  const seen = { 0: 0, 1: 0, 2: 0 };
+  let dips = 0;
+  for (let t = 0; t < 620 * 10; t += 10) {
+    const l = lickAt(t);
+    seen[l.tongue]++;
+    dips += l.dip;
+  }
+  assert.ok(seen[2] > 100 && seen[1] > 40 && seen[0] > 100, 'tongue shows hidden, tip and out');
+  assert.ok(dips > 80, 'the head dips');
+  for (let t = 620 * 4; t < 620 * 5; t += 10) assert.deepEqual(lickAt(t), { tongue: 0, dip: 0 }, 'a pause');
+  assert.deepEqual(mouthLick(10, 0), { tongue: 1, dip: 0 });
+  assert.equal(mouthLick(200, 0).tongue, 2);
+  assert.equal(mouthLick(600, 0).tongue, 0);
+});
+
+test('the shipped art lists tail pixels for every frame with a visible tail, and the groom clip licks', () => {
+  const noTail = new Set(['curl']);
+  for (const id of Object.keys(ART)) {
+    if (noTail.has(id)) continue;
+    ANCHORS[id].forEach((an, i) => {
+      assert.ok(an.tail && an.tail.rows.length > 3, `${id}/${i} has tail pixels`);
+      assert.ok(an.tail.rows.every((r) => /^[#.]+$/.test(r)));
+    });
+  }
+  assert.ok(SHEET_MANIFEST.clips.sit_groom.lick, 'grooming draws a tongue');
+  assert.equal(SHEET_MANIFEST.clips.curl.sway ?? 1, 1);
+});
+
+import { breathAt, fadeLeft, FADE_MS } from './tail.js';
+
+test('breath and cross-fade helpers', () => {
+  assert.equal(breathAt(0, 4000), 1);
+  assert.equal(breathAt(1700, 4000), 1);
+  assert.equal(breathAt(1900, 4000), 0);
+  assert.equal(breathAt(4000, 4000), 1, 'periodic');
+  assert.equal(fadeLeft(100, 100), 1);
+  assert.equal(fadeLeft(100 + FADE_MS / 2, 100), 0.5);
+  assert.equal(fadeLeft(100 + FADE_MS * 3, 100), 0);
+});

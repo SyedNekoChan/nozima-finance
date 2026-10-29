@@ -99,8 +99,9 @@ async function harness(context) {
   await page.addScriptTag({ content: bundle });
   await page.evaluate((sheets) => {
     const T = window.T;
-    const hash = (c) => {
-      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    // a region's hash (the tail swings between frames, so the frame timing is read off the body only)
+    const hash = (c, w = c.width) => {
+      const d = c.getContext('2d').getImageData(0, 0, w, c.height).data;
       let h = 0;
       for (let i = 0; i < d.length; i++) h = (h * 31 + d[i]) | 0;
       return h;
@@ -226,11 +227,11 @@ describe('real browser: renderer with the shipped sheets', () => {
       render(a.g, p, H.vanity);
       await H.wait(150);
       const times = [];
-      let last = H.hash(a.c);
+      let last = H.hash(a.c, 62);
       const t0 = performance.now();
       await new Promise((done) => {
         const tick = () => {
-          const h = H.hash(a.c);
+          const h = H.hash(a.c, 62);
           if (h !== last) {
             times.push(Math.round(performance.now() - t0));
             last = h;
@@ -245,6 +246,84 @@ describe('real browser: renderer with the shipped sheets', () => {
     for (let i = 1; i < changes.length; i++) {
       const gap = changes[i] - changes[i - 1];
       assert.ok(gap > 220 && gap < 460, `gap ${gap} ms between frame changes ${JSON.stringify(changes)}`);
+    }
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  });
+
+  // pixels of a state's canvas over time: the tail region's hash, and the tongue's pink
+  const motionProbe = (page, state, ms, step, warm = 300) =>
+    page.evaluate(
+      async ({ state, ms, step, warm }) => {
+        const H = window.H;
+        const render = H.real();
+        const a = H.make(render);
+        const p = { ...H.base, ...state };
+        render(a.g, p, H.vanity);
+        await H.wait(warm);
+        const tails = new Set();
+        const bodies = new Set();
+        let pinkFrames = 0;
+        let frames = 0;
+        const t0 = performance.now();
+        while (performance.now() - t0 < ms) {
+          const d = a.g.getImageData(0, 0, 96, 64).data;
+          let th = 0;
+          let bh = 0;
+          let pink = 0;
+          for (let y = 0; y < 64; y++) {
+            for (let x = 0; x < 96; x++) {
+              const o = (y * 96 + x) * 4;
+              const v = d[o + 3] ? d[o] * 3 + d[o + 1] * 5 + d[o + 2] * 7 + 1 : 0;
+              if (x >= 62) th = (th * 31 + v + x) | 0;
+              else if (y < 45) bh = (bh * 31 + v + x) | 0;
+              if (d[o + 3] && ((d[o] === 255 && d[o + 1] === 138 && d[o + 2] === 168) || (d[o] === 217 && d[o + 1] === 101 && d[o + 2] === 127))) pink++;
+            }
+          }
+          tails.add(th);
+          bodies.add(bh);
+          frames++;
+          if (pink) pinkFrames++;
+          await H.wait(step);
+        }
+        return { tails: tails.size, bodies: bodies.size, pinkFrames, frames };
+      },
+      { state, ms, step, warm }
+    );
+
+  guard('the tail never hangs frozen: idle, grooming and dozing all change the tail pixels over time', async () => {
+    const ctx = await browser.newContext({ viewport: DESKTOP });
+    const { page, errors } = await harness(ctx);
+    for (const [name, state] of [['idle', {}], ['grooming', { pawL: 'high', eyes: 'closed' }], ['dozing', { eyes: 'closed', droop: 1 }], ['stretching', { pose: 'stretch' }], ['loafing', { pose: 'loaf' }]]) {
+      const r = await motionProbe(page, state, 3200, 80);
+      if (name !== 'loafing') assert.ok(r.tails >= 3, `${name}: the tail drew ${r.tails} different shapes in 3 s`);
+    }
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  });
+
+  guard('grooming licks: the tongue shows and hides while the paw is at the mouth, and not on a plain sit', async () => {
+    const ctx = await browser.newContext({ viewport: DESKTOP });
+    const { page, errors } = await harness(ctx);
+    const groom = await motionProbe(page, { pawL: 'high', eyes: 'closed' }, 3600, 40);
+    assert.ok(groom.pinkFrames > groom.frames * 0.2 && groom.pinkFrames < groom.frames * 0.8, `tongue out in ${groom.pinkFrames} of ${groom.frames} samples`);
+    assert.ok(groom.bodies >= 2, 'the head dips into the paw');
+    // from the very first draw: a scripted lick lasts 420 ms from the moment the state arrives
+    const lipLick = await motionProbe(page, { mouth: 'lick' }, 1200, 30, 0);
+    assert.ok(lipLick.pinkFrames >= 1, 'a scripted lick shows the tongue');
+    const plain = await motionProbe(page, {}, 1500, 60);
+    assert.equal(plain.pinkFrames, 0);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  });
+
+  guard('reduced motion: no tail swing and no tongue', async () => {
+    const ctx = await browser.newContext({ viewport: MOBILE, reducedMotion: 'reduce' });
+    const { page, errors } = await harness(ctx);
+    for (const state of [{}, { pawL: 'high', eyes: 'closed' }]) {
+      const r = await motionProbe(page, state, 1800, 100);
+      assert.equal(r.tails, 1);
+      assert.equal(r.pinkFrames, 0);
     }
     assert.deepEqual(errors, []);
     await ctx.close();

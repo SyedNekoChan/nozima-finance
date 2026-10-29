@@ -49,7 +49,8 @@ def leg(name, hip, foot, a=11.0, b=11.0, bend=None, fluff=0.5, thick=1.0):
     return P
 
 
-def tail(points, r0=2.8, r1=4.9, fluff=1.0):
+def tail(points, r0=2.8, r1=4.9, fluff=0.6, tuft=True):
+    """a plume: thin at the root, fullest about two thirds along, tapering to a tufted tip"""
     pts = np.array(points, float)
     P = []
     n = len(pts) - 1
@@ -57,8 +58,17 @@ def tail(points, r0=2.8, r1=4.9, fluff=1.0):
         for j in range(5):
             t = (i + j / 5) / n
             c = pts[i] + (pts[i + 1] - pts[i]) * (j / 5)
-            r = r0 + (r1 - r0) * math.sin(min(1, t * 1.25) * math.pi / 2) * (1 - 0.45 * t ** 3)
+            r = r0 + (r1 - r0) * math.sin(min(1, t * 1.35) * math.pi / 2) * (1 - 0.55 * t ** 3)
             P.append(Prim(c, (r, r * 1.05, r), 'tail', fluff, flow=pts[i + 1] - pts[i]))
+    if tuft:
+        d = pts[-1] - pts[-2]
+        d = d / (np.linalg.norm(d) + 1e-9)
+        # a few locks fan out at the tip, so it ends in a point rather than a blunt end
+        side = np.cross(d, [0.0, 1.0, 0.0])
+        if np.linalg.norm(side) < 1e-6: side = np.cross(d, [1.0, 0.0, 0.0])
+        side = side / (np.linalg.norm(side) + 1e-9)
+        for k, (along, off, rr) in enumerate(((2.2, 0.0, 2.1), (1.4, 1.5, 1.7), (1.4, -1.5, 1.7))):
+            P.append(Prim(pts[-1] + d * along + side * off, (rr, rr, rr), 'tail', fluff, flow=d + side * off * 0.15))
     return P
 
 

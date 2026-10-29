@@ -723,6 +723,8 @@ their coordinates and follow the art's head through per-frame anchors.
   `sheets/`; `anchors.js` is generated. See `spritesheet/SPEC.md` for
   conventions: 13 frames are approved art; the other 33 are rendered by code
   (`art/source/render_cat.py`; not hand-drawn, not SpriteForge).
+- Motion over the still frames (`tail.js`): the tail pixels listed per frame (`art/tails.json`) are bent every ~100 ms with a continuous, eased swing (idle, grooming, dozing, walking, swish, lash), a grooming cat strokes its paw with a tongue while the head dips, single-frame sitting art breathes, and a clip change cross-fades over 120 ms. Reduced motion draws the still frames.
+- World props (the treasure coins) are drawn behind or in front of the pet by depth, but a prop never changes side while it overlaps the pet's body (`core/layering.js`, used by `components/Anomaly.jsx`), and `moveProp(..., { around })` routes a prop that must change side round the pet's footprint, so coins travel in front of or behind the cat, never through it.
 - Production gate: `npm run sheets:gaps` separates approved, code-generated and stand-in art; sheet mode may only be on while no stand-ins remain, enforced by `production.test.mjs`.
 - Tooling and tests: `npm run sheets:build`, `sheets:validate`,
   `sheets:audit` (every pose / view / leg state must select a clip) and

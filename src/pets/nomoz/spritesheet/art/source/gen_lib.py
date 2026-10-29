@@ -10,6 +10,22 @@ from cat_model import *
 W, H = 96, 64
 
 
+class Fr(np.ndarray):
+    """a frame (H, W, 4 uint8) that remembers which of its pixels are the tail (see tails.json)"""
+    tail = None
+    tailpts = None
+
+    def __array_finalize__(self, obj):
+        self.tail = getattr(obj, 'tail', None)
+        self.tailpts = getattr(obj, 'tailpts', None)
+
+
+def as_fr(a, tail=None, tailpts=None):
+    f = np.asarray(a).view(Fr)
+    f.tail, f.tailpts = tail, tailpts
+    return f
+
+
 def load(name, n=0):
     return np.array(Image.open(f'{ART}/{name}/{n}.png').convert('RGBA'))
 

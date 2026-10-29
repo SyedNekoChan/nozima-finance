@@ -88,6 +88,17 @@ function normalizeClip(id, raw, sheets) {
   // the ground row for the floor shadow when the art is off the ground (a leap)
   if (raw.floor !== undefined && !isNat(raw.floor)) throw new Error('floor must be a row number');
 
+  // the tongue's spot [x, y] and the rows that dip with each lick (a grooming clip); and how much the tail sways
+  if (raw.lick !== undefined && !(raw.lick && isPoint(raw.lick.at) && isNat(raw.lick.dip))) {
+    throw new Error('lick needs at: [x, y] and dip: rows');
+  }
+  if (raw.sway !== undefined && !(Number.isFinite(raw.sway) && raw.sway >= 0)) throw new Error('sway must be a number >= 0');
+
+  // a slow breath for a single-frame sitting clip: the art above row `cut` drops a row for part of every `ms`
+  if (raw.breathe !== undefined && !(raw.breathe && isNat(raw.breathe.cut) && raw.breathe.cut > 0 && Number.isFinite(raw.breathe.ms) && raw.breathe.ms > 400)) {
+    throw new Error('breathe needs cut: row and ms: > 400');
+  }
+
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
 
@@ -106,6 +117,9 @@ function normalizeClip(id, raw, sheets) {
     under: raw.lighting !== 'baked',
     anchors: anchorList,
     floor: raw.floor ?? null,
+    lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip }) : null,
+    breathe: raw.breathe ? Object.freeze({ cut: raw.breathe.cut, ms: raw.breathe.ms }) : null,
+    sway: raw.sway ?? 1,
     dynamic: Object.freeze({ head, base, whiskers: dyn.whiskers === true }),
   });
 }

@@ -61,19 +61,75 @@ def ground(a, row):
     return out
 
 
+def shift_rows(m, dy):
+    out = np.zeros_like(m)
+    if dy > 0: out[dy:] = m[:H - dy]
+    elif dy < 0: out[:H + dy] = m[-dy:]
+    else: out[:] = m
+    return out
+
+
+def tail_entry(f, g, dy):
+    """the tail of a finished frame for tails.json: its pixels as '#' rows over a bounding box, the base and the tip"""
+    tm = getattr(f, 'tail', None)
+    if tm is None: return None
+    tm = shift_rows(tm, dy) & (g[..., 3] > 0)
+    ys, xs = np.where(tm)
+    if len(xs) < 12: return None
+    x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+    rows = [''.join('#' if tm[y, x] else '.' for x in range(x0, x1 + 1)) for y in range(y0, y1 + 1)]
+    pts = getattr(f, 'tailpts', None)
+    base = [round(pts[0][0], 1), round(pts[0][1] + dy, 1)]
+    tip = [round(pts[1][0], 1), round(pts[1][1] + dy, 1)]
+    return {'x': x0, 'y': y0, 'rows': rows, 'base': base, 'tip': tip}
+
+
 def write(name, frames, floor=61):
-    frames = [ground(tidy(f), floor) for f in frames]
+    done, tails = [], []
+    for f in frames:
+        g = tidy(f)
+        ys = np.where((g[..., 3] > 0).any(axis=1))[0]
+        dy = floor - int(ys.max())
+        g = ground(g, floor)
+        done.append(g)
+        tails.append(tail_entry(f, g, dy))
     d = OUT / name
     d.mkdir(parents=True, exist_ok=True)
     for old in d.glob('*.png'): old.unlink()
-    for i, f in enumerate(frames):
+    for i, f in enumerate(done):
         save(f, d / f'{i}.png')
+    record_tails(name, tails)
 
 
-def body_render(P, az, cx, tilt, seed=1, **kw):
-    R = Render(az, cx, seed=seed, tilt_deg=tilt)
+def record_tails(name, tails):
+    """art/tails.json: per art folder, per frame, the tail pixels that the renderer sways at run time"""
+    import json
+    path = Path(ART) / 'tails.json'
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data[name] = tails
+    path.write_text(json.dumps(dict(sorted(data.items())), indent=0, separators=(',', ':')) + '\n')
+
+
+def body_render(P, az, cx, tilt, seed=1, pitch=0.0, style=None, **kw):
+    R = Render(az, cx, seed=seed, tilt_deg=tilt, pitch_deg=pitch)
     R.add(P); R.cast(); R.shade(**{**SHADE, **kw})
-    return R.to_frame(seed=seed + 2)
+    fr = R.to_frame(seed=seed + 2, **{**STYLE, **(style or {})})
+    # which visible pixels are the tail (and the base and tip of its spine, in frame coordinates)
+    tp = [q for q in P if q.part == 'tail']
+    if not tp: return as_fr(fr)
+    tid = R.partnames['tail']
+    tm = (R.part[SS // 2::SS, SS // 2::SS] == tid) & R.mask
+    body = (R.part[SS // 2::SS, SS // 2::SS] >= 0) & (R.part[SS // 2::SS, SS // 2::SS] != tid) & R.mask
+    grow = tm.copy()
+    for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        grow |= np.roll(np.roll(tm, dy, 0), dx, 1)
+    tm = (grow & ~body & (fr[..., 3] > 0)) | tm
+    pr = lambda c: (float((R.M @ c)[0] + R.cx), float(62.0 - (R.M @ c)[1]))
+    return as_fr(fr, tm, (pr(tp[0].c), pr(tp[-1].c)))
+
+
+# rendering style of every generated body (render_cat.py to_frame): fewer speckles, fur locks, limbs outlined
+STYLE = dict(smooth=1, locks=0.03, limbs=2)
 
 
 def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0):
@@ -89,13 +145,31 @@ def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0)
     return P
 
 
-# stride configurations: contact A, passing, contact B (side-derived views and crouched walks)
+# ------------------------------------------------------------------ the five keyed poses of a walk or creep
+# frame 0 contact (left-front and right-hind forward), 1 neutral (all four down: the standing pose), 2 contact
+# (the other diagonal), 3 and 4 the passing poses between them (one diagonal swinging through, the body at its
+# highest). The manifest plays 0 3 2 4.
+PHASES = ['A', 'N', 'C', 'P1', 'P2']
+BOB = {'A': 0.7, 'N': 0.0, 'C': 0.7, 'P1': -0.8, 'P2': -0.8}   # contact: the weight drops; passing: it rises
+
+
 def gait(kind, S=S_, lift=3.2):
+    """leg -> (forward offset, lift) for side-like views (z is along the body)"""
     if kind == 'A':
         return dict(FL=(S * 0.9, 0), FR=(-S * 0.85, lift), HR=(S * 0.8, 0), HL=(-S * 0.9, lift * 0.4))
-    if kind == 'B':
-        return dict(FL=(S * 0.1, 0), FR=(S * 0.15, 0.4), HR=(0, 0), HL=(0, 0))
-    return dict(FR=(S * 0.9, 0), FL=(-S * 0.85, lift), HL=(S * 0.8, 0), HR=(-S * 0.9, lift * 0.4))
+    if kind == 'C':
+        return dict(FR=(S * 0.9, 0), FL=(-S * 0.85, lift), HL=(S * 0.8, 0), HR=(-S * 0.9, lift * 0.4))
+    if kind == 'P1':   # FR and HL swing through, FL and HR hold the ground
+        return dict(FL=(-S * 0.1, 0), HR=(S * 0.1, 0), FR=(S * 0.05, lift * 1.25), HL=(-S * 0.05, lift * 1.1))
+    if kind == 'P2':
+        return dict(FR=(-S * 0.1, 0), HL=(S * 0.1, 0), FL=(S * 0.05, lift * 1.25), HR=(-S * 0.05, lift * 1.1))
+    return dict(FL=(S * 0.12, 0), FR=(-S * 0.08, 0), HR=(S * 0.1, 0), HL=(-S * 0.1, 0))
+
+
+def front_cfg(phase, S=S_, lift=3.4):
+    """the same strides seen head on (z toward or away from the viewer)"""
+    g = gait(phase, S, lift)
+    return g
 
 
 # ------------------------------------------------------------------ heads (approved pixels)
@@ -128,94 +202,98 @@ def head_rear():
     return crop(a, 27, 0, 58, 29), 27, 0
 
 
-def place(frame, head, x, y, dx=0, dy=0, fade=4, side=None, seed=5):
+def place(frame, head, x, y, dx=0, dy=0, fade=4, side=None, seed=5, tail_over=False):
     hd = np.zeros_like(frame)
     paste(hd, head, x + dx, y + dy, fade_rows=fade, fade_side=side, seed=seed)
-    return under(frame, hd)
+    out = under(frame, hd)
+    tm = getattr(frame, 'tail', None)
+    if tail_over and tm is not None:
+        out[tm & (frame[..., 3] > 0)] = frame[tm & (frame[..., 3] > 0)]   # a tail rising in front of the head stays in front
+    return as_fr(out, tm, getattr(frame, 'tailpts', None))
 
 
 # ------------------------------------------------------------------ tails
 def tail_walk_side(sw, bd=0.0):
-    return tail([(0, 29 - bd * 0.6, -23), (sw * 0.3, 33 - bd * 0.5, -31), (sw * 0.6, 41 - bd * 0.4, -36), (sw, 48 - bd * 0.3, -37.5), (sw, 54 - bd * 0.3, -34)])
+    """held up and back, a gentle S: the tip hooks forward a little"""
+    return tail([(0, 29 - bd * 0.6, -23), (sw * 0.3, 33 - bd * 0.5, -31), (sw * 0.6, 40 - bd * 0.4, -35), (sw, 46 - bd * 0.3, -36.5), (sw, 51 - bd * 0.3, -34)], r0=3.0, r1=4.6)
 
 
-def tail_creep(sw):
-    """low and trailing, the tip lifting a little"""
-    return tail([(0, 25, -22), (sw * 0.3, 22.5, -31), (sw * 0.6, 21.5, -40), (sw, 24, -47)], r0=2.8, r1=4.7)
+def tail_creep(sw, bd=0.0):
+    """low, trailing and flowing, the tip lifting a little"""
+    return tail([(0, 27 - bd * 0.5, -22), (sw * 0.3, 24.5 - bd * 0.5, -29), (sw * 0.6, 22.8 - bd * 0.5, -35), (sw, 23.2 - bd * 0.4, -40), (sw, 25.5 - bd * 0.4, -43.5)], r0=2.8, r1=4.4)
 
 
 # ------------------------------------------------------------------ walk / creep front and rear
-def front_cfg(phase, S=S_, lift=3.4):
-    return {'A': dict(FL=(S * 1.0, 0), FR=(-S * 0.9, lift), HL=(-S * 0.9, lift * 0.9), HR=(S * 0.9, 0)),
-            'B': dict(FL=(0, 0), FR=(0, 0), HL=(0, 0), HR=(0, 0)),
-            'C': dict(FL=(-S * 0.9, lift), FR=(S * 1.0, 0), HL=(S * 0.9, 0), HR=(-S * 0.9, lift * 0.9))}[phase]
-
-
 def walk_front(crouch=False, seed=11):
     out = []
     h, hx, hy = head_front()
-    for i, ph in enumerate('ABC'):
-        bob = {'A': 0.0, 'B': -1.0, 'C': 0.0}[ph] + (8.0 if crouch else 0.0)
-        P = torso(bd=bob, chest_z=15, hip_z=-19, ruff_w=11.0)
-        P += legs3d(front_cfg(ph, S=6.5 if crouch else S_, lift=2.4 if crouch else 3.4), bd=bob, a=10.2 if crouch else 11.5)
-        t = {'A': 3, 'B': 0, 'C': -3}[ph]
-        ty = 0 if not crouch else -6
-        P += tail([(5, 27 + ty * 0.5, -22), (11 + t, 28 + ty * 0.7, -27), (15 + t, 33 + ty, -29), (15 + t * 1.2, 39 + ty, -29)], r0=2.8, r1=5.0)
+    for i, ph in enumerate(PHASES):
+        bd = BOB[ph] * 0.8 + (5.0 if crouch else 0.0)
+        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0)
+        P += legs3d(front_cfg(ph, S=6.2 if crouch else 8.4, lift=2.6 if crouch else 3.4), bd=bd, a=10.4 if crouch else 11.5)
+        t = {'A': 2.5, 'N': 0, 'C': -2.5, 'P1': -1, 'P2': 1}[ph]
+        ty = -5 if crouch else 0
+        # the tail curves up behind the haunch, a plume showing past the hip (as in the approved sitting cat)
+        P += tail([(8, 19 + ty * 0.4, -24), (13 + t * 0.4, 19 + ty * 0.5, -27), (17 + t * 0.6, 23 + ty * 0.6, -28), (19 + t * 0.8, 30 + ty * 0.8, -27)], r0=3.0, r1=4.6)
         b = body_render(P, 0, 39, 12, seed=seed + i)
-        out.append(place(b, h, hx, hy, dy=int(bob) + (4 if crouch else 0)))
+        out.append(place(b, h, hx, hy, dy=int(round(bd)) + (2 if crouch else 0)))
     return out
 
 
 def walk_rear(crouch=False, seed=21):
     out = []
     h, hx, hy = head_rear()
-    for i, ph in enumerate('ABC'):
-        bob = {'A': 0.0, 'B': -1.0, 'C': 0.0}[ph] + (8.0 if crouch else 0.0)
-        P = torso(bd=bob, chest_z=15, hip_z=-19, ruff_w=11.0, hip_w=3.0)
-        P += legs3d(front_cfg(ph, S=6.5 if crouch else S_, lift=2.4 if crouch else 3.4), bd=bob, a=10.2 if crouch else 11.5, hip_hind=(8.0, 21.0, -16.0))
-        t = {'A': 2.5, 'B': 0, 'C': -2.5}[ph]
+    for i, ph in enumerate(PHASES):
+        bd = BOB[ph] * 0.8 + (5.0 if crouch else 0.0)
+        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0, hip_w=3.5)
+        P += legs3d(front_cfg(ph, S=6.2 if crouch else 8.4, lift=2.6 if crouch else 3.4), bd=bd, a=10.4 if crouch else 11.5, hip_hind=(8.0, 21.0, -16.0), thick=1.1)
+        t = {'A': 2.0, 'N': 0, 'C': -2.0, 'P1': -0.8, 'P2': 0.8}[ph]
         if crouch:
-            P += tail([(3, 25, -22), (8 + t, 23, -28), (14 + t, 22, -31), (20 + t, 24, -30)], r0=2.8, r1=4.6)
+            # low and trailing: seen end on it lies along the line of sight, a plume dropping behind the rump
+            P += tail([(1, 28 - bd * 0.4, -22), (2 + t, 26 - bd * 0.4, -30), (3 + t, 25 - bd * 0.4, -38), (4 + t, 27 - bd * 0.4, -44)], r0=2.8, r1=4.2)
         else:
-            P += tail([(3, 28, -22), (9 + t, 33, -26), (13 + t, 41, -27), (12 + t, 49, -25)], r0=2.8, r1=4.8)
+            # up from the rump, in front of the back, its tip leaning to one side beside the head
+            P += tail([(0, 28, -23), (5 + t * 0.4, 33, -26), (10 + t * 0.8, 41, -27), (12 + t, 50, -25)], r0=3.4, r1=4.8)
         b = body_render(P, 180, 41, 12, seed=seed + i)
-        out.append(place(b, h, hx, hy + 4 + int(bob) + (-0 if not crouch else -1), fade=3))
+        out.append(place(b, h, hx, hy, dy=int(round(bd)) + (4 if not crouch else 3), fade=3, tail_over=True))
     return out
 
 
 # ------------------------------------------------------------------ walk / creep, side and three-quarter views
+HEAD_FRAME = {'A': 0, 'N': 1, 'C': 2, 'P1': 1, 'P2': 1}
+
+
 def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0):
     out = []
-    for i, ph in enumerate('ABC'):
-        bd = 8.0 if crouch else 0.0
-        bd += {'A': 0.0, 'B': 0.8, 'C': 0.0}[ph]
-        S = 6.5 if crouch else S_
+    for i, ph in enumerate(PHASES):
+        bd = (5.0 if crouch else 0.0) + BOB[ph] * (0.6 if crouch else 1.0)
+        S = 7.0 if crouch else S_
         P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=8.2, hip_w=hip_w)
-        P += legs3d(gait(ph, S=S, lift=2.4 if crouch else 3.2), bd=bd, a=10.2 if crouch else 11.5)
-        sw = {'A': 2, 'B': 0, 'C': -2}[ph]
-        P += tail_creep(sw) if crouch else tail_walk_side(sw, bd)
+        P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5)
+        sw = {'A': 2.2, 'N': 0, 'C': -2.2, 'P1': -1.0, 'P2': 1.0}[ph]
+        P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
         P += head_for.model(bd, crouch) if hasattr(head_for, 'model') else []
         b = body_render(P, az, cx, tilt, seed=seed + i)
-        out.append(head_for(b, i, crouch))
+        out.append(head_for(b, HEAD_FRAME[ph], crouch, bd))
     return out
 
 
-def head_side_placer(b, i, crouch):
-    h, x, y = head_side(i)
-    return place(b, h, x, y, dx=1 if crouch else 0, dy=9 if crouch else 0, fade=5, side='right')
+def head_side_placer(b, k, crouch, bd=0.0):
+    h, x, y = head_side(k)
+    return place(b, h, x, y, dx=1 if crouch else 0, dy=int(round(bd)) + (2 if crouch else 0), fade=5, side='right')
 
 
-def head_threeq_placer(b, i, crouch):
+def head_threeq_placer(b, k, crouch, bd=0.0):
     h, x, y = head_threeq()
-    return place(b, h, x, y, dx=0, dy=(9 if crouch else 0) + (1 if i == 1 else 0), fade=4, side='right')
+    return place(b, h, x, y, dx=0, dy=int(round(bd)) + (2 if crouch else 0), fade=4, side='right')
 
 
-def head_rearq_placer(b, i, crouch):
+def head_rearq_placer(b, k, crouch, bd=0.0):
     return b
 
 
 def _rearq_model(bd, crouch):
-    return head3d((0, 36.0 - bd - (0 if not crouch else 0), 25.5), size=1.0)
+    return head3d((0, 36.0 - bd, 25.5), size=1.0)
 
 
 head_rearq_placer.model = _rearq_model
@@ -224,32 +302,33 @@ head_rearq_placer.model = _rearq_model
 # ------------------------------------------------------------------ leaps, low, loaf
 def leap_side():
     h, x, y = head_side(1)
-    bd = -7.0
+    bd = -1.0
+    pitch = 8.0
     P = torso(bd=bd, sag=-1.0, chest_z=16, hip_z=-20, ruff_w=8.0)
-    # forelegs reach forward and down, hind legs push back
+    # forelegs reach out ahead, hind legs stretch out behind (the whole cat is pitched nose up)
     for name, (side, front, off) in LEGS.items():
         hx, hy, hz = (5.8, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
         hip = (side * hx, hy - bd, hz)
         if front:
-            foot = (side * 5.2, 19.0 + (3.0 if side < 0 else 0), 33.0 + (0 if side > 0 else -3.0))
+            foot = (side * 5.2, 17.0 + (2.5 if side < 0 else 0), 30.0 + (0 if side > 0 else -4.0))
         else:
-            foot = (side * 6.4, 14.0 + (3.0 if side < 0 else 0), -26.0 + (0 if side > 0 else 3.0))
-        P += leg(name, hip, foot, a=11.5, b=11.0)
-    P += tail([(0, 33, -24), (0, 38, -33), (0, 43, -42), (0, 45, -49)], r0=2.8, r1=4.6)
-    b = body_render(P, -90, 42, 0, seed=41)
-    return [place(b, h, x, y, dx=0, dy=-7, fade=5, side='right')]
+            foot = (side * 6.4, 11.0 + (3.0 if side < 0 else 0), -27.0 + (0 if side > 0 else 4.0))
+        P += leg(name, hip, foot, a=11.5, b=11.5)
+    P += tail([(0, 31, -24), (0, 31.5, -32), (0, 33, -39), (0, 35, -43), (0, 38.5, -46)], r0=2.8, r1=4.4)
+    b = body_render(P, -90, 42, 0, seed=41, pitch=pitch)
+    return [place(b, h, x, y, dx=0, dy=-3, fade=5, side='right')]
 
 
 def leap_front():
     h, hx, hy = head_front()
-    bd = -7.0
+    bd = -2.0
     P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0)
-    # forelegs reach toward the viewer (nearer = lower on screen), hind legs trail
-    cfg = dict(FL=(14.0, 8.0), FR=(14.0, 8.0), HL=(-6.0, 6.0), HR=(-6.0, 6.0))
-    P += legs3d(cfg, bd=bd)
-    P += tail([(5, 31, -22), (11, 34, -27), (15, 39, -29), (15, 45, -29)], r0=2.8, r1=5.0)
-    b = body_render(P, 0, 39, 12, seed=43)
-    return [place(b, h, hx, hy, dy=-7)]
+    # pitched toward the viewer: the forelegs are gathered and reaching at the chest, the hind legs trail below
+    cfg = dict(FL=(16.0, 12.0), FR=(16.0, 12.0), HL=(-8.0, 5.0), HR=(-8.0, 5.0))
+    P += legs3d(cfg, bd=bd, hip_front=(6.0, 22.0, 12.0))
+    P += tail([(8, 22, -24), (13, 23, -27), (17, 28, -28), (19, 36, -27)], r0=3.0, r1=4.6)
+    b = body_render(P, 0, 39, 12, seed=43, pitch=14.0)
+    return [place(b, h, hx, hy, dy=-1)]
 
 
 def low_front():
@@ -262,7 +341,9 @@ def low_front():
         P = torso(bd=bd, chest_z=14, hip_z=-17, ruff_w=11.5, hip_w=2.0)
         # forelegs stretched forward flat, hind legs folded under
         P += legs3d(dict(FL=(17.0, 0), FR=(17.0, 0), HL=(-7.0, 0), HR=(-7.0, 0)), bd=bd, a=7.5, thick=1.0, hip_front=(6.4, 19.5, 12.0), hip_hind=(8.5, 18.0, -14.0))
-        P += tail([(7, 3.0, -9), (12, 2.6, -12), (16, 3.0, -12), (19, 4.0, -9)], r0=2.6, r1=4.4)
+        for sx in (-1, 1):  # the forepaws rest flat in front of the chest
+            P.append(Prim((sx * 4.8, 2.4, 21.0 + 0.4 * i), (3.5, 2.4, 5.0), 'FL' if sx > 0 else 'FR', 0.3, flow=(0, 0, 1)))
+        P += tail([(8, 3.0, -9), (14, 3.0, -12), (19, 4.5, -11), (22, 7.5, -7)], r0=2.8, r1=4.8)
         b = body_render(P, 0, 39, 14, seed=51 + i)
         out.append(place(b, hd, hx, hy, dy=10 + i, fade=5))
     return out
@@ -285,26 +366,26 @@ def loaf_front():
     return out
 
 
+JOBS = {
+    'walk_front': walk_front,
+    'walk_rear': walk_rear,
+    'walk_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer),
+    'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5),
+    'creep_front': lambda: walk_front(crouch=True, seed=71),
+    'creep_rear': lambda: walk_rear(crouch=True, seed=81),
+    'creep_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer, crouch=True, seed=91),
+    'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5),
+    'creep_side': lambda: walk_side_like(-90, 0, 46, head_side_placer, crouch=True),
+    'leap_front': leap_front,
+    'leap_side': leap_side,
+    'low_front': low_front,
+    'loaf_front': loaf_front,
+}
+
 if __name__ == '__main__':
     only = set(sys.argv[2:])
-    jobs = {
-        'walk_front': walk_front,
-        'walk_rear': walk_rear,
-        'walk_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer),
-        'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5),
-        'creep_front': lambda: walk_front(crouch=True, seed=71),
-        'creep_rear': lambda: walk_rear(crouch=True, seed=81),
-        'creep_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer, crouch=True, seed=91),
-        'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5),
-        'creep_side': lambda: walk_side_like(-90, 0, 46, head_side_placer, crouch=True),
-        'leap_front': leap_front,
-        'leap_side': leap_side,
-        'low_front': low_front,
-        'loaf_front': loaf_front,
-    }
-    for name, fn in jobs.items():
+    for name, fn in JOBS.items():
         if only and name not in only: continue
         fr = fn()
         write(name, fr, floor=54 if name.startswith('leap') else 61)
-        preview(fr, f'/tmp/claude-0/-home-user-nozima-finance/1846b3aa-0f19-59ba-b225-26ceabaaed2e/scratchpad/live/g_{name}.png', Z=12)
         print(name, len(fr))

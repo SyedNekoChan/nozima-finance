@@ -72,10 +72,12 @@ const CREEP = 400;
 const clips = {
   idle_front: clip('idle_front', [0, 1], { ms: 1000 }), // breathing, eyes open
   idle_front_closed: clip('idle_front', [3]), // eyes closed (blink, happy, asleep)
-  sit_threeq: clip('sit_threeq', [0]),
-  sit_doze: clip('sit_doze', [0]),
-  sit_groom: clip('sit_groom', [0]),
-  sit_rear: clip('sit_rear', [0]),
+  // a slow breath on the single-frame sitting art: everything above the row drops a row for part of each period
+  sit_threeq: clip('sit_threeq', [0], { breathe: { cut: 46, ms: 3600 } }),
+  sit_doze: clip('sit_doze', [0], { breathe: { cut: 44, ms: 4400 } }),
+  // grooming: the tongue strokes the paw (the spot is on the art; the head and paw above row 36 dip into each lick)
+  sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36 } }),
+  sit_rear: clip('sit_rear', [0], { breathe: { cut: 40, ms: 3800 } }),
   curl: clip('curl', [0]),
   stretch: clip('stretch', [0]),
   low_front: clip('low_front', [0, 1], { ms: 1000 }),
@@ -84,16 +86,17 @@ const clips = {
   leap_front: clip('leap_front', [0], { floor: 61 }),
   leap_side: clip('leap_side', [0], { floor: 61 }),
 };
-// The approved side walk is a three-frame loop (0 1 2). Every other walk and
-// creep is contact left, passing (all four paws down: also the standing
-// pose), contact right, played out and back (0 1 2 1) for a full cycle.
-const pingPong = (art) => art !== 'walk_side';
+// The approved side walk is a three-frame loop (0 1 2). Every generated walk and
+// creep has five poses: 0 and 2 the two contacts, 1 all four paws down (the
+// standing pose) and 3 and 4 the passing poses between the contacts, where the
+// body is at its highest. It plays 0 3 2 4, a full stride in four beats.
+const STRIDE = [0, 3, 2, 4];
 for (const view of VIEWS) {
   const walkArt = `walk_${view}`;
   const creepArt = `creep_${view}`;
-  clips[walkArt] = clip(walkArt, pingPong(walkArt) ? [0, 1, 2, 1] : [0, 1, 2], { ms: pingPong(walkArt) ? Math.round((WALK * 3) / 4) : WALK });
+  clips[walkArt] = view === 'side' ? clip(walkArt, [0, 1, 2], { ms: WALK }) : clip(walkArt, STRIDE, { ms: Math.round((WALK * 3) / 4) });
   clips[`stand_${view}`] = clip(walkArt, [1]); // arriving or waiting on four legs
-  clips[creepArt] = clip(creepArt, [0, 1, 2, 1], { ms: Math.round((CREEP * 3) / 4) });
+  clips[creepArt] = clip(creepArt, STRIDE, { ms: Math.round((CREEP * 3) / 4) });
   clips[`crouch_${view}`] = clip(creepArt, [1]);
 }
 

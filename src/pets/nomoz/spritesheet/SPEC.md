@@ -12,24 +12,31 @@ Reference: `art/source/reference.webp`, the user's concept sheet (a fluffy long-
 ## Art folders (`art/<id>/<n>.png` -> `sheets/nomoz_<id>.png`)
 **Reference (approved) art, 13 frames in 8 folders**, converted from the reference sheet by `art/source/convert_reference.py` and never edited: `idle_front` (4), `walk_side` (3), `sit_threeq`, `sit_doze`, `sit_groom`, `sit_rear`, `curl`, `stretch` (1 each). Their sha-256 prefixes are pinned in `spritesheet.test.mjs`.
 
-**Generated art, 33 frames in 13 folders** (`from: 'generated'` in `spec.js`). **These were rendered by code, not drawn by hand and not made in SpriteForge.** `art/source/generate_production.py` builds each pose from `cat_model.py` (an articulated ellipsoid cat: spine-chain torso, belly and chest fur, two-bone-IK legs, plume tail) and `render_cat.py` (orthographic render from the requested azimuth with a slight camera tilt, a light from the upper left plus a rim light, normals smoothed from the depth buffer, fur-flow noise, ordered dither into the ten approved fur tones, a dark contour, depth-based separation lines between limbs, fluffy tufts on the soft parts, stray-pixel cleanup, then grounding so planted paws end on row 61). The head and chest ruff of each view are the **approved pixels** of the matching reference frame, pasted at their original size and thinned into the render (`idle_front` for front views, `sit_threeq` for three-quarter front, `walk_side` for side, `sit_rear` for the rear); only the rear three-quarter head is rendered (`head3d`). Nothing is mirrored or copied from another pose: every frame is its own render.
+**Generated art, 51 frames in 13 folders** (`from: 'generated'` in `spec.js`). **These were rendered by code, not drawn by hand and not made in SpriteForge.** `art/source/generate_production.py` builds each pose from `cat_model.py` (an articulated ellipsoid cat: spine-chain torso, belly and chest fur, two-bone-IK legs, plume tail) and `render_cat.py` (orthographic render from the requested azimuth with a slight camera tilt, a light from the upper left plus a rim light, normals smoothed from the depth buffer, fur-flow noise, ordered dither into the ten approved fur tones, a dark contour, depth-based separation lines between limbs, fluffy tufts on the soft parts, stray-pixel cleanup, then grounding so planted paws end on row 61). The head and chest ruff of each view are the **approved pixels** of the matching reference frame, pasted at their original size and thinned into the render (`idle_front` for front views, `sit_threeq` for three-quarter front, `walk_side` for side, `sit_rear` for the rear); only the rear three-quarter head is rendered (`head3d`). Nothing is mirrored or copied from another pose: every frame is its own render.
 
 | id | frames | what it shows |
 |---|---|---|
-| walk_front | 3 | toward us: contact left, passing (all paws down), contact right; the forward fore paw is nearer and lower |
-| walk_frontQ | 3 | three-quarter toward us, facing left, tail up |
-| walk_rearQ | 3 | three-quarter away, facing left, rendered head, tail up |
-| walk_rear | 3 | away from us, tail raised at one side |
-| creep_front / creep_frontQ / creep_side / creep_rearQ / creep_rear | 3 each | the same five views crouched: belly low, shorter strides, head lowered, tail trailing |
-| leap_front | 1 | mid-hop toward us, forelegs reaching, raised 7 px (lowest row 54) |
-| leap_side | 1 | mid-hop, forelegs reaching, hind legs pushing, raised 7 px |
+| walk_front | 5 | toward us: contact, standing (all paws down), contact, two passing poses; the forward fore paw is nearer and lower; the tail curls up behind the haunch |
+| walk_frontQ | 5 | three-quarter toward us, facing left, tail up |
+| walk_rearQ | 5 | three-quarter away, facing left, rendered head, tail up |
+| walk_rear | 5 | away from us, the tail rising from the rump and curling past the head (drawn in front of it) |
+| creep_front / creep_frontQ / creep_side / creep_rearQ / creep_rear | 5 each | the same five views crouched: belly low (but the legs show), shorter strides, head lowered, tail trailing in a flowing curve |
+| leap_front | 1 | mid-hop toward us, the body pitched at the viewer, forelegs gathered at the chest, hind legs trailing, raised (lowest row 54) |
+| leap_side | 1 | mid-hop, the body pitched nose up, forelegs reaching, hind legs stretched behind, tail streaming, raised (lowest row 54) |
 | low_front | 2 | head down, eyes closed (the closed-eye approved head), body low; two breathing frames |
 | loaf_front | 2 | lying like a loaf, forepaws tucked; two breathing frames |
+
+## Motion on top of the still frames (`tail.js`, `renderer.js`)
+The sheets hold still frames, so three things move at run time instead of being baked.
+- **Tail.** Every frame lists its tail pixels (`art/tails.json`, merged into `anchors.js` as `tail`: a box of `#` rows, the base and the tip of the spine). Generated frames record theirs from the render (`generate_production.py` knows which pixels are the tail); the approved frames are cut by hand-drawn polygons in `art/source/tail_regions.py`, which only reads the approved art. Every redraw bends those pixels about the base with a wave that travels down the tail (the root stays, the tip lags), so the art is never edited. The swing eases between states (idle, grooming, dozing, walking, `swish`, `lash`, `up`, `still`) and its phase is continuous, so it never snaps; it never stops while the cat idles, grooms, dozes or walks (`still` only calms it). Reduced motion draws the still frame.
+- **Tongue.** `sit_groom` draws a small pink tongue at the paw (`lick` in `manifest.js`) that strokes out and back every 620 ms while a forepaw is at the mouth, a pause on every fifth stroke, and the head and paw above row 36 dip a row into each stroke. A scripted `mouth: 'lick'` (eating, the end of a groom) shows the tongue under the muzzle of front and three-quarter faces (`mouth` anchor).
+- **Breath and cross-fade.** `sit_threeq`, `sit_doze` and `sit_rear` (one frame each) drop everything above a row by one row for 45% of every 3.6-4.4 s. When the clip changes the frame that was on screen fades out over 120 ms under the new one, so poses do not cut.
+- The renderer redraws about every 100 ms (60 ms while licking) while any of this moves, and not at all while the tab is hidden.
 
 ## Which art each state uses (`manifest.js`, audited by `audit.mjs`)
 - sit, front: `idle_front` (frames 0-1, 1 s); eyes closed / blink / happy: its closed frame; eyes closed + droop: `sit_doze`; forepaw at `mid` / `high`: `sit_groom`. sit, frontQ and side: `sit_threeq` (no profile sit art); rearQ and rear: `sit_rear`.
 - stand, per view: moving: `walk_<view>`; still: frame 1. legs 3 (hop): `leap_front` / `leap_side` (rear hop: the walk-away art).
-- The approved `walk_side` loops 0 1 2 at 320 ms. Every generated walk and creep is contact, passing, contact, played 0 1 2 1 (240 ms / 300 ms per frame). Frame 1 of each is also the standing pose (all four paws down).
+- The approved `walk_side` loops 0 1 2 at 320 ms. Every generated walk and creep has five poses (0 and 2 the two contacts, 1 all four paws down, 3 and 4 the two passing poses with the body at its highest) and plays 0 3 2 4 (240 ms / 300 ms per frame, a full stride in four beats). Frame 1 is also the standing pose. In the contacts the weight drops a little, in the passing poses it rises.
 - crouch, per view: moving: `creep_<view>`; still: frame 1.
 - stretch, curl, loaf, low: their art.
 - `audit.mjs` walks 36,480 states (every pose x view x legs x paw x book x eyes x droop): all select a clip. The procedural cat remains the fallback for a failed or missing sheet, for unknown poses, while a sheet is loading, and for the live eyes, whiskers and effects drawn over the art.
@@ -44,9 +51,10 @@ Reference: `art/source/reference.webp`, the user's concept sheet (a fluffy long-
 ## Known limits (honest list)
 - **The generated frames are a step below the approved ones.** They are cleanly shaded renders with a coherent fur texture, but they lack the hand-placed fur strokes, the sharp chest chevrons and the deliberate dark gap lines of the reference frames; limbs are smoother and more uniform, paws have no toe detail, and the silhouettes are tidier than the approved ones. They are a production-grade first pass for hand-finishing, not a replacement for it.
 - The generated bodies are rounder and stockier than the long, slender approved side walk (`walk_side`), so the side walk and the three-quarter walks differ in build.
-- The three-quarter views (`walk_frontQ`, `walk_rearQ`) are the weakest: the tail is a stiff upright plume, and the rendered rear three-quarter head is plain.
+- The tail bend is a row / column displacement of the art's own pixels: at the sizes used (up to about 3 px at the tip) it keeps the tail's silhouette, but a large swing (`lash`) shows small stair-steps along the tail.
+- The three-quarter views (`walk_frontQ`, `walk_rearQ`) are still the weakest: the rendered rear three-quarter head is plain, and the chest shading of the front three-quarter body shows lumpy limb outlines.
 - `low_front` reads as a seated cat with its head down rather than a crouch; `loaf_front` hides the body behind the head.
-- Step cycles are three keyed poses (contact, passing, contact) played out and back; there is no in-betweening.
+- Step cycles are five keyed poses (two contacts, two passings, standing); there is no in-betweening between them (the 120 ms cross-fade only covers clip changes).
 - Eye templates are 5 x 3 px (4 and 3 px in the three-quarter and profile faces), matching the approved eyes' size, not their exact noise.
 - Gestures with raised paws (casting, tapping, reaching) show no paw in sheet mode.
 
