@@ -815,6 +815,14 @@ behavior's own expression (closed, down, wide, happy, a blink in progress),
 is off while off-screen, under reduced motion and in the stressed look, and
 reopens eyes it left closed when stopped.
 
+The mood is re-derived at calendar-month boundaries (`hooks/useCurrentMonth.js`):
+its inputs (spent / income / budget "this month") change at midnight without
+any store change, and zustand reuses a selector's last result while the store
+and the selector are unchanged, so a content or stressed pet stayed that way
+into the new month (in normal and reduced motion alike). The selectors now
+follow the month, which re-renders the pet from one timer per month (not a
+ticking clock) and again when the page wakes (visible, focus, pageshow).
+
 The reduced-motion setting is read live (`pets/usePrefersReducedMotion.js`): the
 stock framer-motion hook reads it once per mount, so switching the OS option on
 while the app was open left the pet blinking and walking until a reload.

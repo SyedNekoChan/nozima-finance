@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
+import useCurrentMonth from '../hooks/useCurrentMonth.js';
 import usePet from '../pets/usePet.js';
 import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
@@ -65,9 +66,15 @@ const SPRITE_FIELDS = [
  * sits beneath the z-10 tab content, header, footer and modals.
  */
 function Pet({ pet }) {
-  const mood = useFinanceStore(deriveNomozMood);
+  // Mood and proximity depend on "this month", which no store change signals at
+  // a rollover; a selector whose identity follows the month is re-run then
+  // (zustand reuses its last result while the store and the selector are unchanged).
+  const month = useCurrentMonth();
+  const selectMood = useCallback((s) => deriveNomozMood(s), [month]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectProximity = useCallback((s) => deriveBudgetProximity(s), [month]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mood = useFinanceStore(selectMood);
   // visual-only budget proximity and "data loaded" (arms transition detection)
-  const approaching = useFinanceStore(deriveBudgetProximity);
+  const approaching = useFinanceStore(selectProximity);
   const armed = useFinanceStore((s) => s.isLoaded);
   const anomalyEvent = useFinanceStore((s) => s.anomalyEvent);
   const clearAnomalyEvent = useFinanceStore((s) => s.clearAnomalyEvent);
