@@ -45,3 +45,11 @@ SpriteForge here is a manual editor (`open_editor`, `open_full_editor`, `get_spr
 - The three-quarter and rear walks reuse the approved side-walk body, so their legs and tail swing exactly like the side view.
 - Eye templates are 5 x 3 px (4 and 3 px in the three-quarter and profile faces), matching the approved eyes' size, not their exact noise.
 - Gestures with raised paws (casting, tapping, reaching) show no paw in sheet mode.
+
+## Production readiness (the gate)
+The sprite-sheet cat replaces the procedural cat only when no code-built stand-in art is used. `npm run sheets:gaps` lists exactly what is missing (`--strict` exits 1 while anything is, `--json` for tools), and `production.test.mjs` fails if `SPRITE_RENDERER.mode` is `'sheet'` while any folder is still `from: 'built'` in `spec.js`.
+
+Approved (13 frames in 8 folders, hash-guarded): `idle_front`, `walk_side`, `sit_threeq`, `sit_doze`, `sit_groom`, `sit_rear`, `curl`, `stretch`.
+
+Needed (33 frames in 13 folders, each 96 x 64 PNG, facing left, feet on row 61, hard alpha, the shared fur and eye colours, drawn in SpriteForge in the approved cat's style): `walk_front` (3), `walk_frontQ` (3), `walk_rearQ` (3), `walk_rear` (3), `creep_front` (3), `creep_frontQ` (3), `creep_side` (3), `creep_rearQ` (3), `creep_rear` (3), `leap_front` (1), `leap_side` (1), `low_front` (2), `loaf_front` (2). To land one: export the PNGs over `art/<id>/<n>.png`, set `from: 'reference'` in `spec.js`, run `node build.mjs sheets`, `validate.mjs --strict`, `audit.mjs --strict`. When `gaps.mjs --strict` is clean, change `SPRITE_RENDERER.mode` to `'sheet'`.
+

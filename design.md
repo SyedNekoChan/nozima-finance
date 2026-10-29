@@ -723,6 +723,7 @@ their coordinates and follow the art's head through per-frame anchors.
   `sheets/`; `anchors.js` is generated. See `spritesheet/SPEC.md` for
   conventions and for which frames are approved art and which were built by
   code and still await real SpriteForge work.
+- Production gate: `npm run sheets:gaps` lists the art that is still a code-built stand-in (13 folders, 33 frames at the time of writing); sheet mode stays off until it is empty, enforced by `production.test.mjs`.
 - Tooling and tests: `npm run sheets:build`, `sheets:validate`,
   `sheets:audit` (every pose / view / leg state must select a clip) and
   `npm test` (unit tests, approved-frame hash guard, the three tools in

@@ -12,7 +12,8 @@
     "sheets:validate": "node src/pets/nomoz/spritesheet/validate.mjs --strict",
     "sheets:audit": "node src/pets/nomoz/spritesheet/audit.mjs --strict",
     "test:browser": "node --test --test-concurrency=1 --test-timeout=240000 src/pets/nomoz/spritesheet/browser/*.browser.mjs",
-    "verify": "npm test && npm run test:browser"
+    "verify": "npm test && npm run test:browser",
+    "sheets:gaps": "node src/pets/nomoz/spritesheet/gaps.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",
