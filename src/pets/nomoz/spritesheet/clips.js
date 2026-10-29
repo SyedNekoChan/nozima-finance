@@ -92,6 +92,8 @@ function normalizeClip(id, raw, sheets) {
   if (raw.lick !== undefined && !(raw.lick && isPoint(raw.lick.at) && isNat(raw.lick.dip))) {
     throw new Error('lick needs at: [x, y] and dip: rows');
   }
+  if (raw.lick && raw.lick.paw !== undefined && !isRect(raw.lick.paw)) throw new Error('lick.paw must be [x, y, w, h]');
+  if (raw.lick && raw.lick.sheen !== undefined && !(Array.isArray(raw.lick.sheen) && raw.lick.sheen.every(isPoint))) throw new Error('lick.sheen must list [x, y] points');
   if (raw.sway !== undefined && !(Number.isFinite(raw.sway) && raw.sway >= 0)) throw new Error('sway must be a number >= 0');
 
   // a slow breath for a single-frame sitting clip: the art above row `cut` drops a row for part of every `ms`
@@ -117,7 +119,7 @@ function normalizeClip(id, raw, sheets) {
     under: raw.lighting !== 'baked',
     anchors: anchorList,
     floor: raw.floor ?? null,
-    lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip }) : null,
+    lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip, paw: raw.lick.paw || null, sheen: raw.lick.sheen || [] }) : null,
     breathe: raw.breathe ? Object.freeze({ cut: raw.breathe.cut, ms: raw.breathe.ms }) : null,
     sway: raw.sway ?? 1,
     dynamic: Object.freeze({ head, base, whiskers: dyn.whiskers === true }),

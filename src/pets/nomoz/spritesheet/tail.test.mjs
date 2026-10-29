@@ -114,8 +114,12 @@ test('the groom lick strokes the paw: out, dipping, in; with a pause every fifth
   }
   assert.ok(seen[2] > 100 && seen[1] > 40 && seen[0] > 100, 'tongue shows hidden, tip and out');
   assert.ok(dips > 80, 'the head dips');
-  for (let t = 620 * 4; t < 620 * 5; t += 10) assert.deepEqual(lickAt(t), { tongue: 0, dip: 0 }, 'a pause');
-  assert.deepEqual(mouthLick(10, 0), { tongue: 1, dip: 0 });
+  // the paw rises as the head dips, and the licked fur shines for a moment after the tongue goes in
+  const seen2 = new Set();
+  for (let t = 0; t < 620; t += 10) { const l = lickAt(t); seen2.add(`${l.tongue}${l.dip}${l.paw}${l.wet}`); }
+  assert.ok(seen2.has('2111') === false && seen2.has('2110') && seen2.has('1111') && seen2.has('0011'), `stroke phases: ${[...seen2]}`);
+  for (let t = 620 * 4; t < 620 * 5; t += 10) assert.deepEqual(lickAt(t), { tongue: 0, dip: 0, paw: 0, wet: 0 }, 'a pause');
+  assert.deepEqual(mouthLick(10, 0), { tongue: 1, dip: 0, paw: 0, wet: 0 });
   assert.equal(mouthLick(200, 0).tongue, 2);
   assert.equal(mouthLick(600, 0).tongue, 0);
 });
@@ -143,4 +147,17 @@ test('breath and cross-fade helpers', () => {
   assert.equal(fadeLeft(100, 100), 1);
   assert.equal(fadeLeft(100 + FADE_MS / 2, 100), 0.5);
   assert.equal(fadeLeft(100 + FADE_MS * 3, 100), 0);
+});
+
+test('no swing bends the tail by more than about half a pixel per row (no one-pixel jog on every row)', () => {
+  const TAIL_ROWS = 21;
+  for (const p of [{}, { tail: 'swish' }, { tail: 'lash' }, { mood: 'stressed' }, { legs: 1 }, { tail: 'up' }]) {
+    const { amp } = tailTarget(p);
+    let worst = 0;
+    for (let k = 0; k < 64; k++) {
+      const phase = (k / 64) * Math.PI * 2;
+      for (let r = 0; r < TAIL_ROWS; r++) worst = Math.max(worst, Math.abs(sway((r + 1) / TAIL_ROWS, amp, phase) - sway(r / TAIL_ROWS, amp, phase)));
+    }
+    assert.ok(worst <= 0.62, `${JSON.stringify(p)}: ${worst.toFixed(2)} px per row`);
+  }
 });

@@ -45,8 +45,8 @@ export function tailTarget(p, clipSway = 1) {
   else if (walking) (amp = 2.2), (period = 1500);
   else if (p.pawL || p.pawR) (amp = 1.4), (period = 2700); // grooming
   if (mode === 'still') amp *= 0.25;
-  else if (mode === 'swish') (amp = 4.6), (period = 950);
-  else if (mode === 'lash') (amp = 5.2), (period = 520);
+  else if (mode === 'swish') (amp = 3.8), (period = 950);
+  else if (mode === 'lash') (amp = 4.2), (period = 560);
   else if (mode === 'up') (amp = Math.max(amp, 1.2)), (period = Math.min(period, 2600));
   return { amp: amp * clipSway, period };
 }
@@ -74,8 +74,11 @@ const smooth = (a, b, x) => {
 };
 
 // Sideways displacement of a tail pixel at tail parameter s (0 at the root, 1 at the tip).
+// The wave lags along the tail, but a big swing lags less: the displacement then changes by well under a pixel
+// from one row of the tail to the next, so its outline moves in long runs instead of a one-pixel jog per row.
 export function sway(s, amp, phase) {
-  return amp * smooth(0.12, 1, s) * Math.sin(phase - 1.5 * s);
+  const lag = 1.5 * Math.min(1, 2.4 / Math.max(amp, 0.01));
+  return amp * smooth(0.12, 1, s) * Math.sin(phase - lag * s);
 }
 
 /*
@@ -123,6 +126,7 @@ export function bendTail(rgba, w, h, tail, amp, phase) {
     }
   }
   if (!moved) return null;
+  smoothEdges(out, w, h, x0, y0, x1, y1);
   // a pixel the tail left that the body encloses takes the body's colour (no hole in the fur)
   for (let y = tail.y; y < tail.y + tail.h; y++) {
     for (let x = tail.x; x < tail.x + tail.w; x++) {
@@ -154,6 +158,37 @@ export function bendTail(rgba, w, h, tail, amp, phase) {
   return out;
 }
 
+/*
+ * Cleans the stair-steps a large bend leaves along the outline, without blurring anything: a transparent pixel
+ * with three opaque 4-neighbours (a notch) takes one neighbour's colour, and an opaque pixel with at most one
+ * opaque 4-neighbour (a spur) is dropped. Colours are copied, never blended, so the palette stays exact.
+ */
+export function smoothEdges(px, w, h, x0, y0, x1, y1) {
+  const A = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : px[(y * w + x) * 4 + 3]);
+  const DIRS = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+  for (let pass = 0; pass < 2; pass++) {
+    const fill = [];
+    const drop = [];
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const o = A(x, y) > 0;
+        const n = DIRS.reduce((c, [dx, dy]) => c + (A(x + dx, y + dy) > 0 ? 1 : 0), 0);
+        if (!o && n >= 3) fill.push([x, y]);
+        else if (o && n <= 1) drop.push([x, y]);
+      }
+    }
+    for (const [x, y] of fill) {
+      for (const [dx, dy] of DIRS) {
+        if (A(x + dx, y + dy) > 0) {
+          px.copyWithin((y * w + x) * 4, ((y + dy) * w + x + dx) * 4, ((y + dy) * w + x + dx) * 4 + 4);
+          break;
+        }
+      }
+    }
+    for (const [x, y] of drop) px[(y * w + x) * 4 + 3] = 0;
+  }
+}
+
 /* ---- the tongue ----------------------------------------------------------- */
 
 const LICK_MS = 620; // one stroke: out, along the paw, back in, a beat of rest
@@ -166,18 +201,20 @@ const LICK_MS = 620; // one stroke: out, along the paw, back in, a beat of rest
 export function lickAt(now) {
   const n = Math.floor(now / LICK_MS);
   const t = now - n * LICK_MS;
-  if (n % 5 === 4) return { tongue: 0, dip: 0 };
-  if (t < 90) return { tongue: 1, dip: 0 };
-  if (t < 300) return { tongue: 2, dip: 1 };
-  if (t < 390) return { tongue: 1, dip: 1 };
-  return { tongue: 0, dip: 0 };
+  // `paw`: 1 while the paw comes up to meet the tongue (the head goes down as the paw goes up); `wet`: the fur it licked shines
+  if (n % 5 === 4) return { tongue: 0, dip: 0, paw: 0, wet: 0 };
+  if (t < 90) return { tongue: 1, dip: 0, paw: 0, wet: 0 };
+  if (t < 300) return { tongue: 2, dip: 1, paw: 1, wet: 0 };
+  if (t < 390) return { tongue: 1, dip: 1, paw: 1, wet: 1 };
+  if (t < 520) return { tongue: 0, dip: 0, paw: 1, wet: 1 };
+  return { tongue: 0, dip: 0, paw: 0, wet: 0 };
 }
 
 // A lick the script asks for (mouth: 'lick'): out while it lasts. start: when it began.
 export function mouthLick(now, start) {
   const t = now - start;
-  if (t < 0 || t > 420) return { tongue: 0, dip: 0 };
-  return { tongue: t < 70 || t > 330 ? 1 : 2, dip: 0 };
+  if (t < 0 || t > 420) return { tongue: 0, dip: 0, paw: 0, wet: 0 };
+  return { tongue: t < 70 || t > 330 ? 1 : 2, dip: 0, paw: 0, wet: 0 };
 }
 
 /*

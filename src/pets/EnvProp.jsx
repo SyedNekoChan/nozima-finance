@@ -13,7 +13,7 @@ import { easeCss } from './motion.js';
  * glide (`moveMs`, `ease`: the same transition the pet uses) and for a
  * quicker or slower fade (`fadeMs`); under reduced motion both are instant.
  */
-export default function EnvProp({ spec, def, world, geo, scale, frame, reduced = false }) {
+export default function EnvProp({ id, layer = 0, spec, def, world, geo, scale, frame, reduced = false }) {
   const ref = useRef(null);
   const failed = useRef(false);
 
@@ -40,12 +40,14 @@ export default function EnvProp({ spec, def, world, geo, scale, frame, reduced =
   return (
     <div
       aria-hidden="true"
+      data-prop={id}
       className="nomoz-actor"
       style={{
         width: w,
         height: h,
         transform: world.toTransform(spec, { ...geo, spriteW: w, spriteH: h }),
         opacity,
+        zIndex: layer,
         transition: `transform ${moveMs}ms ${easeCss(spec.ease)}, opacity ${fade} var(--motion-ease)`,
       }}
     >

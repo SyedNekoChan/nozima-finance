@@ -277,7 +277,8 @@ describe('real browser: renderer with the shipped sheets', () => {
               const v = d[o + 3] ? d[o] * 3 + d[o + 1] * 5 + d[o + 2] * 7 + 1 : 0;
               if (x >= 62) th = (th * 31 + v + x) | 0;
               else if (y < 45) bh = (bh * 31 + v + x) | 0;
-              if (d[o + 3] && ((d[o] === 255 && d[o + 1] === 138 && d[o + 2] === 168) || (d[o] === 217 && d[o + 1] === 101 && d[o + 2] === 127))) pink++;
+              // the tongue's tip and body pinks (renderer.js TONGUE)
+              if (d[o + 3] && ((d[o] === 255 && d[o + 1] === 157 && d[o + 2] === 184) || (d[o] === 224 && d[o + 1] === 112 && d[o + 2] === 140))) pink++;
             }
           }
           tails.add(th);

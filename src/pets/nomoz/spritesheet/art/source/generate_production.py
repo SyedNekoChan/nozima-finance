@@ -132,8 +132,8 @@ def body_render(P, az, cx, tilt, seed=1, pitch=0.0, style=None, **kw):
 STYLE = dict(smooth=1, locks=0.03, limbs=2)
 
 
-def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0):
-    """cfg: leg -> (dz from rest, lift) ; returns primitives"""
+def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0, haunch=0.0):
+    """cfg: leg -> (dz from rest, lift) ; returns primitives. haunch > 0 adds a thigh muscle over each hind hip, so the haunch reads as a form of its own"""
     P = []
     for name, (side, front, off) in LEGS.items():
         dz, lift = cfg[name]
@@ -142,6 +142,8 @@ def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0)
         hip = (side * hx * sx, hy - bd, hz)
         foot = (side * (5.2 if front else 6.4) * sx, 1.6 + lift, z0 + dz)
         P += leg(name, hip, foot, a=a, thick=thick)
+        if haunch and not front:
+            P.append(Prim((hip[0] + side * 0.6, hip[1] - 1.5, hip[2] - 0.5), (4.6 * haunch, 6.4 * haunch, 6.6 * haunch), name, 0.7, flow=(0, -1, 0.3)))
     return P
 
 
@@ -263,13 +265,13 @@ def walk_rear(crouch=False, seed=21):
 HEAD_FRAME = {'A': 0, 'N': 1, 'C': 2, 'P1': 1, 'P2': 1}
 
 
-def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0):
+def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, chest_w=1.0, ruff_w=8.2, haunch=0.0):
     out = []
     for i, ph in enumerate(PHASES):
         bd = (5.0 if crouch else 0.0) + BOB[ph] * (0.6 if crouch else 1.0)
         S = 7.0 if crouch else S_
-        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=8.2, hip_w=hip_w)
-        P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5)
+        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w)
+        P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch)
         sw = {'A': 2.2, 'N': 0, 'C': -2.2, 'P1': -1.0, 'P2': 1.0}[ph]
         P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
         P += head_for.model(bd, crouch) if hasattr(head_for, 'model') else []
@@ -323,29 +325,34 @@ def leap_front():
     h, hx, hy = head_front()
     bd = -2.0
     P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0)
-    # pitched toward the viewer: the forelegs are gathered and reaching at the chest, the hind legs trail below
-    cfg = dict(FL=(16.0, 12.0), FR=(16.0, 12.0), HL=(-8.0, 5.0), HR=(-8.0, 5.0))
-    P += legs3d(cfg, bd=bd, hip_front=(6.0, 22.0, 12.0))
-    P += tail([(8, 22, -24), (13, 23, -27), (17, 28, -28), (19, 36, -27)], r0=3.0, r1=4.6)
+    # airborne, pounced toward the viewer: the body pitched at us, the forelegs thrown wide and forward (nearer is
+    # lower on screen), the hind legs kicked out behind and to the sides, the tail streaming up. No leg is a
+    # planted column: all four feet are in the air, and the engine keeps the shadow on the ground below.
+    for name, (side, front, off) in LEGS.items():
+        hx_, hy_, hz_ = (6.0, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
+        foot = (side * 12.0, 20.0, 30.0) if front else (side * 13.0, 11.0, -22.0)
+        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=11.5, b=11.0)
+    P += tail([(8, 24, -24), (13, 27, -28), (17, 33, -29), (19, 41, -28)], r0=3.0, r1=4.6)
     b = body_render(P, 0, 39, 12, seed=43, pitch=14.0)
     return [place(b, h, hx, hy, dy=-1)]
 
 
 def low_front():
     out = []
-    hd, hx, hy = head_front(closed=True)
-    # the closed-eye head only (rows 8..30), chin down: the chest ruff is rendered, the cat is crouched low
+    # the closed-eye head only (rows 8..40), chin down: the chest ruff is rendered, the cat is crouched low
     hd = crop(load('idle_front', 3), 26, 8, 56, 40)
     for i in range(2):
-        bd = 15.0 - 0.8 * i
+        bd = 14.0 - 0.8 * i
         P = torso(bd=bd, chest_z=14, hip_z=-17, ruff_w=11.5, hip_w=2.0)
-        # forelegs stretched forward flat, hind legs folded under
+        # hind legs folded under, forelegs stretched forward
         P += legs3d(dict(FL=(17.0, 0), FR=(17.0, 0), HL=(-7.0, 0), HR=(-7.0, 0)), bd=bd, a=7.5, thick=1.0, hip_front=(6.4, 19.5, 12.0), hip_hind=(8.5, 18.0, -14.0))
-        for sx in (-1, 1):  # the forepaws rest flat in front of the chest
-            P.append(Prim((sx * 4.8, 2.4, 21.0 + 0.4 * i), (3.5, 2.4, 5.0), 'FL' if sx > 0 else 'FR', 0.3, flow=(0, 0, 1)))
+        for sx in (-1, 1):  # two forepaws rest side by side in front of the chest: broad pads with the forearms behind them
+            part = 'FL' if sx > 0 else 'FR'
+            P.append(Prim((sx * 7.2, 2.8, 26.0 + 0.5 * i), (4.6, 3.0, 5.6), part, 0.3, flow=(0, 0, 1)))
+            P.append(Prim((sx * 7.0, 3.8, 21.0), (3.8, 2.8, 5.0), part, 0.3, flow=(0, 0, 1)))
         P += tail([(8, 3.0, -9), (14, 3.0, -12), (19, 4.5, -11), (22, 7.5, -7)], r0=2.8, r1=4.8)
-        b = body_render(P, 0, 39, 14, seed=51 + i)
-        out.append(place(b, hd, hx, hy, dy=10 + i, fade=5))
+        b = body_render(P, 0, 39, 8, seed=51 + i)
+        out.append(place(b, hd, 26, 8, dy=9 + i, fade=5))
     return out
 
 
@@ -369,11 +376,11 @@ def loaf_front():
 JOBS = {
     'walk_front': walk_front,
     'walk_rear': walk_rear,
-    'walk_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer),
+    'walk_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, chest_w=0.78, ruff_w=6.0, haunch=1.0),
     'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5),
     'creep_front': lambda: walk_front(crouch=True, seed=71),
     'creep_rear': lambda: walk_rear(crouch=True, seed=81),
-    'creep_frontQ': lambda: walk_side_like(-45, 8, 38, head_threeq_placer, crouch=True, seed=91),
+    'creep_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, crouch=True, seed=91, chest_w=0.78, ruff_w=6.0, haunch=1.0),
     'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5),
     'creep_side': lambda: walk_side_like(-90, 0, 46, head_side_placer, crouch=True),
     'leap_front': leap_front,

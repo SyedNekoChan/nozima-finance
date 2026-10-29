@@ -19,7 +19,7 @@ def foot_target(u, stride, lift, z0, y0=1.6):
     return z0 - stride + 2 * stride * t, y0 + lift * math.sin(math.pi * t), t
 
 
-def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip_w=0.0):
+def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip_w=0.0, chest_w=1.0):
     """smooth torso: overlapping ellipsoids along a gently arched spine (deep chest, tucked flank, full haunch)"""
     P = []
     n = 16
@@ -29,6 +29,7 @@ def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip
         y = 27.0 - bd + 0.8 * math.sin(math.pi * t) + sag * math.sin(math.pi * t)
         ry = 10.6 - 2.6 * math.exp(-((t - 0.52) / 0.20) ** 2) - 0.5 * t
         rx = 7.8 - 0.5 * math.exp(-((t - 0.52) / 0.2) ** 2) + 0.7 * t + hip_w * max(0.0, t - 0.55) / 0.45
+        rx *= 1 - (1 - chest_w) * max(0.0, 1 - t / 0.5)   # a narrower chest (three-quarter views, where it would stick out beside the head)
         P.append(Prim((0, y - (10.6 - ry) * 0.2 - 0.4, z), (rx, ry, 5.2), 'body'))
     P.append(Prim((0, 20.8 - bd, (chest_z + hip_z) / 2 + 1), (5.6, 3.6, abs(chest_z - hip_z) / 2 + 3), 'belly', 0.9 * fluff))
     P.append(Prim((0, 26 - bd, chest_z + 6.5), (ruff_w * 0.92, 9.2, 6.8), 'ruff', 0.8 * fluff, flow=(0, -1, 0.3)))
@@ -87,12 +88,20 @@ def walk_pose(phase, stride=9.0, lift=5.5, bd=0.0, crouch=False, tail_pts=None, 
 
 def head3d(c, size=1.0, bd=0.0, fluff=1.0):
     """a rendered cat head (for the one view with no approved head: from behind and to the side).
-    c: centre of the skull. Skull, cheek fur and two pointed ears."""
+    c: centre of the skull. A rounded skull, full cheek ruffs that sit wider than the skull, the muzzle showing past
+    the near cheek, a thick ruff at the nape, and two tall pointed ears with fur at their tips."""
     x, y, z = c
-    P = [Prim((x, y, z), (9.2 * size, 8.4 * size, 8.8 * size), 'head', 0.6 * fluff),
-         Prim((x, y - 2, z + 1), (10.4 * size, 7.0 * size, 8.0 * size), 'head', 0.9 * fluff)]
+    s = size
+    P = [Prim((x, y, z), (8.6 * s, 7.8 * s, 8.4 * s), 'head', 0.5 * fluff),                      # skull
+         Prim((x, y - 1.5 * s, z + 1.5 * s), (9.4 * s, 6.4 * s, 8.0 * s), 'head', 0.8 * fluff),   # brow and cheeks
+         Prim((x, y - 4.2 * s, z - 1.5 * s), (9.6 * s, 4.6 * s, 7.6 * s), 'ruff', 0.9 * fluff, flow=(0, -1, 0.2)),  # nape ruff
+         Prim((x, y - 2.4 * s, z + 8.6 * s), (4.2 * s, 3.4 * s, 4.6 * s), 'head', 0.4 * fluff)]    # muzzle
     for sx in (-1, 1):
-        base = np.array([x + sx * 5.6 * size, y + 6.6 * size, z - 1.0])
-        tip = base + np.array([sx * 1.6 * size, 7.2 * size, -0.5])
-        P += chain(base, tip, 3.6 * size, 0.8 * size, n=7, part='head', fluff=0.1)
+        # cheek ruffs: tufted, sweeping down and back
+        P.append(Prim((x + sx * 8.4 * s, y - 2.8 * s, z + 1.0 * s), (3.4 * s, 4.2 * s, 5.6 * s), 'ruff', 1.0 * fluff, flow=(sx * 0.2, -1, -0.3)))
+        base = np.array([x + sx * 5.8 * s, y + 6.0 * s, z - 0.6 * s])
+        tip = base + np.array([sx * 1.6 * s, 7.0 * s, -0.8 * s])
+        P += chain(base, tip, 4.2 * s, 0.9 * s, n=8, part='head', fluff=0.1)
+        # a small tuft at the tip of each ear
+        P.append(Prim(tip + np.array([0.0, 0.6 * s, 0.0]), (1.1 * s, 1.5 * s, 1.1 * s), 'head', 0.9 * fluff, flow=(0, 1, 0)))
     return P

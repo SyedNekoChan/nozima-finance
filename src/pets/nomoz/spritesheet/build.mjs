@@ -133,8 +133,8 @@ function anchors() {
       const off = (a.eyesOff || []).includes(i);
       const faceEyes = face ? face.eyes.map(([dx, dyy, w]) => [cx + 4 + dx, top + dyy, w]) : null;
       const eyes = faceEyes && !off ? faceEyes : null;
-      // where the tongue shows: under the muzzle, between the eyes (front and three-quarter faces; also when they are closed in the art)
-      const mouth = faceEyes && faceEyes.length > 1 ? [Math.round((faceEyes[0][0] + faceEyes[0][2] / 2 + faceEyes[1][0] + faceEyes[1][2] / 2) / 2), faceEyes[0][1] + 10] : null;
+      // where the tongue shows (its top row): at the mouth, between the eyes and above the worn coin (front and three-quarter faces; also when they are closed in the art)
+      const mouth = faceEyes && faceEyes.length > 1 ? [Math.round((faceEyes[0][0] + faceEyes[0][2] / 2 + faceEyes[1][0] + faceEyes[1][2] / 2) / 2), faceEyes[0][1] + 8] : null;
       return withTail({
         crown: [cx, top + 3],
         chest: dy === null || a.chest === false ? null : [cx, top + dy],

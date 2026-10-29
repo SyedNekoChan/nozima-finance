@@ -7,7 +7,7 @@ import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
 import EnvProp from '../pets/EnvProp.jsx';
 import { SCHEDULER } from '../pets/config.js';
-import { nextSide, overlaps } from '../pets/core/layering.js';
+import { crosses, nextSide } from '../pets/core/layering.js';
 import { easeCss } from '../pets/motion.js';
 import { getActivePet } from '../pets/registry.js';
 import { isSpecialDate } from '../lib/date.js';
@@ -218,7 +218,7 @@ function Pet({ pet }) {
     for (const [id, spec] of propEntries) {
       const mem = sides.get(id);
       const size = ((pet.props[spec.kind].width || 11) / 2) * unit;
-      const touching = !!mem && (overlaps(mem.at, view, hw, hh, size) || overlaps(spec, view, hw, hh, size));
+      const touching = crosses(mem ? mem.at : spec, spec, view, hw, hh, size);
       const next = nextSide(mem, spec.z > view.z, touching, nowMs);
       sides.set(id, { ...next, at: { sx: spec.sx, sy: spec.sy } });
       if (next.front) frontIds.add(id);
@@ -228,6 +228,8 @@ function Pet({ pet }) {
   const renderProp = ([id, spec]) => (
     <EnvProp
       key={id}
+      id={id}
+      layer={frontIds.has(id) ? 2 : 0}
       spec={spec}
       def={pet.props[spec.kind]}
       world={world}
@@ -257,13 +259,14 @@ function Pet({ pet }) {
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none"
       style={{ perspective: `${world.perspective}px`, perspectiveOrigin: '50% 50%' }}
     >
-      {propEntries.filter(([id]) => !frontIds.has(id)).map(renderProp)}
+      {propEntries.map(renderProp)}
       <div
         ref={actorRef}
         className="nomoz-actor"
         style={{
           width: boxW,
           height: boxH,
+          zIndex: 1, // props behind it are 0, props in front of it 2 (one list, so a prop that changes side is not remounted)
           transform: visible ? world.toTransform(view, geo) : 'translate3d(0, 0, 0)',
           opacity,
           transition: visible
@@ -297,7 +300,6 @@ function Pet({ pet }) {
           )}
         </AnimatePresence>
       </div>
-      {propEntries.filter(([id]) => frontIds.has(id)).map(renderProp)}
     </div>
   );
 }

@@ -75,8 +75,8 @@ const clips = {
   // a slow breath on the single-frame sitting art: everything above the row drops a row for part of each period
   sit_threeq: clip('sit_threeq', [0], { breathe: { cut: 46, ms: 3600 } }),
   sit_doze: clip('sit_doze', [0], { breathe: { cut: 44, ms: 4400 } }),
-  // grooming: the tongue strokes the paw (the spot is on the art; the head and paw above row 36 dip into each lick)
-  sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36 } }),
+  // grooming: the tongue strokes the paw (spot on the art); the head above row 36 dips into each lick, the paw rect comes up to meet it and the licked fur shines
+  sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36, paw: [27, 28, 22, 9], sheen: [[33, 30], [34, 30], [36, 31]] } }),
   sit_rear: clip('sit_rear', [0], { breathe: { cut: 40, ms: 3800 } }),
   curl: clip('curl', [0]),
   stretch: clip('stretch', [0]),

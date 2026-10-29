@@ -257,26 +257,22 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   }
 
   // a small pink tongue: level 1 = the tip, 2 = out; (x, y) is its top-left
-  const TONGUE = { tip: '#ff8aa8', body: '#d9657f', edge: '#7d3047' };
-  function drawTongue(ac, at, level) {
+  const TONGUE = { tip: '#ff9db8', body: '#e0708c', edge: '#8a3550' };
+  // rows of the tongue at full length: t tip, b body, e edge (its shaded underside)
+  const TONGUE_OUT = ['.tt.', 'bttb', 'bttb', '.be.', '..e.'];
+  const TONGUE_TIP = ['.tt.', 'bttb'];
+  const TONGUE_SHORT = ['.tt.', 'bttb', '.be.']; // at the mouth: short enough to clear the worn coin
+  function drawTongue(ac, at, level, long) {
     if (!at || !level) return;
     const [x, y] = at;
-    const px = (dx, dy, c) => {
-      ac.fillStyle = c;
-      ac.fillRect(x + dx, y + dy, 1, 1);
-    };
-    if (level === 1) {
-      px(0, 0, TONGUE.body);
-      px(1, 0, TONGUE.tip);
-      return;
-    }
-    px(0, 0, TONGUE.body);
-    px(1, 0, TONGUE.tip);
-    px(2, 0, TONGUE.body);
-    px(0, 1, TONGUE.edge);
-    px(1, 1, TONGUE.body);
-    px(2, 1, TONGUE.edge);
-    px(1, 2, TONGUE.edge);
+    const rows = level === 1 ? TONGUE_TIP : long ? TONGUE_OUT : TONGUE_SHORT;
+    rows.forEach((row, dy) =>
+      [...row].forEach((k, dx) => {
+        if (k === '.') return;
+        ac.fillStyle = k === 't' ? TONGUE.tip : k === 'b' ? TONGUE.body : TONGUE.edge;
+        ac.fillRect(x + dx, y + dy, 1, 1);
+      })
+    );
   }
 
   // the outgoing frame, thinned by an ordered dither as it fades (hard pixels only: no blended colours)
@@ -358,13 +354,26 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           } else {
             ac.drawImage(src, sx, sy, rect.w, rect.h, ox, oy, rect.w, rect.h);
           }
+          if (fx && fx.lick && clip.lick) {
+            const L = clip.lick;
+            // the paw comes up to meet the tongue while the head goes down
+            if (fx.lick.paw && L.paw) {
+              const [px_, py_, pw_, ph_] = L.paw;
+              ac.drawImage(src, sx + px_, sy + py_, pw_, ph_, ox + px_, oy + py_ - 1, pw_, ph_);
+            }
+            // the licked fur shines for a moment
+            if (fx.lick.wet) {
+              ac.fillStyle = '#25242a';
+              for (const [wx, wy] of L.sheen) ac.fillRect(ox + wx, oy + wy - (fx.lick.paw ? 1 : 0), 1, 1);
+            }
+          }
           if (fx && fx.fade && fx.fade.alpha > 0) dissolve(ac, fx, cw, ch);
           if (clip.under) rimLight(ac, sil(), info.light);
           drawEyes(ac, an && an.eyes, info.face, info.ox);
           drawWhiskers(ac, an && an.whiskers);
           if (fx && fx.lick) {
             const spot = clip.lick ? [clip.lick.at[0] + ox, clip.lick.at[1] + oy + dip] : an && an.mouth ? [an.mouth[0] - 1 + ox, an.mouth[1] + oy] : null;
-            drawTongue(ac, spot, fx.lick.tongue);
+            drawTongue(ac, spot, fx.lick.tongue, !!clip.lick);
           }
           // kept procedural regions: rectangles are in procedural space
           const keep = [...base, ...head.map(([x, y, w, h]) => [info.hx + x, info.hy + y, w, h])];

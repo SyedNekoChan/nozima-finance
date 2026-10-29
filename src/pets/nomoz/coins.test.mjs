@@ -4,7 +4,7 @@ import pet from './index.js';
 import { makeScript } from '../core/toolkit.js';
 import { createRng } from '../core/rng.js';
 import { footprint } from '../core/choreo.js';
-import { nextSide, overlaps } from '../core/layering.js';
+import { crosses, nextSide, overlaps } from '../core/layering.js';
 
 /*
  * The treasure coins are world props drawn behind or in front of the pet by
@@ -56,7 +56,7 @@ test('treasure coins never switch sides of the pet while overlapping its body', 
       const fp = footprint(c, cur.z, 11);
       for (const id of Object.keys(mem)) if (!cur.props?.[id]) delete mem[id];
       for (const [id, p] of Object.entries(cur.props || {})) {
-        const touching = !!mem[id] && (overlaps(mem[id].at, cur, fp.hw, fp.hh) || overlaps(p, cur, fp.hw, fp.hh));
+        const touching = crosses(mem[id] ? mem[id].at : p, p, cur, fp.hw, fp.hh);
         if (overlaps(p, cur, fp.hw, fp.hh)) overlapping++;
         const next = nextSide(mem[id], p.z > cur.z, touching, beat.t);
         if (next.forced) bad.push(`seed ${seed} ${id} t=${Math.round(beat.t)} forced to switch while overlapping (z ${Math.round(p.z)} vs ${Math.round(cur.z)}, dx ${Math.round(p.sx-cur.sx)} dy ${Math.round(p.sy-cur.sy)}, was ${mem[id].front})`);
@@ -71,4 +71,20 @@ test('treasure coins never switch sides of the pet while overlapping its body', 
   assert.ok(runs > 20, 'enough eligible runs');
   assert.ok(overlapping > 100, 'the coins do pass the pet (the test sees overlap)');
   assert.deepEqual(bad, []);
+});
+
+test('layering: a glide that crosses the body counts as touching even when both ends are clear', () => {
+  const pet = { sx: 0, sy: 0 };
+  const a = { sx: -100, sy: 0 };
+  const b = { sx: 100, sy: 0 };
+  assert.equal(overlaps(a, pet, 30, 40, 6), false);
+  assert.equal(overlaps(b, pet, 30, 40, 6), false);
+  assert.equal(crosses(a, b, pet, 30, 40, 6), true);
+  assert.equal(crosses(a, { sx: -100, sy: 90 }, pet, 30, 40, 6), false);
+  // so a side change is deferred while such a glide is in flight, then released once the prop settles clear
+  let m = nextSide(undefined, false, false, 0);
+  m = nextSide(m, true, crosses(a, b, pet, 30, 40, 6), 100);
+  assert.equal(m.front, false);
+  m = nextSide(m, true, crosses(b, b, pet, 30, 40, 6), 200);
+  assert.equal(m.front, true);
 });

@@ -43,6 +43,25 @@ export function modePlugin(mode) {
   return plugin;
 }
 
+/*
+ * Test-server only: hands the page the real PetScheduler (window.__nomozScheduler) so a test can ask the
+ * app for a behavior ("treasure") instead of waiting for the dice. The source is never edited; this
+ * rewrites usePet.js in memory. Everything else (the scheduler, the behaviors, the React layers, the
+ * sprite renderer) is the shipped code.
+ */
+export function schedulerProbePlugin() {
+  return {
+    name: 'nomoz-scheduler-probe-for-test',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.split('?')[0].endsWith('/src/pets/usePet.js')) return null;
+      const needle = 'schedRef.current = sch;';
+      if (!code.includes(needle)) throw new Error('scheduler probe: usePet.js no longer assigns schedRef.current');
+      return code.replace(needle, `${needle} if (typeof window !== 'undefined') window.__nomozScheduler = sch;`);
+    },
+  };
+}
+
 /* the mode config.js ships */
 export function shippedMode() {
   const src = readFileSync(join(ROOT, 'src/pets/nomoz/config.js'), 'utf8');
@@ -50,7 +69,7 @@ export function shippedMode() {
 }
 
 /* mode: 'sheet' | 'procedural' pins the renderer; undefined runs the shipped configuration */
-export async function startVite(mode) {
+export async function startVite(mode, { probe = false } = {}) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
   const pin = mode ? modePlugin(mode) : { flipped: 0 };
@@ -58,7 +77,7 @@ export async function startVite(mode) {
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(mode ? [pin] : [])],
+    plugins: [react(), ...(mode ? [pin] : []), ...(probe ? [schedulerProbePlugin()] : [])],
     server: { host: '127.0.0.1', port: 0, strictPort: false },
     logLevel: 'error',
     clearScreen: false,
