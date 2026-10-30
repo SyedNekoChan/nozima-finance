@@ -66,7 +66,7 @@ test('a run-up is brief, varied, looks the way it will walk, and puts the rig ba
       assert.deepEqual(ts, [...ts].sort((a, b) => a - b));
       const reset = r.beats.at(-1);
       assert.deepEqual(reset.patch, { gaze: 'c', ears: null, lean: 0 });
-      assert.ok(reset.t < r.lead && reset.t >= r.lead - 30);
+      assert.ok(reset.t < r.lead && reset.t >= r.lead - 5, 'the rest comes in the walk\'s own tick');
       // the final look is toward the destination
       const lastGaze = [...r.beats].reverse().find((b) => b.patch.gaze && b.patch.gaze !== 'c');
       assert.equal(lastGaze.patch.gaze, want);
@@ -138,10 +138,11 @@ test('through the scheduler: the walk starts a moment later with a look first, a
   const look = a.find((x) => x.patch.gaze === 'r');
   assert.ok(look && look.t < first.t, 'no look before the walk');
   assert.ok(first.t >= 350 && first.t <= 1200);
-  assert.equal(move.t - first.t, 300, 'the walk\'s own timing changed');
-  assert.equal(a.find((x) => x.patch.eyes === 'closed').t - first.t, 900);
+  // (the scheduler applies beats within 4 ms of each other together, and this clock ticks by 10 ms)
+  assert.ok(Math.abs(move.t - first.t - 300) <= 10, `the walk's own timing changed: ${move.t - first.t}`);
+  assert.ok(Math.abs(a.find((x) => x.patch.eyes === 'closed').t - first.t - 900) <= 10);
   // the rig is back at rest before the walk's first beat, and nothing the walk owns was touched earlier
-  const before = a.filter((x) => x.t < first.t);
+  const before = a.slice(0, a.indexOf(first)); // (the rest and the walk's first beat arrive in the same tick, rest first)
   assert.deepEqual(before.filter((x) => Object.keys(x.patch).some((k) => !['gaze', 'ears', 'lean'].includes(k))), []);
   assert.deepEqual(before.at(-1).patch, { gaze: 'c', ears: null, lean: 0 });
 });

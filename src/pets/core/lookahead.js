@@ -66,6 +66,6 @@ export function planLookBefore({ rng, behavior, beats, view, source, mood, reduc
     out.push([0, { gaze: o }], [rnd(rng, 260, 420), { gaze: s }]);
   }
   // everything back to rest just before the walk's own script begins
-  out.push([lead - 30, { gaze: 'c', ears: null, lean: 0 }]);
+  out.push([lead - 4, { gaze: 'c', ears: null, lean: 0 }]);
   return { lead, beats: out.map(([t, patch]) => ({ t, patch })) };
 }
