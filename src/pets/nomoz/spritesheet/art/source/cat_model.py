@@ -19,7 +19,7 @@ def foot_target(u, stride, lift, z0, y0=1.6):
     return z0 - stride + 2 * stride * t, y0 + lift * math.sin(math.pi * t), t
 
 
-def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip_w=0.0, chest_w=1.0):
+def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip_w=0.0, chest_w=1.0, slim=1.0):
     """smooth torso: overlapping ellipsoids along a gently arched spine (deep chest, tucked flank, full haunch)"""
     P = []
     n = 16
@@ -29,9 +29,10 @@ def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip
         y = 27.0 - bd + 0.8 * math.sin(math.pi * t) + sag * math.sin(math.pi * t)
         ry = 10.6 - 2.6 * math.exp(-((t - 0.52) / 0.20) ** 2) - 0.5 * t
         rx = 7.8 - 0.5 * math.exp(-((t - 0.52) / 0.2) ** 2) + 0.7 * t + hip_w * max(0.0, t - 0.55) / 0.45
+        ry *= slim; rx *= slim
         rx *= 1 - (1 - chest_w) * max(0.0, 1 - t / 0.5)   # a narrower chest (three-quarter views, where it would stick out beside the head)
         P.append(Prim((0, y - (10.6 - ry) * 0.2 - 0.4, z), (rx, ry, 5.2), 'body'))
-    P.append(Prim((0, 20.8 - bd, (chest_z + hip_z) / 2 + 1), (5.6, 3.6, abs(chest_z - hip_z) / 2 + 3), 'belly', 0.9 * fluff))
+    P.append(Prim((0, 20.8 - bd + (1 - slim) * 6, (chest_z + hip_z) / 2 + 1), (5.6 * slim, 3.6 * slim, abs(chest_z - hip_z) / 2 + 3), 'belly', 0.9 * fluff))
     P.append(Prim((0, 26 - bd, chest_z + 6.5), (ruff_w * 0.92, 9.2, 6.8), 'ruff', 0.8 * fluff, flow=(0, -1, 0.3)))
     P.append(Prim((0, 32 - bd, chest_z + 9), (6.8, 8, 7), 'neck'))
     return P

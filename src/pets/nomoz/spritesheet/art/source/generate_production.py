@@ -283,12 +283,12 @@ def walk_rear(crouch=False, seed=21):
 HEAD_FRAME = {'A': 0, 'N': 1, 'C': 2, 'P1': 1, 'P2': 1}
 
 
-def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, chest_w=1.0, ruff_w=8.2, haunch=0.0):
+def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, chest_w=1.0, ruff_w=8.2, haunch=0.0, slim=1.0):
     out = []
     for i, ph in enumerate(PHASES):
         bd = (5.0 if crouch else 0.0) + BOB[ph] * (0.6 if crouch else 1.0)
         S = 7.0 if crouch else S_
-        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w)
+        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w, slim=slim)
         P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch, shoulder=1.0 if chest_w < 1 else 0.0, elbow=1.0 if chest_w < 1 else 0.0)
         sw = 0  # (see walk_front)
         P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
@@ -330,12 +330,15 @@ def leap_side():
     for name, (side, front, off) in LEGS.items():
         hx, hy, hz = (5.8, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
         hip = (side * hx, hy - bd, hz)
+        # side +1 is the near side here: its legs stretch fully (low and long), the far side's are bent and held higher and
+        # shorter, so the two read as two separate legs, not one thick column
+        near = side > 0
         if front:
-            foot = (side * 5.8, 23.5 + (2.0 if side < 0 else 0), 33.0 + (0 if side > 0 else -4.0))
-            P += leg(name, hip, foot, a=10.0, b=13.0, paw=1.35, wrist=0.8, shoulder=1.0, elbow=1.0)
+            foot = (side * 5.8, 20.5 if near else 26.0, 34.0 if near else 27.0)
+            P += leg(name, hip, foot, a=10.0, b=13.0, paw=1.3, wrist=0.75, shoulder=1.0, elbow=1.0, thick=0.9)
         else:
-            foot = (side * 6.8, 13.0 + (3.5 if side < 0 else 0), -35.0 + (0 if side > 0 else 4.0))
-            P += leg(name, hip, foot, a=10.0, b=14.0, paw=1.35, wrist=0.75, shoulder=1.1, elbow=1.0)
+            foot = (side * 6.8, 12.0 if near else 5.0, -37.0 if near else -27.0)
+            P += leg(name, hip, foot, a=10.0, b=14.5, paw=1.3, wrist=0.7, shoulder=1.1, elbow=1.0, thick=0.9, bend=+1)
     P += tail([(0, 31, -24), (0, 31.5, -32), (0, 33, -39), (0, 35, -43), (0, 38.5, -46)], r0=2.8, r1=4.4)
     b = body_render(P, -90, 42, 0, seed=41, pitch=pitch)
     return [place(b, h, x, y, dx=0, dy=-3, fade=5, side='right')]
@@ -351,7 +354,7 @@ def leap_front():
     for name, (side, front, off) in LEGS.items():
         hx_, hy_, hz_ = (6.0, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
         foot = (side * 12.5, 21.0, 31.0) if front else (side * 13.5, 12.0, -24.0)
-        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=10.5 if front else 10.0, b=12.5 if front else 13.5, paw=1.35, wrist=0.8, shoulder=1.0, elbow=1.0)
+        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=10.5 if front else 10.0, b=12.5 if front else 13.5, paw=1.3, wrist=0.75, shoulder=1.0, elbow=1.0, thick=0.9)
     P += tail([(8, 24, -24), (13, 27, -28), (17, 33, -29), (19, 41, -28)], r0=3.0, r1=4.6)
     b = body_render(P, 0, 39, 12, seed=43, pitch=14.0)
     return [place(b, h, hx, hy, dy=-1)]
@@ -396,12 +399,12 @@ def loaf_front():
 JOBS = {
     'walk_front': walk_front,
     'walk_rear': walk_rear,
-    'walk_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, chest_w=0.78, ruff_w=6.0, haunch=1.0),
-    'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5),
+    'walk_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86),
+    'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5, slim=0.9),
     'creep_front': lambda: walk_front(crouch=True, seed=71),
     'creep_rear': lambda: walk_rear(crouch=True, seed=81),
-    'creep_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, crouch=True, seed=91, chest_w=0.78, ruff_w=6.0, haunch=1.0),
-    'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5),
+    'creep_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, crouch=True, seed=91, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86),
+    'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5, slim=0.9),
     'creep_side': lambda: walk_side_like(-90, 0, 46, head_side_placer, crouch=True),
     'leap_front': leap_front,
     'leap_side': leap_side,

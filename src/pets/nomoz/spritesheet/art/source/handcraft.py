@@ -25,7 +25,25 @@ def _edge(m):
     return m & ~(p[:-2, 1:-1] & p[2:, 1:-1] & p[1:-1, :-2] & p[1:-1, 2:])
 
 
-def strokes(idx, m, protect, rng, density=0.035):
+def flatten(idx, m, protect, passes=2):
+    """merge speckle into flat tone areas (the approved sprites are flat clusters with crisp edges, not gradients):
+    each inner pixel takes the commonest tone of its 3x3 neighbourhood, keeping its own on a tie"""
+    inner = m & ~_edge(m) & ~protect
+    out = idx.copy()
+    for _ in range(passes):
+        pad = np.pad(out, 1, mode='edge')
+        votes = np.zeros((10, H, W))
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                nb = pad[1 + dy:H + 1 + dy, 1 + dx:W + 1 + dx]
+                for t in range(10): votes[t] += (nb == t) * (1.5 if dy == 0 and dx == 0 else 1.0)
+        best = votes.argmax(0)
+        cur = np.take_along_axis(votes, out[None], 0)[0]
+        out = np.where(inner & (votes.max(0) > cur + 0.01), best, out)
+    return out
+
+
+def strokes(idx, m, protect, rng, density=0.05):
     inner = m & ~_edge(m) & ~protect
     p = np.pad(np.where(m, idx, 0).astype(float), 2, mode='edge')
     blur = sum(p[2 + dy:H + 2 + dy, 2 + dx:W + 2 + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9.0
@@ -113,6 +131,7 @@ def handcraft(f, seed=1):
     head = getattr(f, 'headmask', None)
     protect = (head if head is not None else np.zeros((H, W), bool)) | keep
     rng = np.random.default_rng(seed)
+    idx = flatten(idx, m, protect)
     idx = strokes(idx, m, protect, rng)
     idx, m = paws(idx, m, protect, getattr(f, 'paws', None))
     idx = np.where(protect, 0, idx)
