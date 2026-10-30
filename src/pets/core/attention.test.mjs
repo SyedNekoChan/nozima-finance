@@ -202,33 +202,97 @@ test('it follows a moving thing with its eyes, and a thing that goes away ends t
   assert.ok(ended, 'the look did not end when the thing went away');
 });
 
-test('the mouse: a quick sweep or a long rest nearby may be noticed, looked toward, then forgotten; it is not a constant reaction', () => {
-  let reacted = 0;
-  let sides = new Set();
-  const rect = { x: 100, y: 100, width: 100, height: 70 };
-  for (let seed = 1; seed <= 12; seed++) {
+// a world whose mouse can be moved about; `events` are what the watcher would have reported
+function mouseWorld() {
+  const w = { pos: { x: 420, y: 135 }, queue: [], rect: () => ({ x: 100, y: 100, width: 100, height: 70 }) };
+  w.read = () => w.queue.splice(0);
+  w.pointerPos = () => w.pos;
+  return w;
+}
+const gazes = (from = 0) => log.filter(([time, p]) => time >= from && 'gaze' in p).map(([time, p]) => [time, p.gaze]);
+
+test('the mouse is secondary: it earns at most a short glance to where it was, that never follows it about', () => {
+  let glanced = 0;
+  for (let seed = 1; seed <= 40; seed++) {
     view = { ...REST, props: {} };
     log = [];
     t = 0;
-    const queue = [];
-    const world = { read: () => queue.splice(0), rect: () => rect, pointerX: () => (seed % 2 ? 40 : 420) };
-    const stop = startW(seed, 'content', world);
-    run(1000);
-    // the mouse sweeps past, every ten seconds, for five minutes
-    for (let k = 0; k < 30; k++) {
-      queue.push({ kind: 'pointer-fast', x: seed % 2 ? 40 : 420, strength: 0.7 });
-      run(10000);
+    const w = mouseWorld();
+    const stop = startW(seed, 'content', w);
+    run(500);
+    w.queue.push({ kind: 'pointer-dwell', strength: 0.6 });
+    // while it may be looking, the mouse darts from one side of the cat to the other
+    let side = 0;
+    for (let k = 0; k < 140; k++) {
+      run(100);
+      if (k % 4 === 0) w.pos = { x: side++ % 2 ? 40 : 420, y: 135 };
     }
     stop();
-    const looks = log.filter(([, p]) => p.gaze === 'l' || p.gaze === 'r').length;
-    if (looks) reacted++;
-    for (const [, p] of log) if (p.gaze === 'l' || p.gaze === 'r') sides.add(seed % 2 ? 'l' : 'r');
     assert.ok(isNeutral(view));
-    // thirty sweeps do not make thirty reactions
-    assert.ok(log.filter(([, p]) => p.ears === 'perk').length <= 12, 'it jumps at every sweep');
+    const g = gazes(500).filter(([, v]) => v === 'l' || v === 'r');
+    // a first look and nothing more: the eyes did not chase the mouse from side to side. (The cat's own idle glances and
+    // its personality moments may add a look or two of their own over fourteen seconds; the mouse adds at most one.)
+    assert.ok(g.length <= 3, `seed ${seed}: ${g.length} looks in 14 s`);
+    if (g.length) glanced++;
   }
-  assert.ok(reacted >= 6, `only ${reacted} of 12 cats ever noticed the mouse`);
-  assert.ok(sides.has('l') && sides.has('r'), 'it looked the wrong way');
+  assert.ok(glanced <= 34, 'every cat reacted to the mouse');
+});
+
+test('a mouse that moves away lets the look resolve: the eyes come back by themselves', () => {
+  let resolved = 0;
+  let tried = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const w = mouseWorld();
+    const stop = startW(seed, 'content', w);
+    run(300);
+    w.queue.push({ kind: 'pointer-dwell', strength: 1 });
+    let lookedAt = 0;
+    for (let k = 0; k < 40 && !lookedAt; k++) {
+      run(50);
+      if (view.gaze === 'r') lookedAt = t;
+    }
+    if (!lookedAt) {
+      stop();
+      continue;
+    }
+    tried++;
+    w.pos = { x: 3000, y: 135 }; // it leaves, far away
+    run(3500);
+    stop();
+    if (view.gaze === 'c' && isNeutral(view)) resolved++;
+  }
+  assert.ok(tried >= 3, `only ${tried} cats looked at all`);
+  assert.equal(resolved, tried, 'a look did not end after the mouse left');
+});
+
+test('ten minutes of a mouse that keeps moving about near it do not make it a follower', () => {
+  const total = (withMouse) => {
+    let looks = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      view = { ...REST, props: {} };
+      log = [];
+      t = 0;
+      const w = mouseWorld();
+      const stop = startW(seed, 'content', withMouse ? w : null);
+      for (let k = 0; k < 200; k++) {
+        // every three seconds the mouse sweeps, or settles, close by
+        if (withMouse) {
+          w.pos = { x: k % 2 ? 60 : 380, y: 135 };
+          w.queue.push({ kind: k % 3 ? 'pointer-fast' : 'pointer-dwell', strength: 0.7 });
+        }
+        run(3000);
+      }
+      stop();
+      looks += gazes().filter(([, v]) => v === 'l' || v === 'r').length;
+    }
+    return looks / 6;
+  };
+  const base = total(false);
+  const busy = total(true);
+  assert.ok(busy - base <= 7, `${busy.toFixed(1)} looks in ten minutes with the mouse, ${base.toFixed(1)} without`);
 });
 
 test('a cat that is busy (a behavior has the face) misses events instead of queueing them', () => {
@@ -236,7 +300,7 @@ test('a cat that is busy (a behavior has the face) misses events instead of queu
   log = [];
   t = 0;
   const queue = [{ kind: 'pointer-fast', x: 0, strength: 1 }];
-  const world = { read: () => queue.splice(0), rect: () => ({ x: 100, y: 100, width: 100, height: 70 }), pointerX: () => 0 };
+  const world = { read: () => queue.splice(0), rect: () => ({ x: 100, y: 100, width: 100, height: 70 }), pointerPos: () => ({ x: 0, y: 135 }) };
   const stop = startW(2, 'content', world);
   run(5000);
   view.props = { w: { kind: 'wisp', sx: 300, sy: 50 } };
@@ -247,6 +311,31 @@ test('a cat that is busy (a behavior has the face) misses events instead of queu
   run(30000);
   stop();
   assert.ok(!log.some(([, p]) => p.eyes === 'wide'), 'it replayed a stale event');
+});
+
+test('over a long idle session the pace is unhurried, varied and has real quiet stretches (pacing guard)', () => {
+  for (const seed of [2, 5, 9]) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const stop = startW(seed);
+    run(20 * 60 * 1000, 20);
+    stop();
+    const starts = [];
+    let prev = -1e9;
+    for (const [time] of log) {
+      if (time - prev > 2600) starts.push(time);
+      prev = time;
+    }
+    const gaps = starts.slice(1).map((x, i) => (x - starts[i]) / 1000).sort((a, b) => a - b);
+    const med = gaps[gaps.length >> 1];
+    assert.ok(starts.length >= 50 && starts.length <= 130, `seed ${seed}: ${starts.length} moments in twenty minutes`);
+    assert.ok(med >= 9 && med <= 22, `seed ${seed}: median gap ${med}s`);
+    assert.ok(gaps[0] >= 5, `seed ${seed}: two moments ${gaps[0]}s apart`);
+    assert.ok(gaps.filter((g) => g > 24).length >= 6, `seed ${seed}: too few quiet stretches`);
+    assert.ok(gaps.at(-1) < 70, 'a quiet stretch that long looks like a hang');
+    assert.ok(isNeutral(view));
+  }
 });
 
 test('sideOf: straight ahead and unknown give no side', () => {

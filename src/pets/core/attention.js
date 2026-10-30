@@ -31,7 +31,7 @@ import { pick, rnd } from './rng.js';
  *   apply     (patch) => void   (the same merge the scheduler uses)
  *   timing    AMBIENT.attention in ../config.js
  *   mood      'idle' | 'content' | 'stressed' (sleepier when content, never runs stressed)
- *   world     optional { read() -> stimuli since the last call, rect() -> the cat's client rect | null, pointerX() -> number | null }
+ *   world     optional { read() -> stimuli since the last call, rect() -> the cat's client rect | null, pointerPos() -> { x, y } | null }
  *   now       () => ms (the clock habituation uses; performance.now by default)
  * Returns stop(): cancels the timers and gives back anything it still holds.
  */
@@ -64,7 +64,8 @@ export function sideOf(view, x) {
 // how interesting a kind of prop is (0..1): living / moving / unusual things more than set dressing
 export const PROP_INTEREST = { wisp: 0.85, yarn: 0.8, distortion: 0.9, terminal: 0.85, device: 0.7, instrument: 0.6, vessel: 0.55, trinket: 0.5, chart: 0.35, sky: 0.35 };
 // the other things it can notice, with their base interest
-const EVENT_INTEREST = { 'pointer-fast': 0.55, 'pointer-dwell': 0.5, return: 0.35 };
+// (the mouse is a secondary stimulus: low interest, a long rest, and only ever a short glance)
+const EVENT_INTEREST = { 'pointer-fast': 0.34, 'pointer-dwell': 0.3, return: 0.35 };
 
 const MOMENTS = {
   // a quick look aside, sometimes with the head following, sometimes a second look the other way
@@ -139,7 +140,8 @@ const EYES_NEUTRAL = 'open';
  * the thing has gone). `interest` 0..1. Steps may be functions of the live view; a function that returns `false` ends the
  * episode early (the thing is gone or the cat's rig was taken), null skips the step.
  */
-export function episode(c, interest, aim) {
+export function episode(c, interest, aim, opts = {}) {
+  if (opts.glance) return glance(c, aim, opts.gone);
   const surprise = interest > 0.8 && c.rng() < 0.45;
   const long = interest > 0.55 && c.rng() < 0.14;
   const watch = long ? rnd(c.rng, 7000, 12000) : rnd(c.rng, 1100, 2200) + interest * rnd(c.rng, 1200, 4200);
@@ -174,6 +176,26 @@ export function episode(c, interest, aim) {
   steps.push([rnd(c.rng, 200, 600), { gaze: 'c', pupils: null }]);
   if (c.rng() < 0.5) steps.push([rnd(c.rng, 150, 450), { eyes: 'blink' }], [rnd(c.rng, 250, 380), { eyes: 'open' }]);
   steps.push([rnd(c.rng, 200, 600), { ears: null }], [rnd(c.rng, 150, 500), { lean: 0 }]);
+  return steps;
+}
+
+/*
+ * A glance at something secondary (the mouse): the eyes go to where it was, once, for a second or two, and come back. The
+ * side is fixed when the look begins: the eyes never follow it about; if it has gone away (`gone()`), the look ends early.
+ */
+function glance(c, aim, gone) {
+  let fixed;
+  const steps = [];
+  if (c.rng() < 0.5) steps.push([rnd(c.rng, 100, 450), { pupils: 2 }]);
+  steps.push([rnd(c.rng, 140, 420), () => {
+    fixed = aim();
+    if (fixed === undefined) return false;
+    return fixed ? { gaze: fixed } : null;
+  }]);
+  const watch = rnd(c.rng, 800, 2000);
+  steps.push([watch, () => (gone && gone() ? false : null)]);
+  steps.push([rnd(c.rng, 150, 450), { gaze: 'c', pupils: null }]);
+  if (c.rng() < 0.3) steps.push([rnd(c.rng, 150, 400), { eyes: 'blink' }], [rnd(c.rng, 250, 380), { eyes: 'open' }]);
   return steps;
 }
 
@@ -295,23 +317,39 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
     return out;
   }
 
-  // candidate stimuli from the world (the mouse, the tab): proximity, speed and dwell were already weighed by the watcher
+  // candidate stimuli from the world (the mouse, the tab): the watcher already weighed repetition, proximity and dwell
   function worldStimuli() {
     if (!world) return [];
     const out = [];
     for (const e of world.read()) {
       const base = EVENT_INTEREST[e.kind];
       if (!base) continue;
+      const pointer = e.kind !== 'return';
       const rect = world.rect && world.rect();
       const cx = rect ? rect.x + rect.width / 2 : null;
+      const where = () => (world.pointerPos ? world.pointerPos() : null);
+      // the side of the mouse as it is now; undefined when it has gone (left the page, or well away from the cat)
       const aim = () => {
-        if (e.kind === 'return') return null;
-        const x = world.pointerX ? world.pointerX() : e.x;
-        if (typeof x !== 'number' || cx === null) return null;
-        const dx = x - cx;
+        if (!pointer) return null;
+        const p = where();
+        if (!p || cx === null) return undefined;
+        const dx = p.x - cx;
         return Math.abs(dx) < Math.max(14, (rect?.width || 0) * 0.18) ? null : dx < 0 ? 'l' : 'r';
       };
-      out.push({ key: `world:${e.kind}`, interest: Math.min(1, base * (0.6 + 0.8 * (e.strength ?? 0.5))), aim });
+      const gone = () => {
+        const p = where();
+        const r = world.rect && world.rect();
+        if (!p || !r || !r.width) return true;
+        return Math.hypot(p.x - (r.x + r.width / 2), p.y - (r.y + r.height / 2)) / r.width > 6;
+      };
+      out.push({
+        key: pointer ? 'world:pointer' : 'world:return', // both kinds of mouse event wear the same habituation
+        interest: Math.min(1, base * (0.7 + 0.6 * (e.strength ?? 0.5))),
+        aim,
+        glance: pointer,
+        gone,
+        habituateMs: pointer ? timing.pointerHabituateMs : undefined,
+      });
     }
     return out;
   }
@@ -326,15 +364,15 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
       habit.set(s.key, { n: h.n + 0.35, until: t + rnd(rng, 4000, 12000) }); // glanced at and dismissed: a little more used to it
       return false;
     }
-    habit.set(s.key, { n: h.n + 1, until: t + rnd(rng, ...timing.habituateMs) });
+    habit.set(s.key, { n: h.n + 1, until: t + rnd(rng, ...(s.habituateMs || timing.habituateMs)) });
     return true;
   }
 
   function startEpisode(s) {
     busy = true;
     last = 'episode';
-    alertness = Math.min(1, alertness + 0.2 + 0.2 * s.interest);
-    play(episode({ rng }, s.interest, s.aim), () => {
+    alertness = Math.min(1, alertness + (s.glance ? 0.05 : 0.2 + 0.2 * s.interest)); // a glance at the mouse hardly stirs it
+    play(episode({ rng }, s.interest, s.aim, { glance: s.glance, gone: s.gone }), () => {
       busy = false;
       restUntil = now() + rnd(rng, ...timing.episodeRestMs);
       scheduleMoment(rnd(rng, ...timing.everyMs) * scale());
