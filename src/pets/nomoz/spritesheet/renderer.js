@@ -2,7 +2,7 @@ import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
 import { fitsImage, frameAt, frameRect, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
-import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
+import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, exprFor, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
 
 /*
  * The sprite-sheet render path, selected by SPRITE_RENDERER in ../config.js.
@@ -291,6 +291,24 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     );
   }
 
+  // The ears: 'up' lifts the tips a row, 'back' lays them down and outward, 'out' twitches them outward; whole pixels
+  // of the art's own ear, redrawn a pixel over (the three tip rows only; the rest of the ear and the head stay).
+  function paintEars(ac, src, sx, sy, ox, oy, ears, modes) {
+    [ears.l, ears.r].forEach(([x0, w], i) => {
+      const mode = modes[i];
+      if (!mode) return;
+      const out = i === 0 ? -1 : 1;
+      if (mode === 'up' && oy + ears.y - 1 >= 0) {
+        ac.drawImage(src, sx + x0, sy + ears.y, w, 3, ox + x0, oy + ears.y - 1, w, 3);
+        return;
+      }
+      ac.clearRect(ox + x0 - 1, oy + ears.y, w + 2, 3);
+      // 'up' with no room above the art (the ears touch the top row) turns the tips inward, as attentive ears do
+      const dx = mode === 'up' ? -out : out;
+      ac.drawImage(src, sx + x0, sy + ears.y, w, 3, ox + x0 + dx, oy + ears.y + (mode === 'back' ? 1 : 0), w, 3);
+    });
+  }
+
   function makeBody(clip, sheet, image, index, cw, ch, fx) {
     const rect = frameRect(sheet, clip.frames[index]);
     const [px, py] = clip.pivot || [sheet.frameWidth / 2, sheet.frameHeight];
@@ -301,10 +319,12 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     let an = clip.anchors && (clip.anchors[index] || clip.anchors[0]);
     const squash = fx && fx.squash ? fx.squash : null;
     const rows = squash ? squash.rows : 0;
-    if (an && rows) {
-      // everything that sits on the head or chest goes down with it
-      const dn = (pt) => pt && [pt[0], pt[1] + rows, ...pt.slice(2)];
-      an = { ...an, crown: dn(an.crown), chest: dn(an.chest), mouth: dn(an.mouth), eyes: an.eyes && an.eyes.map(dn), whiskers: an.whiskers && an.whiskers.map(dn) };
+    const X = fx && fx.expr && clip.expr && !rows ? fx.expr : null; // the face's expression (ears, head lean)
+    const hdx = X ? X.headDx : 0;
+    if (an && (rows || hdx)) {
+      // everything that sits on the head goes down / over with it; the chest goes down with a squash, never sideways
+      const dn = (pt) => pt && [pt[0] + hdx, pt[1] + rows, ...pt.slice(2)];
+      an = { ...an, crown: dn(an.crown), chest: an.chest && [an.chest[0], an.chest[1] + rows, ...an.chest.slice(2)], mouth: dn(an.mouth), eyes: an.eyes && an.eyes.map(dn), whiskers: an.whiskers && an.whiskers.map(dn) };
     }
     // the crown slot is (hx + 12, hy + 3) and the chest slot is the chest point
     const anchor = an
@@ -362,15 +382,21 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           ac.imageSmoothingEnabled = false;
           // the head and shoulders dip a row into each lick (grooming) or with each breath (sitting)
           const lickDip = !rows && fx && fx.lick && clip.lick ? fx.lick.dip : 0;
-          const breath = !lickDip && fx && fx.breath && clip.breathe ? 1 : 0;
+          const breath = !lickDip && !hdx && fx && fx.breath && clip.breathe ? 1 : 0;
           const dip = lickDip || breath;
           const cut = lickDip ? clip.lick.dip : breath ? clip.breathe.cut : 0;
-          if (dip && cut > 0) {
+          if (hdx) {
+            // the head leans a pixel: everything above the cut moves over, the body stays
+            const lc = clip.expr.lean;
+            ac.drawImage(src, sx, sy + lc, rect.w, rect.h - lc, ox, oy + lc, rect.w, rect.h - lc);
+            ac.drawImage(src, sx, sy, rect.w, lc, ox + hdx, oy, rect.w, lc);
+          } else if (dip && cut > 0) {
             ac.drawImage(src, sx, sy + cut - 1, rect.w, rect.h - cut + 1, ox, oy + cut - 1, rect.w, rect.h - cut + 1);
             ac.drawImage(src, sx, sy, rect.w, cut, ox, oy + dip, rect.w, cut);
           } else {
             ac.drawImage(src, sx, sy, rect.w, rect.h, ox, oy, rect.w, rect.h);
           }
+          if (X) paintEars(ac, src, sx, sy, ox + hdx, oy, clip.expr.ears, X.ears);
           if (!rows && fx && fx.lick && clip.lick) {
             const L = clip.lick;
             // the paw comes up to meet the tongue while the head goes down
@@ -419,8 +445,13 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function motionFor(c, clip, params, now, reduced) {
     const dt = c.tickAt ? now - c.tickAt : 0;
     c.tickAt = now;
-    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null };
+    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null, expr: null };
     if (reduced) return fx;
+    // the face's expression: ears and head lean (sitting art only), with a redraw for the next ear twitch
+    if (clip.expr) {
+      fx.expr = exprFor(c.params, clip.expr, now);
+      if (fx.expr) fx.wait = Math.min(fx.wait, fx.expr.wait);
+    }
     if (clip.breathe) {
       const { ms } = clip.breathe;
       fx.breath = breathAt(now, ms);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { REACTIONS } from '../lib/nomoz.js';
 import { AMBIENT, SCHEDULER } from './config.js';
 import { startAmbientBlink } from './core/ambient.js';
+import { startAttention } from './core/attention.js';
 import { attachInteractions } from './core/interactions.js';
 import { createRng, pick, rnd, runtimeSeed } from './core/rng.js';
 import { FinancialDirector } from './finance/director.js';
@@ -266,6 +267,19 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
       timing: AMBIENT.blink,
     });
   }, [blinks, commit]);
+
+  // Ambient attention: glances, ear flicks, head tilts, squints, a stirring tail, and turning toward things that appear.
+  // The same rules as the blinker (never under reduced motion or the stressed look) and it never overrides a behavior.
+  useEffect(() => {
+    if (!blinks) return undefined;
+    return startAttention({
+      rng: createRng(runtimeSeed()),
+      getView: () => curRef.current,
+      apply: commit,
+      timing: AMBIENT.attention,
+      mood,
+    });
+  }, [blinks, commit, mood]);
 
   // Financial mood / breakpoint / motion preference changed: the same
   // scheduler abandons its current behavior and carries on.

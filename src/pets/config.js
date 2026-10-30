@@ -86,6 +86,15 @@ export const AMBIENT = {
     doubleChance: 0.18, // now and then a quick second blink
     doubleGapMs: 240,
   },
+  // the loose personality of an idle face (see core/attention.js): a look aside, an ear flick, a head tilt, a squint, a
+  // stirring tail. Gaps vary a lot and now and then there is a long quiet, so nothing repeats on a clock.
+  attention: {
+    firstMs: [3500, 9000],
+    everyMs: [3800, 10500], // between moments, scaled by how alert / sleepy the cat is
+    retryMs: [1500, 3500], // when a behavior is busy with the face
+    longQuietChance: 0.14,
+    longQuietMs: [9000, 22000],
+  },
 };
 
 /* ------------------------------------------------------------------ */

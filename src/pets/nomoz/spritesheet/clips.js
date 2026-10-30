@@ -101,6 +101,16 @@ function normalizeClip(id, raw, sheets) {
     throw new Error('breathe needs cut: row and ms: > 400');
   }
 
+  // facial expression on single-pose sitting art: the ears (rows y .. y + rows, the left and right ear as [x, width]) and the
+  // head, which leans a pixel sideways above row `lean` (tilts toward what it looks at)
+  const ex = raw.expr;
+  if (ex !== undefined) {
+    const ear = (e) => Array.isArray(e) && e.length === 2 && isNat(e[0]) && isNat(e[1]) && e[1] > 0;
+    if (!(ex && ex.ears && isNat(ex.ears.y) && isNat(ex.ears.rows) && ex.ears.rows >= 3 && ear(ex.ears.l) && ear(ex.ears.r) && isNat(ex.lean) && ex.lean > 0)) {
+      throw new Error('expr needs ears: { y, rows, l: [x, w], r: [x, w] } and lean: row');
+    }
+  }
+
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
 
@@ -122,6 +132,7 @@ function normalizeClip(id, raw, sheets) {
     lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip, paw: raw.lick.paw || null, sheen: raw.lick.sheen || [] }) : null,
     breathe: raw.breathe ? Object.freeze({ cut: raw.breathe.cut, ms: raw.breathe.ms }) : null,
     sway: raw.sway ?? 1,
+    expr: ex ? Object.freeze({ ears: Object.freeze({ y: ex.ears.y, rows: ex.ears.rows, l: ex.ears.l, r: ex.ears.r }), lean: ex.lean }) : null,
     dynamic: Object.freeze({ head, base, whiskers: dyn.whiskers === true }),
   });
 }

@@ -172,7 +172,7 @@ test('walking: the tail swings once per stride (the clip cycle)', () => {
   assert.equal(tailTarget({ legs: 0 }, 1, 960).period, 3300, 'standing still ignores it');
 });
 
-import { squashMap, stepAt, transitionPlan } from './tail.js';
+import { exprFor, squashMap, stepAt, transitionPlan } from './tail.js';
 
 test('transition plans: crisp anticipation and settling frames for the big pose changes, none for the small ones', () => {
   assert.equal(transitionPlan('idle_front', 'walk_front')[0].which, 'old', 'it crouches before it rises');
@@ -211,4 +211,26 @@ test('squashMap: the head keeps its pixels, the feet stay on the floor, the body
   assert.equal(stretched[27], 29, 'a stretch lifts the head');
   assert.equal(stretched[28], 30);
   assert.equal(squashMap(h, 62, 3)[10], 10, 'a degenerate cut leaves the frame alone');
+});
+
+test('exprFor: ears and head lean in art space, mirrored with the facing; nothing at rest or in the stressed look', () => {
+  const E = { ears: { y: 8, rows: 5, l: [26, 9], r: [41, 9] }, lean: 30 };
+  assert.equal(exprFor({ facing: -1 }, E, 0), null);
+  assert.equal(exprFor({ facing: -1, ears: 'perk' }, null, 0), null);
+  assert.equal(exprFor({ facing: -1, ears: 'perk', mood: 'stressed' }, E, 0), null);
+  assert.deepEqual(exprFor({ facing: -1, ears: 'perk' }, E, 0).ears, ['up', 'up']);
+  assert.deepEqual(exprFor({ facing: -1, ears: 'back' }, E, 0).ears, ['back', 'back']);
+  // the lean is a screen-space side: it mirrors with the canvas
+  assert.equal(exprFor({ facing: -1, lean: 1 }, E, 0).headDx, 1);
+  assert.equal(exprFor({ facing: 1, lean: 1 }, E, 0).headDx, -1);
+  assert.equal(exprFor({ facing: -1, lean: 5 }, E, 0).headDx, 1, 'a pixel at most');
+  // a flick: the screen-left ear is the art's left ear, unless the canvas is mirrored
+  assert.deepEqual(exprFor({ facing: -1, ears: 'flickL' }, E, 10).ears, ['out', null]);
+  assert.deepEqual(exprFor({ facing: 1, ears: 'flickL' }, E, 10).ears, [null, 'out']);
+  assert.deepEqual(exprFor({ facing: -1, ears: 'flickR' }, E, 10).ears, [null, 'out']);
+  assert.deepEqual(exprFor({ facing: -1, ears: 'flick' }, E, 10).ears, ['out', 'out']);
+  // two quick twitches then a rest, and it says when to look again
+  const on = (t) => exprFor({ facing: -1, ears: 'flick' }, E, t).ears[0] === 'out';
+  assert.deepEqual([0, 50, 100, 200, 300, 500].map(on), [true, true, false, true, false, false]);
+  for (const t of [0, 50, 100, 200, 300, 500, 790]) assert.ok(exprFor({ facing: -1, ears: 'flick' }, E, t).wait <= 800);
 });

@@ -298,3 +298,42 @@ export function squashMap(h, cut, rows, feet = 6) {
   for (let y = lowEnd; y < h; y++) map[y] = y;
   return map;
 }
+
+/* ---- facial expression on the sitting art ------------------------------------------------------------------------- */
+
+/*
+ * What the sheet cat's face does for the expression state the behaviours (and core/attention.js) set: the ears
+ * ('perk' lifts the tips a row, 'back' lays them down and out, 'flick' / 'flickL' / 'flickR' twitch them) and the head
+ * lean (a pixel toward the side it looks at). `p` is the screen-space render state, `expr` the clip's expression
+ * config, `now` the clock. Returns null when the face is at rest, else
+ *   { headDx, ears: [artLeft, artRight], wait }
+ * where each ear is null | 'up' | 'back' | 'out' in ART space (the canvas is mirrored when facing > 0, so the screen's
+ * left ear is the art's right ear then) and `wait` is ms to the next change (Infinity for a held pose).
+ */
+export function exprFor(p, expr, now) {
+  if (!expr || !p || p.mood === 'stressed') return null;
+  const flip = p.facing > 0;
+  const lean = Math.max(-1, Math.min(1, Math.round(p.lean || 0)));
+  const headDx = flip ? -lean : lean;
+  const mode = typeof p.ears === 'string' ? p.ears : null;
+  let wait = Infinity;
+  const ears = [null, null];
+  if (mode === 'perk') ears[0] = ears[1] = 'up';
+  else if (mode === 'back') ears[0] = ears[1] = 'back';
+  else if (mode === 'flick' || mode === 'flickL' || mode === 'flickR') {
+    // two quick twitches, then a rest: 0-90 and 170-260 of every 800 ms
+    const t = ((now % 800) + 800) % 800;
+    const on = t < 90 || (t >= 170 && t < 260);
+    wait = on ? (t < 90 ? 90 - t : 260 - t) : t < 170 ? 170 - t : 800 - t;
+    wait = Math.max(16, wait);
+    if (on) {
+      const screenL = mode !== 'flickR';
+      const screenR = mode !== 'flickL';
+      // the screen-left ear is the art's left one unless the canvas is mirrored
+      if (screenL) ears[flip ? 1 : 0] = 'out';
+      if (screenR) ears[flip ? 0 : 1] = 'out';
+    }
+  }
+  if (!headDx && !ears[0] && !ears[1] && wait === Infinity) return null;
+  return { headDx, ears, wait };
+}

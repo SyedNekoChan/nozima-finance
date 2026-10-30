@@ -325,6 +325,67 @@ describe('real browser: renderer with the shipped sheets', () => {
     await ctx.close();
   });
 
+  // the head region (rows 0-44) of a state's canvas, hashed, once settled; and over a time window
+  const headHash = (page, state, ms = 0, step = 60) =>
+    page.evaluate(
+      async ({ state, ms, step }) => {
+        const H = window.H;
+        const render = H.real();
+        const a = H.make(render);
+        render(a.g, { ...H.base, ...state }, H.vanity);
+        await H.wait(250);
+        const seen = new Set();
+        const t0 = performance.now();
+        do {
+          const d = a.g.getImageData(0, 0, 96, 64).data;
+          let h = 0;
+          for (let y = 0; y < 45; y++) for (let x = 0; x < 96; x++) { const o = (y * 96 + x) * 4; h = (h * 31 + (d[o + 3] ? d[o] * 3 + d[o + 1] * 5 + d[o + 2] * 7 + 1 : 0) + x) | 0; }
+          seen.add(h);
+          if (ms) await H.wait(step);
+        } while (performance.now() - t0 < ms);
+        return [...seen];
+      },
+      { state, ms, step }
+    );
+
+  guard('expression: ears (perk, back, flick) and a head lean change the face on the sitting art, in every sitting view', async () => {
+    const ctx = await browser.newContext({ viewport: DESKTOP });
+    const { page, errors } = await harness(ctx);
+    for (const view of ['front', 'frontQ', 'rear']) {
+      const base = (await headHash(page, { view }))[0];
+      const seen = new Set([base]);
+      for (const patch of [{ ears: 'perk' }, { ears: 'back' }, { lean: 1 }, { lean: -1 }]) {
+        const h = (await headHash(page, { view, ...patch }))[0];
+        assert.ok(!seen.has(h), `${view} ${JSON.stringify(patch)} looks like another state`);
+        seen.add(h);
+      }
+      // mirrored with the facing: a lean to the screen's right is a different shape facing the other way round
+      const a = (await headHash(page, { view, lean: 1, facing: -1 }))[0];
+      const b = (await headHash(page, { view, lean: 1, facing: 1 }))[0];
+      assert.notEqual(a, b);
+      // a flick twitches over time: more than one shape in a second
+      const flick = await headHash(page, { view, ears: 'flickL' }, 1100, 40);
+      assert.ok(flick.length >= 2, `${view}: the flicking ear never moved`);
+      // walking art has no ears to move: an ears state changes nothing there
+      const walkA = (await headHash(page, { pose: 'stand', legs: 0, view: 'side' }))[0];
+      const walkB = (await headHash(page, { pose: 'stand', legs: 0, view: 'side', ears: 'perk', lean: 1 }))[0];
+      assert.equal(walkA, walkB);
+    }
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  });
+
+  guard('expression: reduced motion draws the face at rest whatever the ears and lean say', async () => {
+    const ctx = await browser.newContext({ viewport: MOBILE, reducedMotion: 'reduce' });
+    const { page, errors } = await harness(ctx);
+    const base = (await headHash(page, {}))[0];
+    for (const patch of [{ ears: 'perk' }, { ears: 'back' }, { lean: 1 }, { ears: 'flick' }]) {
+      assert.equal((await headHash(page, patch))[0], base, JSON.stringify(patch));
+    }
+    assert.deepEqual(errors, []);
+    await ctx.close();
+  });
+
   guard('reduced motion: no tail swing and no tongue', async () => {
     const ctx = await browser.newContext({ viewport: MOBILE, reducedMotion: 'reduce' });
     const { page, errors } = await harness(ctx);

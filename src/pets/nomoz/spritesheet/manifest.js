@@ -70,15 +70,23 @@ const VIEWS = ['front', 'frontQ', 'side', 'rearQ', 'rear'];
 const WALK = 320; // ms per frame: three frames = two steps (480 ms each)
 const CREEP = 400;
 
+// Facial expression on the single-pose sitting art (renderer.js): where each ear is and the row above which the head leans.
+// The expression states (ears: perk / back / flick, lean) are the ones the behaviours and core/attention.js already set.
+const EXPR = {
+  idle_front: { ears: { y: 8, rows: 5, l: [26, 9], r: [41, 9] }, lean: 30 },
+  sit_threeq: { ears: { y: 1, rows: 5, l: [19, 7], r: [35, 7] }, lean: 26 },
+  sit_rear: { ears: { y: 0, rows: 6, l: [30, 7], r: [45, 7] }, lean: 26 },
+};
+
 const clips = {
-  idle_front: clip('idle_front', [0, 1], { ms: 1000 }), // breathing, eyes open
-  idle_front_closed: clip('idle_front', [3]), // eyes closed (blink, happy, asleep)
+  idle_front: clip('idle_front', [0, 1], { ms: 1000, expr: EXPR.idle_front }), // breathing, eyes open
+  idle_front_closed: clip('idle_front', [3], { expr: EXPR.idle_front }), // eyes closed (blink, happy, asleep)
   // a slow breath on the single-frame sitting art: everything above the row drops a row for part of each period
-  sit_threeq: clip('sit_threeq', [0], { breathe: { cut: 46, ms: 3600 } }),
+  sit_threeq: clip('sit_threeq', [0], { breathe: { cut: 46, ms: 3600 }, expr: EXPR.sit_threeq }),
   sit_doze: clip('sit_doze', [0], { breathe: { cut: 44, ms: 4400 } }),
   // grooming: the tongue strokes the paw (spot on the art); the head above row 36 dips into each lick, the paw rect comes up to meet it and the licked fur shines
   sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36, paw: [27, 28, 22, 9], sheen: [[33, 30], [34, 30], [36, 31]] } }),
-  sit_rear: clip('sit_rear', [0], { breathe: { cut: 40, ms: 3800 } }),
+  sit_rear: clip('sit_rear', [0], { breathe: { cut: 40, ms: 3800 }, expr: EXPR.sit_rear }),
   curl: clip('curl', [0]),
   stretch: clip('stretch', [0]),
   low_front: clip('low_front', [0, 1], { ms: 1000 }),
