@@ -95,6 +95,8 @@ export const AMBIENT = {
     longQuietChance: 0.14,
     longQuietMs: [9000, 22000],
     // awareness of what is going on around it (see core/attention.js, core/worldwatch.js)
+    // behaviors that are only sitting quietly: the cat's face is its own while one of these runs; any other behavior has it
+    idleBehaviors: ['sit', 'observe', 'stillness', 'longPause', 'still'],
     watchMs: 500, // how often it looks round for something new
     habituateMs: [25000, 70000], // rest from the same thing after reacting to it
     pointerHabituateMs: [60000, 150000], // the mouse is secondary: a much longer rest

@@ -338,6 +338,54 @@ test('over a long idle session the pace is unhurried, varied and has real quiet 
   }
 });
 
+test('a running behavior has priority even in a neutral pause: nothing starts, and a look under way is handed back', () => {
+  let running = null;
+  const IDLE = ['sit', 'observe'];
+  const busy = () => !!running && !IDLE.includes(running);
+  const start2 = (seed) => startAttention({ rng: createRng(seed), getView: () => view, apply, timing: AMBIENT.attention, mood: 'content', busy, now: clock });
+  // 1: busy for ten minutes -> never acts
+  running = 'eat';
+  view = { ...REST, props: {} };
+  log = [];
+  t = 0;
+  let stop = start2(3);
+  run(10 * 60 * 1000, 50);
+  stop();
+  assert.deepEqual(log, []);
+  // quietly sitting behaviors do not count as busy
+  running = 'observe';
+  log = [];
+  t = 0;
+  stop = start2(3);
+  run(120000, 20);
+  stop();
+  assert.ok(log.length > 3, 'it should act beside a quiet sitting behavior');
+  // 2: a behavior starts in the middle of a look: the cat is given its rest back, nothing stays held
+  let handed = 0;
+  for (let seed = 1; seed <= 15; seed++) {
+    running = null;
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const s2 = start2(seed);
+    let began = false;
+    for (let i = 0; i < 3000 && !began; i++) {
+      run(10);
+      if (view.gaze !== 'c' || view.ears || view.lean || view.pupils !== null || view.tail || view.eyes !== 'open') began = true;
+    }
+    if (!began) {
+      s2();
+      continue;
+    }
+    running = 'eat'; // the behavior has started but its first beat is still to come
+    run(6000, 50);
+    s2();
+    assert.ok(isNeutral(view), `seed ${seed}: left on ${JSON.stringify(view)}`);
+    handed++;
+  }
+  assert.ok(handed >= 10);
+});
+
 test('sideOf: straight ahead and unknown give no side', () => {
   assert.equal(sideOf({ sx: 100 }, 104), null);
   assert.equal(sideOf({ sx: 100 }, 20), 'l');

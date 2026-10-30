@@ -284,6 +284,11 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
       timing: AMBIENT.attention,
       mood,
       world,
+      // any behavior but the quiet sitting ones owns the face while it runs (even in a pause between its own beats)
+      busy: () => {
+        const cur = schedRef.current && schedRef.current.current;
+        return !!cur && !AMBIENT.attention.idleBehaviors.includes(cur);
+      },
     });
     return () => {
       stop();

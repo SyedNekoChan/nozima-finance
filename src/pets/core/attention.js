@@ -32,6 +32,8 @@ import { pick, rnd } from './rng.js';
  *   timing    AMBIENT.attention in ../config.js
  *   mood      'idle' | 'content' | 'stressed' (sleepier when content, never runs stressed)
  *   world     optional { read() -> stimuli since the last call, rect() -> the cat's client rect | null, pointerPos() -> { x, y } | null }
+ *   busy      () => true while the scheduler is running a behavior that is not just sitting quietly: nothing is started then,
+ *             and a moment under way stops (a behavior always has priority, even in a neutral pause between its own beats)
  *   now       () => ms (the clock habituation uses; performance.now by default)
  * Returns stop(): cancels the timers and gives back anything it still holds.
  */
@@ -199,11 +201,11 @@ function glance(c, aim, gone) {
   return steps;
 }
 
-export function startAttention({ rng, getView, apply, timing, mood = 'content', world = null, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) }) {
+export function startAttention({ rng, getView, apply, timing, mood = 'content', world = null, busy = () => false, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) }) {
   let timer = null;
   let watcher = null;
   let alive = true;
-  let busy = false; // a moment or an episode is playing
+  let playing = false; // a moment or an episode is playing
   let last = null;
   let alertness = 0.3; // 0..1, rises when something happens nearby, decays on its own
   let restUntil = 0; // after an episode the cat does not look for the next thing for a while
@@ -215,7 +217,7 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
   };
 
   // is everything still as this module left it (and nothing else going on)?
-  const still = () => isNeutral(getView(), held);
+  const still = () => !busy() && isNeutral(getView(), held);
 
   // give back what it holds: only the fields that still carry its value
   function release() {
@@ -242,7 +244,9 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
         if (!alive) return;
         // a behavior (or anything else) took over: stop, keep nothing
         if (!still()) {
-          held = {};
+          // a behavior started but has not touched what this module holds: hand it back; otherwise the behavior's state wins
+          if (busy() && isNeutral(getView(), held)) release();
+          else held = {};
           return void done();
         }
         const patch = typeof what === 'function' ? what() : what;
@@ -369,11 +373,11 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
   }
 
   function startEpisode(s) {
-    busy = true;
+    playing = true;
     last = 'episode';
     alertness = Math.min(1, alertness + (s.glance ? 0.05 : 0.2 + 0.2 * s.interest)); // a glance at the mouse hardly stirs it
     play(episode({ rng }, s.interest, s.aim, { glance: s.glance, gone: s.gone }), () => {
-      busy = false;
+      playing = false;
       restUntil = now() + rnd(rng, ...timing.episodeRestMs);
       scheduleMoment(rnd(rng, ...timing.everyMs) * scale());
     });
@@ -384,7 +388,7 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
     if (!alive) return;
     const v = getView();
     const stim = [...propStimuli(v), ...worldStimuli()];
-    if (!busy && stim.length && now() >= restUntil && isNeutral(v)) {
+    if (!playing && stim.length && now() >= restUntil && !busy() && isNeutral(v)) {
       // the most interesting thing first; the rest are missed (it only follows one thing)
       stim.sort((a, b) => b.interest - a.interest);
       for (const s of stim) {
@@ -404,13 +408,13 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
 
   function tick() {
     if (!alive) return;
-    if (busy) return void later(tick, rnd(rng, ...timing.retryMs));
+    if (playing) return void later(tick, rnd(rng, ...timing.retryMs));
     alertness = Math.max(0, alertness - 0.04);
-    if (!isNeutral(getView())) return void later(tick, rnd(rng, ...timing.retryMs));
+    if (busy() || !isNeutral(getView())) return void later(tick, rnd(rng, ...timing.retryMs));
     last = chooseMoment();
-    busy = true;
+    playing = true;
     play(MOMENTS[last]({ rng }), () => {
-      busy = false;
+      playing = false;
       // a gap that varies a lot: usually a few seconds, now and then a long quiet
       const quiet = rng() < timing.longQuietChance ? rnd(rng, ...timing.longQuietMs) : 0;
       later(tick, rnd(rng, ...timing.everyMs) * scale() + quiet);
