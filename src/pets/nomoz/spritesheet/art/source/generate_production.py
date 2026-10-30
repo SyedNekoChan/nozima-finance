@@ -243,6 +243,10 @@ def tail_creep(sw, bd=0.0):
     return tail([(0, 27 - bd * 0.5, -22), (sw * 0.3, 24.5 - bd * 0.5, -29), (sw * 0.6, 22.8 - bd * 0.5, -35), (sw, 23.2 - bd * 0.4, -40), (sw, 25.5 - bd * 0.4, -43.5)], r0=2.8, r1=4.4)
 
 
+WALK_REAR_TAIL = [(-3, 28, -25), (-9, 31, -30), (-14, 36, -31), (-15.5, 43, -30), (-13.5, 50, -27)]
+WALK_REAR_OVER = False
+
+
 # ------------------------------------------------------------------ walk / creep front and rear
 def walk_front(crouch=False, seed=11):
     out = []
@@ -273,9 +277,9 @@ def walk_rear(crouch=False, seed=21):
             P += tail([(1, 28 - bd * 0.4, -22), (2 + t, 26 - bd * 0.4, -30), (3 + t, 25 - bd * 0.4, -38), (4 + t, 27 - bd * 0.4, -44)], r0=2.8, r1=4.2)
         else:
             # up from the rump, in front of the back, its tip leaning to one side beside the head
-            P += tail([(0, 28, -23), (5 + t * 0.4, 33, -26), (10 + t * 0.8, 41, -27), (12 + t, 50, -25)], r0=3.4, r1=4.8)
+            P += tail(WALK_REAR_TAIL, r0=3.2, r1=5.6)
         b = body_render(P, 180, 41, 12, seed=seed + i)
-        out.append(place(b, h, hx, hy, dy=int(round(bd)) + (4 if not crouch else 3), fade=3, tail_over=True))
+        out.append(place(b, h, hx, hy, dy=int(round(bd)) + (4 if not crouch else 3), fade=3, tail_over=WALK_REAR_OVER))
     return out
 
 
@@ -283,12 +287,12 @@ def walk_rear(crouch=False, seed=21):
 HEAD_FRAME = {'A': 0, 'N': 1, 'C': 2, 'P1': 1, 'P2': 1}
 
 
-def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, chest_w=1.0, ruff_w=8.2, haunch=0.0, slim=1.0):
+def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, chest_w=1.0, ruff_w=8.2, haunch=0.0, slim=1.0, ruff_h=1.0):
     out = []
     for i, ph in enumerate(PHASES):
         bd = (5.0 if crouch else 0.0) + BOB[ph] * (0.6 if crouch else 1.0)
         S = 7.0 if crouch else S_
-        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w, slim=slim)
+        P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w, slim=slim, ruff_h=ruff_h)
         P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch, shoulder=1.0 if chest_w < 1 else 0.0, elbow=1.0 if chest_w < 1 else 0.0)
         sw = 0  # (see walk_front)
         P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
@@ -347,14 +351,19 @@ def leap_side():
 def leap_front():
     h, hx, hy = head_front()
     bd = -2.0
-    P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0)
-    # airborne, pounced toward the viewer: the body pitched at us, the forelegs thrown wide and forward (nearer is
-    # lower on screen), the hind legs kicked out behind and to the sides, the tail streaming up. No leg is a
-    # planted column: all four feet are in the air, and the engine keeps the shadow on the ground below.
+    P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=9.5, slim=0.9, hip_w=2.0)
+    # airborne, pounced toward the viewer: the body pitched at us. The forelegs reach out and down toward the camera, the
+    # nearest part of the cat (long forearms, big spread paws, lowest on screen); the hind legs trail behind the haunches
+    # (a bulging thigh, a bent hock, a smaller paw, higher on screen). No leg is a planted column; the engine keeps the
+    # shadow on the ground below.
     for name, (side, front, off) in LEGS.items():
-        hx_, hy_, hz_ = (6.0, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
-        foot = (side * 12.5, 21.0, 31.0) if front else (side * 13.5, 12.0, -24.0)
-        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=10.5 if front else 10.0, b=12.5 if front else 13.5, paw=1.3, wrist=0.75, shoulder=1.0, elbow=1.0, thick=0.9)
+        hx_, hy_, hz_ = (6.0, 22.0, 12.0) if front else (7.4, 21.0, -16.0)
+        if front:
+            foot = (side * 10.5, 15.0, 33.0)
+            P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=9.5, b=13.5, paw=1.4, wrist=0.75, shoulder=1.0, elbow=1.0, thick=0.9)
+        else:
+            foot = (side * 18.0, 23.0, -21.0)
+            P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=10.0, b=12.5, paw=1.15, wrist=0.7, shoulder=1.35, elbow=1.1, thick=0.9)
     P += tail([(8, 24, -24), (13, 27, -28), (17, 33, -29), (19, 41, -28)], r0=3.0, r1=4.6)
     b = body_render(P, 0, 39, 12, seed=43, pitch=14.0)
     return [place(b, h, hx, hy, dy=-1)]
@@ -399,11 +408,11 @@ def loaf_front():
 JOBS = {
     'walk_front': walk_front,
     'walk_rear': walk_rear,
-    'walk_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86),
+    'walk_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86, ruff_h=0.7),
     'walk_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, hip_w=2.5, slim=0.9),
     'creep_front': lambda: walk_front(crouch=True, seed=71),
     'creep_rear': lambda: walk_rear(crouch=True, seed=81),
-    'creep_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, crouch=True, seed=91, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86),
+    'creep_frontQ': lambda: walk_side_like(-45, 8, 42, head_threeq_placer, crouch=True, seed=91, chest_w=0.78, ruff_w=5.2, haunch=1.0, slim=0.86, ruff_h=0.7),
     'creep_rearQ': lambda: walk_side_like(-135, 8, 52, head_rearq_placer, crouch=True, seed=101, hip_w=2.5, slim=0.9),
     'creep_side': lambda: walk_side_like(-90, 0, 46, head_side_placer, crouch=True),
     'leap_front': leap_front,

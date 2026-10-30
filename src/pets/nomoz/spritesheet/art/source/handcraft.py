@@ -120,6 +120,10 @@ def outline(idx, m, protect, rng):
     shadow = ring & (below | right)
     out[ring] = 1
     out[shadow & (rng.random((H, W)) < 0.8)] = 0
+    # not a uniform line: the lit side breaks up where the fur catches the light, the shadow side thins out in places
+    lit = ring & ~shadow
+    out[lit & (rng.random((H, W)) < 0.22)] = 3
+    out[shadow & (rng.random((H, W)) < 0.12)] = 2
     return out
 
 
