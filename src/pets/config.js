@@ -94,6 +94,10 @@ export const AMBIENT = {
     retryMs: [1500, 3500], // when a behavior is busy with the face
     longQuietChance: 0.14,
     longQuietMs: [9000, 22000],
+    // awareness of what is going on around it (see core/attention.js, core/worldwatch.js)
+    watchMs: 500, // how often it looks round for something new
+    habituateMs: [25000, 70000], // rest from the same thing after reacting to it
+    episodeRestMs: [12000, 32000], // rest from looking at anything after an episode
   },
 };
 

@@ -36,7 +36,7 @@ export class PetScheduler {
    * resetPatch : posture reset applied when a behavior is cancelled
    * animations : the pet's animation registry
    */
-  constructor({ key, rng, mood, reduced, compact, behaviors, animations, getCtx, apply, resetPatch, reactionSource = null, flags = [] }) {
+  constructor({ key, rng, mood, reduced, compact, behaviors, animations, getCtx, apply, resetPatch, reactionSource = null, flags = [], lookBefore = null }) {
     this.key = key;
     this.rng = rng;
     this.mood = mood;
@@ -49,6 +49,9 @@ export class PetScheduler {
     this.apply = apply;
     this.resetPatch = resetPatch;
     this.reactionSource = reactionSource; // { take({ mood, canRun }) -> behavior id | null }
+    // optional run-up before a self-chosen behavior (see core/lookahead.js): ({ behavior, beats, view, source, memory, now }) -> { lead, beats } | null
+    this.lookBefore = lookBefore;
+    this.source = 'pool'; // where the behavior about to run came from: 'pool' (its own choice) | 'reaction' | 'forced'
     this.flags = new Set(flags); // persistent financial-context flags
 
     this.alive = true;
@@ -186,6 +189,7 @@ export class PetScheduler {
   choose(c) {
     const now = performance.now();
 
+    this.source = 'reaction';
     if (this.queued) {
       const id = this.queued;
       this.queued = null;
@@ -200,6 +204,7 @@ export class PetScheduler {
       if (id && this.canRunAsReaction(id, c)) return id;
     }
 
+    this.source = 'pool';
     const pool = this.behaviors.filter((b) => b.id !== this.last && this.isEligible(b, c, now));
     if (!pool.length) return this.fallbackId();
 
@@ -242,6 +247,7 @@ export class PetScheduler {
     c.memory = this.memory;
 
     const id = forceId || this.choose(c);
+    if (forceId) this.source = 'forced';
     const b = id && this.byId[id];
     if (!b) {
       this.schedule(() => this.next(), 1500);
@@ -269,6 +275,16 @@ export class PetScheduler {
     if (this.reduced) {
       beats = compressBeats(withoutFields(beats, SCHEDULER.reducedDropFields), SCHEDULER.reducedDurationFactor, SCHEDULER.reducedBeatSlotMs);
       end = planned * SCHEDULER.reducedDurationFactor;
+    }
+
+    // now and then a calm walk of its own choosing starts with a look where it is going: the script is shifted later by
+    // the run-up, which puts gaze, ears and head back to rest before it begins
+    if (!this.reduced && this.lookBefore) {
+      const pre = this.guard(() => this.lookBefore({ behavior: b, beats, view: c.cur, source: this.source, mood: this.mood, reduced: this.reduced, memory: this.memory, now: performance.now() }));
+      if (pre && pre.lead > 0) {
+        beats = [...pre.beats, ...beats.map((x) => ({ ...x, t: x.t + pre.lead }))].sort((a, z) => a.t - z.t);
+        end += pre.lead;
+      }
     }
 
     this.current = id;

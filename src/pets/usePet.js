@@ -3,6 +3,8 @@ import { REACTIONS } from '../lib/nomoz.js';
 import { AMBIENT, SCHEDULER } from './config.js';
 import { startAmbientBlink } from './core/ambient.js';
 import { startAttention } from './core/attention.js';
+import { planLookBefore } from './core/lookahead.js';
+import { watchWorld } from './core/worldwatch.js';
 import { attachInteractions } from './core/interactions.js';
 import { createRng, pick, rnd, runtimeSeed } from './core/rng.js';
 import { FinancialDirector } from './finance/director.js';
@@ -226,6 +228,7 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
       resetPatch: RESET,
       flags: flagsRef.current,
       reactionSource: { take: (o) => directorRef.current.take(o) },
+      lookBefore: (o) => planLookBefore({ ...o, rng }),
     });
     schedRef.current = sch;
     sch.start(rnd(rng, ...SCHEDULER.firstDelay));
@@ -272,13 +275,20 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
   // The same rules as the blinker (never under reduced motion or the stressed look) and it never overrides a behavior.
   useEffect(() => {
     if (!blinks) return undefined;
-    return startAttention({
+    // the world it can notice: the mouse near it (only the mouse, and only its position) and the tab coming back
+    const world = watchWorld({ getRect: () => document.querySelector('canvas[data-mood]')?.getBoundingClientRect() ?? null });
+    const stop = startAttention({
       rng: createRng(runtimeSeed()),
       getView: () => curRef.current,
       apply: commit,
       timing: AMBIENT.attention,
       mood,
+      world,
     });
+    return () => {
+      stop();
+      world.stop();
+    };
   }, [blinks, commit, mood]);
 
   // Financial mood / breakpoint / motion preference changed: the same
