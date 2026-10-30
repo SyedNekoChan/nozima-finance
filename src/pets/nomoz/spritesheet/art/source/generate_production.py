@@ -16,6 +16,8 @@ from gen_lib import *
 from handcraft import handcraft
 
 HANDCRAFT = True
+# the directional frames this pass reworked get a broken, irregular outline; the others keep the plain ring (it made no visible difference there)
+IRREGULAR_OUTLINE = {'walk_frontQ', 'creep_frontQ', 'walk_rearQ', 'creep_rearQ', 'walk_rear', 'leap_front'}
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(ART) / '_gen'
 SHADE = dict(contrast=0.85, gain=0.5, ambient=0.40)
 S_ = 9.0  # stride
@@ -89,7 +91,7 @@ def tail_entry(f, g, dy):
 def write(name, frames, floor=61):
     done, tails = [], []
     for f in frames:
-        g = as_fr(handcraft(f, seed=sum(map(ord, name)) + len(done)) if HANDCRAFT else np.asarray(f))
+        g = as_fr(handcraft(f, seed=sum(map(ord, name)) + len(done), irregular=name in IRREGULAR_OUTLINE) if HANDCRAFT else np.asarray(f))
         g = tidy(g)
         ys = np.where((g[..., 3] > 0).any(axis=1))[0]
         dy = floor - int(ys.max())
@@ -243,7 +245,7 @@ def tail_creep(sw, bd=0.0):
     return tail([(0, 27 - bd * 0.5, -22), (sw * 0.3, 24.5 - bd * 0.5, -29), (sw * 0.6, 22.8 - bd * 0.5, -35), (sw, 23.2 - bd * 0.4, -40), (sw, 25.5 - bd * 0.4, -43.5)], r0=2.8, r1=4.4)
 
 
-WALK_REAR_TAIL = [(-3, 28, -25), (-9, 31, -30), (-14, 36, -31), (-15.5, 43, -30), (-13.5, 50, -27)]
+WALK_REAR_TAIL = [(-2, 28, -25), (-11, 30, -30), (-17.5, 36, -31), (-19, 45, -30), (-17.5, 52, -27), (-15.5, 55, -25)]
 WALK_REAR_OVER = False
 
 

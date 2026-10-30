@@ -110,7 +110,7 @@ def paws(idx, m, protect, plist):
     return idx, m
 
 
-def outline(idx, m, protect, rng):
+def outline(idx, m, protect, rng, irregular=True):
     """the silhouette ring: the darkest tone on the shadow side (below / right of it), one lighter on the lit side"""
     out = idx.copy()
     p = np.pad(m, 1)
@@ -120,6 +120,7 @@ def outline(idx, m, protect, rng):
     shadow = ring & (below | right)
     out[ring] = 1
     out[shadow & (rng.random((H, W)) < 0.8)] = 0
+    if not irregular: return out
     # not a uniform line: the lit side breaks up where the fur catches the light, the shadow side thins out in places
     lit = ring & ~shadow
     out[lit & (rng.random((H, W)) < 0.22)] = 3
@@ -127,7 +128,7 @@ def outline(idx, m, protect, rng):
     return out
 
 
-def handcraft(f, seed=1):
+def handcraft(f, seed=1, irregular=True):
     a = np.array(f, np.uint8)
     m = a[..., 3] > 0
     idx, fur = tones(a)
@@ -142,7 +143,7 @@ def handcraft(f, seed=1):
     out = a.copy()
     free = m & ~protect
     # the ring is redone after the paws grew the silhouette
-    ring_idx = outline(np.where(free, idx, 0), m, protect, rng)
+    ring_idx = outline(np.where(free, idx, 0), m, protect, rng, irregular)
     idx = np.where(free, ring_idx, idx)
     out[free, :3] = FUR[idx[free]].astype(np.uint8)
     out[free, 3] = 255
