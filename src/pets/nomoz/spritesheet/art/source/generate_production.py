@@ -128,8 +128,16 @@ def body_render(P, az, cx, tilt, seed=1, pitch=0.0, style=None, **kw):
     return as_fr(fr, tm, (pr(tp[0].c), pr(tp[-1].c)))
 
 
-# rendering style of every generated body (render_cat.py to_frame): fewer speckles, fur locks, limbs outlined
-STYLE = dict(smooth=1, locks=0.03, limbs=2)
+# rendering style of every generated body (render_cat.py to_frame): fewer speckles, fur locks, limbs outlined, and the
+# tone distribution of the approved frames (so all generated frames are as dark, as contrasty and as flat as the originals)
+def _target():
+    t = approved_tone_target()
+    t[1] += t[0]  # the darkest tone is the outline's: inside the body the deepest shadow is the next one up
+    t[0] = 0.0
+    return t
+
+
+STYLE = dict(smooth=1, locks=0.03, limbs=2, match=_target())
 
 
 def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0, haunch=0.0):
@@ -233,7 +241,7 @@ def walk_front(crouch=False, seed=11):
         bd = BOB[ph] * 0.8 + (5.0 if crouch else 0.0)
         P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0)
         P += legs3d(front_cfg(ph, S=6.2 if crouch else 8.4, lift=2.6 if crouch else 3.4), bd=bd, a=10.4 if crouch else 11.5)
-        t = {'A': 2.5, 'N': 0, 'C': -2.5, 'P1': -1, 'P2': 1}[ph]
+        t = 0  # the tail's sway is added at run time (tail.js); baking a different sway into each frame made it step every beat
         ty = -5 if crouch else 0
         # the tail curves up behind the haunch, a plume showing past the hip (as in the approved sitting cat)
         P += tail([(8, 19 + ty * 0.4, -24), (13 + t * 0.4, 19 + ty * 0.5, -27), (17 + t * 0.6, 23 + ty * 0.6, -28), (19 + t * 0.8, 30 + ty * 0.8, -27)], r0=3.0, r1=4.6)
@@ -249,7 +257,7 @@ def walk_rear(crouch=False, seed=21):
         bd = BOB[ph] * 0.8 + (5.0 if crouch else 0.0)
         P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=11.0, hip_w=3.5)
         P += legs3d(front_cfg(ph, S=6.2 if crouch else 8.4, lift=2.6 if crouch else 3.4), bd=bd, a=10.4 if crouch else 11.5, hip_hind=(8.0, 21.0, -16.0), thick=1.1)
-        t = {'A': 2.0, 'N': 0, 'C': -2.0, 'P1': -0.8, 'P2': 0.8}[ph]
+        t = 0  # (see walk_front)
         if crouch:
             # low and trailing: seen end on it lies along the line of sight, a plume dropping behind the rump
             P += tail([(1, 28 - bd * 0.4, -22), (2 + t, 26 - bd * 0.4, -30), (3 + t, 25 - bd * 0.4, -38), (4 + t, 27 - bd * 0.4, -44)], r0=2.8, r1=4.2)
@@ -272,7 +280,7 @@ def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, che
         S = 7.0 if crouch else S_
         P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w)
         P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch)
-        sw = {'A': 2.2, 'N': 0, 'C': -2.2, 'P1': -1.0, 'P2': 1.0}[ph]
+        sw = 0  # (see walk_front)
         P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
         P += head_for.model(bd, crouch) if hasattr(head_for, 'model') else []
         b = body_render(P, az, cx, tilt, seed=seed + i)

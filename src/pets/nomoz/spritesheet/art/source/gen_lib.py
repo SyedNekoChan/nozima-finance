@@ -58,3 +58,21 @@ def under(body, head_layer):
     m = head_layer[..., 3] > 0
     out[m] = head_layer[m]
     return out
+
+
+def approved_tone_target():
+    """the proportions of the ten fur tones over the INTERIOR pixels (not the outline ring) of the approved frames"""
+    fur = np.array(FUR)
+    tot = np.zeros(10)
+    for name in ('idle_front', 'walk_side', 'sit_threeq', 'sit_rear', 'sit_doze', 'sit_groom', 'stretch', 'curl'):
+        for f in sorted((Path(ART) / name).glob('[0-9].png')):
+            a = np.array(Image.open(f).convert('RGBA'))
+            m = a[..., 3] > 0
+            pad = np.pad(m, 1)
+            inner = m.copy()
+            for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)): inner &= pad[1 + dy:H + 1 + dy, 1 + dx:W + 1 + dx]
+            rgb = a[..., :3][inner].astype(int)
+            d = np.abs(rgb[:, None, :] - fur[None]).sum(-1)
+            keep = d.min(1) < 12  # the eye yellows are not fur
+            tot += np.bincount(d.argmin(1)[keep], minlength=10)
+    return tot / tot.sum()

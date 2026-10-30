@@ -47,6 +47,9 @@ def leg(name, hip, foot, a=11.0, b=11.0, bend=None, fluff=0.5, thick=1.0):
     P += chain(h, k, r_up, 3.2 * thick, part=pn, fluff=fluff * 0.5)
     P += chain(k, f + np.array([0, 2.0, 0]), 3.0 * thick, r_lo, part=pn, fluff=fluff)
     P.append(Prim(f + np.array([0, 1.5, 2.0]), (3.0 * thick, 2.0, 4.2), pn, flow=(0, 0, 1)))
+    # three toes along the front of the paw: the shading between them separates them (a paw is not a stub)
+    for dx in (-1.7, 0.0, 1.7):
+        P.append(Prim(f + np.array([dx * thick, 1.1, 5.4 - 0.5 * abs(dx)]), (1.25 * thick, 1.05, 1.5), pn, flow=(0, 0, 1)))
     return P
 
 

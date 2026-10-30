@@ -2,7 +2,7 @@ import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
 import { fitsImage, frameAt, frameRect, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
-import { bendTail, breathAt, decodeTail, fadeLeft, lickAt, mouthLick, newTailState, stepTail, tailTarget } from './tail.js';
+import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, stepTail, tailTarget } from './tail.js';
 
 /*
  * The sprite-sheet render path, selected by SPRITE_RENDERER in ../config.js.
@@ -64,7 +64,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, lickAt: -1e9, wasLick: false, scratch: null, last: null, fade: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, lickAt: -1e9, wasLick: false, scratch: null, last: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -72,8 +72,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   }
 
   const begin = (c, clip, now) => {
-    // the frame on screen fades out under the new clip (no hard cut between poses)
-    c.fade = c.last && c.last.clip !== clip ? { from: c.last, start: now } : null;
     c.clip = clip;
     c.t0 = now;
     c.shown = false; // the clock starts when its first frame is on screen
@@ -264,7 +262,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   }
 
   // a small pink tongue: level 1 = the tip, 2 = out; (x, y) is its top-left
-  const TONGUE = { tip: '#ff9db8', body: '#e0708c', edge: '#8a3550' };
+  const TONGUE = { tip: '#ff9db8', body: '#e0708c', edge: '#8a3550', line: '#2a1119' };
   // rows of the tongue at full length: t tip, b body, e edge (its shaded underside)
   const TONGUE_OUT = ['.tt.', 'bttb', 'bttb', '.be.', '..e.'];
   const TONGUE_TIP = ['.tt.', 'bttb'];
@@ -273,6 +271,14 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     if (!at || !level) return;
     const [x, y] = at;
     const rows = level === 1 ? TONGUE_TIP : long ? TONGUE_OUT : TONGUE_SHORT;
+    const has = (dx, dy) => dy >= 0 && dy < rows.length && dx >= 0 && dx < rows[dy].length && rows[dy][dx] !== '.';
+    // a dark one-pixel line round it, so the pink reads against both dark fur and the lit paw (it matters at phone size)
+    ac.fillStyle = TONGUE.line;
+    for (let dy = -1; dy <= rows.length; dy++) {
+      for (let dx = -1; dx <= 4; dx++) {
+        if (!has(dx, dy) && (has(dx - 1, dy) || has(dx + 1, dy) || has(dx, dy - 1) || has(dx, dy + 1))) ac.fillRect(x + dx, y + dy, 1, 1);
+      }
+    }
     rows.forEach((row, dy) =>
       [...row].forEach((k, dx) => {
         if (k === '.') return;
@@ -280,30 +286,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         ac.fillRect(x + dx, y + dy, 1, 1);
       })
     );
-  }
-
-  // the outgoing frame, thinned by an ordered dither as it fades (hard pixels only: no blended colours)
-  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  function dissolve(ac, fx, cw, ch) {
-    const f = fx.fade.from;
-    const h = fx.holder;
-    const cv = h.fadeCv || (h.fadeCv = document.createElement('canvas'));
-    if (cv.width !== cw || cv.height !== ch) {
-      cv.width = cw;
-      cv.height = ch;
-    }
-    const g = cv.getContext('2d', { willReadFrequently: true });
-    g.clearRect(0, 0, cw, ch);
-    g.drawImage(f.image, f.rect.x, f.rect.y, f.rect.w, f.rect.h, f.ox, f.oy, f.rect.w, f.rect.h);
-    const img = g.getImageData(0, 0, cw, ch);
-    const d = img.data;
-    for (let y = 0; y < ch; y++) {
-      for (let x = 0; x < cw; x++) {
-        if (BAYER4[(y & 3) * 4 + (x & 3)] / 16 >= fx.fade.alpha) d[(y * cw + x) * 4 + 3] = 0;
-      }
-    }
-    g.putImageData(img, 0, 0);
-    ac.drawImage(cv, 0, 0);
   }
 
   function makeBody(clip, sheet, image, index, cw, ch, fx) {
@@ -376,7 +358,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
               for (const [wx, wy] of L.sheen) ac.fillRect(ox + wx, oy + wy - (fx.lick.paw ? 1 : 0), 1, 1);
             }
           }
-          if (fx && fx.fade && fx.fade.alpha > 0) dissolve(ac, fx, cw, ch);
           if (clip.under) rimLight(ac, sil(), info.light);
           drawEyes(ac, an && an.eyes, info.face, info.ox);
           drawWhiskers(ac, an && an.whiskers);
@@ -412,23 +393,15 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function motionFor(c, clip, params, now, reduced) {
     const dt = c.tickAt ? now - c.tickAt : 0;
     c.tickAt = now;
-    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, fade: null, wait: Infinity, record: null };
-    if (reduced) {
-      c.fade = null;
-      return fx;
-    }
-    if (c.fade) {
-      const alpha = fadeLeft(now, c.fade.start);
-      if (alpha > 0) (fx.fade = { from: c.fade.from, alpha }), (fx.wait = 30);
-      else c.fade = null;
-    }
+    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null };
+    if (reduced) return fx;
     if (clip.breathe) {
       const { ms } = clip.breathe;
       fx.breath = breathAt(now, ms);
       const t = now % ms;
       fx.wait = Math.min(fx.wait, Math.max(16, Math.ceil((fx.breath ? 0.45 * ms : ms) - t)));
     }
-    const target = tailTarget(params || {}, clip.sway);
+    const target = tailTarget(params || {}, clip.sway, clip.loop && clip.frames.length > 2 ? clip.total : 0);
     stepTail(c.tail, dt, target);
     fx.amp = c.tail.amp;
     fx.phase = c.tail.phase;
@@ -489,7 +462,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function holdBody(ctx, c) {
     const cw = ctx.canvas.width;
     const ch = ctx.canvas.height;
-    const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, fade: null, wait: Infinity, record: null };
+    const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null };
     const last = c.last;
     if (last && !bad.has(last.clip.id)) return makeBody(last.clip, last.sheet, last.image, last.index, cw, ch, still);
     // the default: the clip of the last (most general) rule, else any rule's clip whose sheet is ready

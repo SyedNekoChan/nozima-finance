@@ -236,7 +236,7 @@ class Render:
         self.fluff1 = box(self.fl)
         return self
 
-    def to_frame(self, dither=0.35, seed=3, levels=9, smooth=0, locks=0.0, limbs=0):
+    def to_frame(self, dither=0.35, seed=3, levels=9, smooth=0, locks=0.0, limbs=0, match=None):
         rng = np.random.default_rng(seed)
         mask = self.mask.copy()
         yy, xx = np.mgrid[0:H, 0:W]
@@ -249,6 +249,18 @@ class Render:
         sh = sh + np.where((stroke > 0.70) & (sh > 0.30), 0.20, 0.0)  - np.where(stroke < 0.24, 0.09, 0.0)
         t = np.clip(sh, 0, 1) * levels + bay * dither * 2.0
         idx = np.clip(np.round(t), 1, 9).astype(int)
+        if match is not None:
+            # give the body the tone distribution of the approved frames: the covered pixels keep their order of brightness
+            # (so the shading is the same) but are re-dealt over the ten fur tones in the approved proportions, so every
+            # generated frame has the same overall darkness, shadow depth and flat mid-tone areas as the originals
+            m = self.mask
+            vals = (sh + bay * dither * 0.12)[m]
+            order = np.argsort(vals, kind='stable')
+            ranks = np.empty(len(vals)); ranks[order] = (np.arange(len(vals)) + 0.5) / len(vals)
+            cdf = np.cumsum(np.asarray(match, float)); cdf /= cdf[-1]
+            dealt = np.searchsorted(cdf, ranks, side='right').clip(0, 9)
+            idx = np.where(m, 0, idx)
+            idx[m] = dealt
         if smooth:
             # merge speckle into clusters: each pixel takes the commonest tone among its same-part neighbours
             ids = self.id1
