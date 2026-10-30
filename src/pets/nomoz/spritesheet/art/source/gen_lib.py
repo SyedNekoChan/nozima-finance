@@ -14,15 +14,19 @@ class Fr(np.ndarray):
     """a frame (H, W, 4 uint8) that remembers which of its pixels are the tail (see tails.json)"""
     tail = None
     tailpts = None
+    paws = None       # [(x, y, ax, ay, facing)] projected paw centres, toe axis and whether the toes face the viewer
+    headmask = None   # the approved head pixels, which the handcraft pass never touches
 
     def __array_finalize__(self, obj):
         self.tail = getattr(obj, 'tail', None)
         self.tailpts = getattr(obj, 'tailpts', None)
+        self.paws = getattr(obj, 'paws', None)
+        self.headmask = getattr(obj, 'headmask', None)
 
 
-def as_fr(a, tail=None, tailpts=None):
+def as_fr(a, tail=None, tailpts=None, paws=None, headmask=None):
     f = np.asarray(a).view(Fr)
-    f.tail, f.tailpts = tail, tailpts
+    f.tail, f.tailpts, f.paws, f.headmask = tail, tailpts, paws, headmask
     return f
 
 

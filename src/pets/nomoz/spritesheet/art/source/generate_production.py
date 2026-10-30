@@ -13,7 +13,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_lib import *
+from handcraft import handcraft
 
+HANDCRAFT = True
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(ART) / '_gen'
 SHADE = dict(contrast=0.85, gain=0.5, ambient=0.40)
 S_ = 9.0  # stride
@@ -87,7 +89,8 @@ def tail_entry(f, g, dy):
 def write(name, frames, floor=61):
     done, tails = [], []
     for f in frames:
-        g = tidy(f)
+        g = as_fr(handcraft(f, seed=sum(map(ord, name)) + len(done)) if HANDCRAFT else np.asarray(f))
+        g = tidy(g)
         ys = np.where((g[..., 3] > 0).any(axis=1))[0]
         dy = floor - int(ys.max())
         g = ground(g, floor)
@@ -115,8 +118,15 @@ def body_render(P, az, cx, tilt, seed=1, pitch=0.0, style=None, **kw):
     R.add(P); R.cast(); R.shade(**{**SHADE, **kw})
     fr = R.to_frame(seed=seed + 2, **{**STYLE, **(style or {})})
     # which visible pixels are the tail (and the base and tip of its spine, in frame coordinates)
+    pr = lambda c: (float((R.M @ c)[0] + R.cx), float(62.0 - (R.M @ c)[1]))
+    paws = []
+    for q in R.prims:
+        if q.paw:
+            x0, y0 = pr(q.c)
+            v = R.M @ (R._pitched(R.pivot + np.array([0.0, 0.0, 1.0])) - R.pivot)
+            paws.append((x0, y0, float(v[0]), float(-v[1]), float(v[2])))
     tp = [q for q in P if q.part == 'tail']
-    if not tp: return as_fr(fr)
+    if not tp: return as_fr(fr, paws=paws)
     tid = R.partnames['tail']
     tm = (R.part[SS // 2::SS, SS // 2::SS] == tid) & R.mask
     body = (R.part[SS // 2::SS, SS // 2::SS] >= 0) & (R.part[SS // 2::SS, SS // 2::SS] != tid) & R.mask
@@ -125,7 +135,7 @@ def body_render(P, az, cx, tilt, seed=1, pitch=0.0, style=None, **kw):
         grow |= np.roll(np.roll(tm, dy, 0), dx, 1)
     tm = (grow & ~body & (fr[..., 3] > 0)) | tm
     pr = lambda c: (float((R.M @ c)[0] + R.cx), float(62.0 - (R.M @ c)[1]))
-    return as_fr(fr, tm, (pr(tp[0].c), pr(tp[-1].c)))
+    return as_fr(fr, tm, (pr(tp[0].c), pr(tp[-1].c)), paws)
 
 
 # rendering style of every generated body (render_cat.py to_frame): fewer speckles, fur locks, limbs outlined, and the
@@ -137,10 +147,10 @@ def _target():
     return t
 
 
-STYLE = dict(smooth=1, locks=0.03, limbs=2, match=_target())
+STYLE = dict(smooth=1, locks=0.03, limbs=1, match=_target())
 
 
-def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0, haunch=0.0):
+def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0), a=11.5, thick=1.0, sx=1.0, haunch=0.0, shoulder=0.0, paw=1.15, elbow=0.0):
     """cfg: leg -> (dz from rest, lift) ; returns primitives. haunch > 0 adds a thigh muscle over each hind hip, so the haunch reads as a form of its own"""
     P = []
     for name, (side, front, off) in LEGS.items():
@@ -149,7 +159,7 @@ def legs3d(cfg, bd=0.0, hip_front=(5.8, 22.0, 12.0), hip_hind=(7.2, 21.0, -16.0)
         hx, hy, hz = hip_front if front else hip_hind
         hip = (side * hx * sx, hy - bd, hz)
         foot = (side * (5.2 if front else 6.4) * sx, 1.6 + lift, z0 + dz)
-        P += leg(name, hip, foot, a=a, thick=thick)
+        P += leg(name, hip, foot, a=a, thick=thick, paw=paw, shoulder=shoulder if front else 0.0, elbow=elbow)
         if haunch and not front:
             P.append(Prim((hip[0] + side * 0.6, hip[1] - 1.5, hip[2] - 0.5), (4.6 * haunch, 6.4 * haunch, 6.6 * haunch), name, 0.7, flow=(0, -1, 0.3)))
     return P
@@ -219,7 +229,7 @@ def place(frame, head, x, y, dx=0, dy=0, fade=4, side=None, seed=5, tail_over=Fa
     tm = getattr(frame, 'tail', None)
     if tail_over and tm is not None:
         out[tm & (frame[..., 3] > 0)] = frame[tm & (frame[..., 3] > 0)]   # a tail rising in front of the head stays in front
-    return as_fr(out, tm, getattr(frame, 'tailpts', None))
+    return as_fr(out, tm, getattr(frame, 'tailpts', None), getattr(frame, 'paws', None), hd[..., 3] > 0)
 
 
 # ------------------------------------------------------------------ tails
@@ -279,7 +289,7 @@ def walk_side_like(az, tilt, cx, head_for, crouch=False, seed=31, hip_w=0.0, che
         bd = (5.0 if crouch else 0.0) + BOB[ph] * (0.6 if crouch else 1.0)
         S = 7.0 if crouch else S_
         P = torso(bd=bd, chest_z=15, hip_z=-19, ruff_w=ruff_w, hip_w=hip_w, chest_w=chest_w)
-        P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch)
+        P += legs3d(gait(ph, S=S, lift=2.8 if crouch else 3.4), bd=bd, a=10.6 if crouch else 11.5, haunch=haunch, shoulder=1.0 if chest_w < 1 else 0.0, elbow=1.0 if chest_w < 1 else 0.0)
         sw = 0  # (see walk_front)
         P += tail_creep(sw, bd) if crouch else tail_walk_side(sw, bd)
         P += head_for.model(bd, crouch) if hasattr(head_for, 'model') else []
@@ -315,15 +325,17 @@ def leap_side():
     bd = -1.0
     pitch = 8.0
     P = torso(bd=bd, sag=-1.0, chest_z=16, hip_z=-20, ruff_w=8.0)
-    # forelegs reach out ahead, hind legs stretch out behind (the whole cat is pitched nose up)
+    # forelegs reach out ahead with the elbow bent and the paws spread, hind legs stretch out behind: thigh, hock, a long
+    # narrow shin and a broad paw (the whole cat is pitched nose up)
     for name, (side, front, off) in LEGS.items():
         hx, hy, hz = (5.8, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
         hip = (side * hx, hy - bd, hz)
         if front:
-            foot = (side * 5.2, 17.0 + (2.5 if side < 0 else 0), 30.0 + (0 if side > 0 else -4.0))
+            foot = (side * 5.8, 23.5 + (2.0 if side < 0 else 0), 33.0 + (0 if side > 0 else -4.0))
+            P += leg(name, hip, foot, a=10.0, b=13.0, paw=1.35, wrist=0.8, shoulder=1.0, elbow=1.0)
         else:
-            foot = (side * 6.4, 11.0 + (3.0 if side < 0 else 0), -27.0 + (0 if side > 0 else 4.0))
-        P += leg(name, hip, foot, a=11.5, b=11.5)
+            foot = (side * 6.8, 13.0 + (3.5 if side < 0 else 0), -35.0 + (0 if side > 0 else 4.0))
+            P += leg(name, hip, foot, a=10.0, b=14.0, paw=1.35, wrist=0.75, shoulder=1.1, elbow=1.0)
     P += tail([(0, 31, -24), (0, 31.5, -32), (0, 33, -39), (0, 35, -43), (0, 38.5, -46)], r0=2.8, r1=4.4)
     b = body_render(P, -90, 42, 0, seed=41, pitch=pitch)
     return [place(b, h, x, y, dx=0, dy=-3, fade=5, side='right')]
@@ -338,8 +350,8 @@ def leap_front():
     # planted column: all four feet are in the air, and the engine keeps the shadow on the ground below.
     for name, (side, front, off) in LEGS.items():
         hx_, hy_, hz_ = (6.0, 22.0, 12.0) if front else (7.2, 21.0, -16.0)
-        foot = (side * 12.0, 20.0, 30.0) if front else (side * 13.0, 11.0, -22.0)
-        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=11.5, b=11.0)
+        foot = (side * 12.5, 21.0, 31.0) if front else (side * 13.5, 12.0, -24.0)
+        P += leg(name, (side * hx_, hy_ - bd, hz_), foot, a=10.5 if front else 10.0, b=12.5 if front else 13.5, paw=1.35, wrist=0.8, shoulder=1.0, elbow=1.0)
     P += tail([(8, 24, -24), (13, 27, -28), (17, 33, -29), (19, 41, -28)], r0=3.0, r1=4.6)
     b = body_render(P, 0, 39, 12, seed=43, pitch=14.0)
     return [place(b, h, hx, hy, dy=-1)]

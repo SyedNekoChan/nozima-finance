@@ -37,16 +37,22 @@ def torso(bd=0.0, sag=0.0, fluff=1.0, chest_z=15.0, hip_z=-19.0, ruff_w=7.8, hip
     return P
 
 
-def leg(name, hip, foot, a=11.0, b=11.0, bend=None, fluff=0.5, thick=1.0):
+def leg(name, hip, foot, a=11.0, b=11.0, bend=None, fluff=0.5, thick=1.0, paw=1.0, wrist=1.0, shoulder=0.0, elbow=0.0):
     pn = name
     side, front, _ = LEGS[name]
     bend = (-1 if front else +1) if bend is None else bend
     h, k, f = ik2(hip, foot, a, b, bend)
     P = []
+    if shoulder:   # the shoulder blade / haunch over the top of the limb, so the leg grows out of a form (not a stick out of the torso)
+        P.append(Prim(h + np.array([side * 0.4, 0.2, -0.6 if front else -1.0]), (4.4 * shoulder * thick, 6.0 * shoulder, 5.2 * shoulder), pn, 0.6, flow=(0, -1, 0.25)))
+    if elbow:      # a bump at the elbow / hock where the limb folds, and the leg narrows to a wrist
+        P.append(Prim(k + np.array([0, 0.3, -0.8 * (1 if front else -1)]), (3.3 * elbow * thick, 3.3 * elbow, 3.4 * elbow), pn, 0.5))
     r_up, r_lo = (3.9 if front else 4.8) * thick, 2.6 * thick
     P += chain(h, k, r_up, 3.2 * thick, part=pn, fluff=fluff * 0.5)
-    P += chain(k, f + np.array([0, 2.0, 0]), 3.0 * thick, r_lo, part=pn, fluff=fluff)
-    P.append(Prim(f + np.array([0, 1.5, 2.0]), (3.0 * thick, 2.0, 4.2), pn, flow=(0, 0, 1)))
+    P += chain(k, f + np.array([0, 2.0, 0]), 3.0 * thick, r_lo * wrist, part=pn, fluff=fluff)
+    pp = Prim(f + np.array([0, 1.5, 2.0]), (3.0 * thick * paw, 2.0, 4.2 * paw), pn, flow=(0, 0, 1))
+    pp.paw = True   # handcraft.py stamps the toes here
+    P.append(pp)
     # three toes along the front of the paw: the shading between them separates them (a paw is not a stub)
     for dx in (-1.7, 0.0, 1.7):
         P.append(Prim(f + np.array([dx * thick, 1.1, 5.4 - 0.5 * abs(dx)]), (1.25 * thick, 1.05, 1.5), pn, flow=(0, 0, 1)))

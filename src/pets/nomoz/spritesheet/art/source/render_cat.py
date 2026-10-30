@@ -53,10 +53,10 @@ BAYER = np.array([[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]])
 
 # ------------------------------------------------------------------ model
 class Prim:
-    __slots__ = ('c', 'r', 'part', 'fluff', 'dark', 'flow')
+    __slots__ = ('c', 'r', 'part', 'fluff', 'dark', 'flow', 'paw')
 
     def __init__(self, c, r, part='body', fluff=0.0, dark=0.0, flow=(0, 0, 1)):
-        self.c = np.array(c, float); self.r = np.array(r, float); self.part = part; self.fluff = fluff; self.dark = dark
+        self.c = np.array(c, float); self.r = np.array(r, float); self.part = part; self.fluff = fluff; self.dark = dark; self.paw = False
         f = np.array(flow, float); self.flow = f / (np.linalg.norm(f) + 1e-9)
 
 
@@ -334,7 +334,7 @@ class Render:
         for dy, dx in ((0, 1), (1, 0)):
             nid = roll(ids, -dy, -dx)
             nd = roll(d, -dy, -dx)
-            diff = (nid != ids) & (nid >= 0) & (ids >= 0) & self.mask & roll(self.mask, -dy, -dx) & (np.abs(nd - d) > 1.4)
+            diff = (nid != ids) & (nid >= 0) & (ids >= 0) & self.mask & roll(self.mask, -dy, -dx) & (np.abs(nd - d) > 0.9)
             far_here = d <= nd
             pb |= diff & far_here
             pb |= roll(diff & ~far_here, dy, dx)

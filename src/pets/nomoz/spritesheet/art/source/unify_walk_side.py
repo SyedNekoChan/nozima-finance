@@ -23,7 +23,10 @@ OUT = ART / 'walk_side_even'
 # how frame k's tail root sits against frame 1's: the pasted tail moves by (dx, dy) so its root meets this frame's back line
 OFFSET = {0: (0, -2), 1: (0, 0), 2: (0, 0)}
 # frame 0 only: the rump under the old (lower) tail root, rebuilt: rows -> how many columns right of x = 63 the rump reaches
-RUMP = {0: {33: 2, 34: 3, 35: 4, 36: 4, 37: 4, 38: 3, 39: 3, 40: 2, 41: 2, 42: 1}}
+RUMP = {0: {y: 1 for y in range(29, 39)} | {39: 1, 40: 2, 41: 2, 42: 2}}
+# frame 0 only: its back dips toward the rump (the old low tail pulled it down); the raised tail wants the level back line of
+# frame 1, so the rows of the back line over the rump are taken from frame 1
+BACK = {0: (24, 29, 50, 64)}   # rows y0..y1, columns x0..x1 copied where this frame is empty
 
 
 def mask_of(entry):
@@ -55,6 +58,12 @@ def main():
                 if 0 <= Y < H and 0 <= X < W and not (src[k][Y, X, 3] > 0 and not masks[k][Y, X]):
                     f[Y, X] = canon[y, x]
                     pasted[Y, X] = True
+            if k in BACK:
+                y0, y1, x0, x1 = BACK[k]
+                for y in range(y0, y1):
+                    for x in range(x0, x1 + 1):
+                        if f[y, x, 3] == 0 and canon[y, x, 3] > 0 and not cmask[y, x]:
+                            f[y, x] = canon[y, x]
             for y, reach in RUMP.get(k, {}).items():
                 for x in range(64, 64 + reach):
                     if f[y, x, 3] == 0 and f[y, 63, 3] > 0:
