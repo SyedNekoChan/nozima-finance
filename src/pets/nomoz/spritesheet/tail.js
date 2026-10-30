@@ -213,11 +213,11 @@ export function lickAt(now) {
   if (t >= burstEnd) return { tongue: 0, dip: 0, paw: 0, wet: 0 };
   const k = Math.min(strokes - 1, Math.floor(t / STROKE));
   const u = t - k * STROKE;
-  const paw = t >= 50 ? 1 : 0;
-  const wet = u >= 200 || k > 0 ? 1 : 0;
-  if (u < 50) return { tongue: 1, dip: 0, paw, wet };
-  if (u < 200) return { tongue: 2, dip: 1, paw, wet: 0 };
-  if (u < 255) return { tongue: 1, dip: 1, paw, wet: 1 };
+  const paw = t >= 40 ? 1 : 0;
+  const wet = u >= 250 || k > 0 ? 1 : 0;
+  if (u < 40) return { tongue: 1, dip: 0, paw, wet };
+  if (u < 250) return { tongue: 2, dip: 1, paw, wet: 0 };
+  if (u < 300) return { tongue: 1, dip: 1, paw, wet: 1 };
   return { tongue: 0, dip: 0, paw, wet: 1 };
 }
 
@@ -234,3 +234,67 @@ export function mouthLick(now, start) {
  * carries on through redraws.
  */
 export const breathAt = (now, ms) => ((now % ms) / ms < 0.45 ? 1 : 0);
+
+/* ---- pose transitions -------------------------------------------------------------------------------------------- */
+
+/*
+ * A clip change is a hard cut (a dissolve laid two poses over each other), so the big changes get intentional frames
+ * instead: the cat crouches before it rises, springs, or stretches (anticipation: the OUTGOING frame, squashed), and
+ * lands or settles squashed and then eases back up (the INCOMING frame, squashed less each beat). A squash drops rows
+ * below the neck, so the head and ruff keep their approved pixels and only the body compresses; every beat is a whole
+ * opaque frame, and never two poses at once.
+ *
+ *   step: { ms, which: 'old' | 'new', rows }   rows > 0 squash, rows < 0 stretch
+ */
+const FAMILY = (id) => {
+  if (/^(idle_front|sit_)/.test(id)) return 'sit';
+  if (/^(curl|loaf_front|low_front)$/.test(id)) return 'lie';
+  if (/^(walk_|stand_|creep_|crouch_)/.test(id)) return 'up';
+  if (/^leap_/.test(id)) return 'leap';
+  if (id === 'stretch') return 'stretch';
+  return null;
+};
+
+export function transitionPlan(fromId, toId) {
+  const a = FAMILY(fromId || '');
+  const b = FAMILY(toId || '');
+  if (!a || !b || fromId === toId) return null;
+  if (a === 'leap' && b !== 'leap') return [{ ms: 70, which: 'new', rows: 3 }, { ms: 60, which: 'new', rows: 1 }]; // landing
+  if (b === 'leap') return [{ ms: 80, which: 'old', rows: 4 }, { ms: 60, which: 'new', rows: -2 }]; // crouch, then spring
+  if ((a === 'sit' || a === 'lie') && b === 'up') return [{ ms: 70, which: 'old', rows: 3 }, { ms: 60, which: 'new', rows: 2 }, { ms: 50, which: 'new', rows: 1 }]; // rise
+  if (a === 'up' && (b === 'sit' || b === 'lie')) return [{ ms: 60, which: 'new', rows: 3 }, { ms: 70, which: 'new', rows: 1 }]; // settle
+  if (b === 'stretch' && a !== 'stretch') return [{ ms: 80, which: 'old', rows: 3 }]; // gather up, then reach
+  if (a === 'stretch') return [{ ms: 60, which: 'new', rows: 2 }, { ms: 50, which: 'new', rows: 1 }]; // come out of it
+  if (a === 'lie' && b === 'sit') return [{ ms: 60, which: 'new', rows: 2 }];
+  return null;
+}
+
+// The step of a plan running at `elapsed` ms since the change, or null when it is over.
+export function stepAt(plan, elapsed) {
+  let t = 0;
+  for (const step of plan) {
+    t += step.ms;
+    if (elapsed < t) return { ...step, left: t - elapsed };
+  }
+  return null;
+}
+
+/*
+ * Row map of a squash: for each destination row 0..h-1 the source row it shows, or -1 (empty). The rows above `cut`
+ * (head and ruff) move down by `rows` as they are; the body between `cut` and the last `feet` rows is resampled to
+ * `rows` fewer (or more) rows; the feet rows stay where they are, so the paws never leave the floor.
+ */
+export function squashMap(h, cut, rows, feet = 6) {
+  const map = new Array(h).fill(-1);
+  const lowEnd = h - feet; // first of the feet rows
+  const n = lowEnd - cut; // body rows in the source
+  const m = n - rows; // ... and in the squashed frame
+  if (m < 2 || cut < 0 || lowEnd <= cut) {
+    for (let y = 0; y < h; y++) map[y] = y;
+    return map;
+  }
+  for (let y = 0; y < cut; y++) if (y + rows >= 0 && y + rows < h) map[y + rows] = y;
+  for (let r = 0; r < m; r++) map[cut + rows + r] = cut + Math.min(n - 1, Math.floor((r * n) / m));
+  for (let y = lowEnd; y < h; y++) map[y] = y;
+  return map;
+}

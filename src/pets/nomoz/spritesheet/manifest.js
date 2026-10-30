@@ -93,9 +93,10 @@ const clips = {
 // body is at its highest. It plays 0 3 2 4, a full stride in four beats.
 const STRIDE = [0, 3, 2, 4];
 for (const view of VIEWS) {
-  const walkArt = `walk_${view}`;
+  // the side walk is the approved one with a single tail (walk_side_even): the approved frames bake three different tails
+  const walkArt = view === 'side' ? 'walk_side_even' : `walk_${view}`;
   const creepArt = `creep_${view}`;
-  clips[walkArt] = view === 'side' ? clip(walkArt, [0, 1, 2], { ms: WALK }) : clip(walkArt, STRIDE, { ms: Math.round((WALK * 3) / 4) });
+  clips[`walk_${view}`] = view === 'side' ? clip(walkArt, [0, 1, 2], { ms: WALK }) : clip(walkArt, STRIDE, { ms: Math.round((WALK * 3) / 4) });
   clips[`stand_${view}`] = clip(walkArt, [1]); // arriving or waiting on four legs
   clips[creepArt] = clip(creepArt, STRIDE, { ms: Math.round((CREEP * 3) / 4) });
   clips[`crouch_${view}`] = clip(creepArt, [1]);

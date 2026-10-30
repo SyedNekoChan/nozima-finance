@@ -43,6 +43,7 @@ export const ART = {
   stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'full-body stretch (scaled to fit the box)' },
   // generated (art/source/generate_production.py)
   walk_front: { frames: 5, from: 'generated', head: 'front', face: 'front', note: 'walking toward us: contact, standing, contact, two passing poses (0 3 2 4); rendered body and legs, approved head and ruff' },
+  walk_side_even: { frames: 3, from: 'generated', head: 'side', face: 'profile', note: 'the approved walk_side with one tail in every frame (frame 1\'s tail pasted over the others\' own; art/source/unify_walk_side.py): the production side walk' },
   walk_frontQ: { frames: 5, from: 'generated', head: 'threeq', face: 'threeq', note: 'walking, three-quarter view toward us, facing left; approved three-quarter head' },
   walk_rearQ: { frames: 5, from: 'generated', head: 'rearQ', chest: false, note: 'walking away, three-quarter view, facing left; fully rendered head' },
   walk_rear: { frames: 5, from: 'generated', head: 'rear', note: 'walking away: approved rear head, rendered haunches, hind legs and raised tail' },

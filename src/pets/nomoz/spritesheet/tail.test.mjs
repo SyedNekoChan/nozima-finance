@@ -171,3 +171,44 @@ test('walking: the tail swings once per stride (the clip cycle)', () => {
   assert.equal(tailTarget({ legs: 1 }, 1, 0).period, 1500, 'no gait: the default');
   assert.equal(tailTarget({ legs: 0 }, 1, 960).period, 3300, 'standing still ignores it');
 });
+
+import { squashMap, stepAt, transitionPlan } from './tail.js';
+
+test('transition plans: crisp anticipation and settling frames for the big pose changes, none for the small ones', () => {
+  assert.equal(transitionPlan('idle_front', 'walk_front')[0].which, 'old', 'it crouches before it rises');
+  assert.equal(transitionPlan('walk_front', 'idle_front')[0].which, 'new', 'it settles into the sit');
+  assert.equal(transitionPlan('walk_side', 'leap_side')[0].which, 'old', 'crouch before the spring');
+  assert.ok(transitionPlan('walk_side', 'leap_side').some((s) => s.rows < 0), 'and a stretch as it leaves the ground');
+  assert.equal(transitionPlan('leap_front', 'stand_front')[0].rows, 3, 'it lands squashed');
+  assert.ok(transitionPlan('idle_front', 'stretch'));
+  assert.ok(transitionPlan('stretch', 'idle_front'));
+  assert.ok(transitionPlan('idle_front_closed', 'curl') === null, 'sit to curl is a plain cut');
+  assert.equal(transitionPlan('walk_front', 'walk_side'), null, 'a change of direction is a plain cut');
+  assert.equal(transitionPlan('idle_front', 'idle_front_closed'), null, 'a blink is not a transition');
+  assert.equal(transitionPlan('idle_front', 'sit_groom'), null);
+  for (const [a, b] of [['idle_front', 'walk_front'], ['walk_front', 'idle_front'], ['stand_side', 'leap_side'], ['leap_side', 'stand_side'], ['crouch_front', 'stretch'], ['stretch', 'stand_front']]) {
+    const plan = transitionPlan(a, b);
+    assert.ok(plan.reduce((t, s) => t + s.ms, 0) <= 200, `${a} -> ${b} is quick`);
+  }
+  const plan = transitionPlan('idle_front', 'walk_front');
+  assert.equal(stepAt(plan, 0).which, 'old');
+  assert.equal(stepAt(plan, 100).which, 'new');
+  assert.equal(stepAt(plan, 10_000), null);
+});
+
+test('squashMap: the head keeps its pixels, the feet stay on the floor, the body loses rows', () => {
+  const h = 64;
+  const m = squashMap(h, 30, 3);
+  for (let y = 0; y < 30; y++) assert.equal(m[y + 3], y, 'head and ruff move down whole');
+  for (let y = 58; y < h; y++) assert.equal(m[y], y, 'feet rows are untouched');
+  assert.deepEqual(m.slice(0, 3), [-1, -1, -1], 'the rows the head left are empty');
+  let last = 29;
+  for (let y = 33; y < 58; y++) {
+    assert.ok(m[y] >= last && m[y] - last <= 2, 'body rows stay in order, none skipped by more than one');
+    last = m[y];
+  }
+  const stretched = squashMap(h, 30, -2);
+  assert.equal(stretched[27], 29, 'a stretch lifts the head');
+  assert.equal(stretched[28], 30);
+  assert.equal(squashMap(h, 62, 3)[10], 10, 'a degenerate cut leaves the frame alone');
+});

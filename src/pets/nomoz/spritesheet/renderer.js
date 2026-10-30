@@ -2,7 +2,7 @@ import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
 import { fitsImage, frameAt, frameRect, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
-import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, stepTail, tailTarget } from './tail.js';
+import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
 
 /*
  * The sprite-sheet render path, selected by SPRITE_RENDERER in ../config.js.
@@ -64,7 +64,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, lickAt: -1e9, wasLick: false, scratch: null, last: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, trans: null, lickAt: -1e9, wasLick: false, scratch: null, last: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -72,6 +72,9 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   }
 
   const begin = (c, clip, now) => {
+    // a big pose change gets anticipation / settling beats (tail.js transitionPlan), never a dissolve
+    const plan = c.clip && clip && c.last && !prefersReducedMotion() ? transitionPlan(c.clip.id, clip.id) : null;
+    c.trans = plan ? { plan, start: now } : null;
     c.clip = clip;
     c.t0 = now;
     c.shown = false; // the clock starts when its first frame is on screen
@@ -264,8 +267,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   // a small pink tongue: level 1 = the tip, 2 = out; (x, y) is its top-left
   const TONGUE = { tip: '#ff9db8', body: '#e0708c', edge: '#8a3550', line: '#2a1119' };
   // rows of the tongue at full length: t tip, b body, e edge (its shaded underside)
-  const TONGUE_OUT = ['.tt.', 'bttb', 'bttb', '.be.', '..e.'];
-  const TONGUE_TIP = ['.tt.', 'bttb'];
+  const TONGUE_OUT = ['.ttt.', 'bttbb', 'bttbb', 'bbtbe', '.bbe.', '..e..'];
+  const TONGUE_TIP = ['.tt.', 'bttb', '.be.'];
   const TONGUE_SHORT = ['.tt.', 'bttb', '.be.']; // at the mouth: short enough to clear the worn coin
   function drawTongue(ac, at, level, long) {
     if (!at || !level) return;
@@ -275,7 +278,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     // a dark one-pixel line round it, so the pink reads against both dark fur and the lit paw (it matters at phone size)
     ac.fillStyle = TONGUE.line;
     for (let dy = -1; dy <= rows.length; dy++) {
-      for (let dx = -1; dx <= 4; dx++) {
+      for (let dx = -1; dx <= 5; dx++) {
         if (!has(dx, dy) && (has(dx - 1, dy) || has(dx + 1, dy) || has(dx, dy - 1) || has(dx, dy + 1))) ac.fillRect(x + dx, y + dy, 1, 1);
       }
     }
@@ -295,7 +298,14 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const ox = Math.round(ax - px);
     const oy = Math.round(ay - py);
     const { head, base, whiskers } = clip.dynamic;
-    const an = clip.anchors && (clip.anchors[index] || clip.anchors[0]);
+    let an = clip.anchors && (clip.anchors[index] || clip.anchors[0]);
+    const squash = fx && fx.squash ? fx.squash : null;
+    const rows = squash ? squash.rows : 0;
+    if (an && rows) {
+      // everything that sits on the head or chest goes down with it
+      const dn = (pt) => pt && [pt[0], pt[1] + rows, ...pt.slice(2)];
+      an = { ...an, crown: dn(an.crown), chest: dn(an.chest), mouth: dn(an.mouth), eyes: an.eyes && an.eyes.map(dn), whiskers: an.whiskers && an.whiskers.map(dn) };
+    }
     // the crown slot is (hx + 12, hy + 3) and the chest slot is the chest point
     const anchor = an
       ? {
@@ -321,10 +331,26 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         bent = cv;
       }
     }
-    const src = bent || image;
-    const sx = bent ? 0 : rect.x;
-    const sy = bent ? 0 : rect.y;
-    const sil = () => silhouette(clip, index, src, { ...rect, x: sx, y: sy }, ox, oy, cw, ch, !!bent);
+    let src = bent || image;
+    let sx = bent ? 0 : rect.x;
+    let sy = bent ? 0 : rect.y;
+    if (rows) {
+      // the squashed frame: the rows below the neck are dealt out again, whole rows only (opaque, crisp, one pose)
+      const cv = fx.holder.squashed || (fx.holder.squashed = document.createElement('canvas'));
+      cv.width = rect.w;
+      cv.height = rect.h;
+      const sc = cv.getContext('2d');
+      sc.imageSmoothingEnabled = false;
+      const cut = an && an.chest ? an.chest[1] - rows : Math.round(rect.h * 0.45);
+      squashMap(rect.h, cut, rows).forEach((from, y) => {
+        if (from >= 0) sc.drawImage(src, sx, sy + from, rect.w, 1, 0, y, rect.w, 1);
+      });
+      src = cv;
+      sx = 0;
+      sy = 0;
+    }
+    const isBent = !!bent || !!rows;
+    const sil = () => silhouette(clip, index, src, { ...rect, x: sx, y: sy }, ox, oy, cw, ch, isBent);
 
     if (fx && fx.record) fx.record({ clip, sheet, image, index, rect, ox, oy });
     const body = {
@@ -335,7 +361,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         try {
           ac.imageSmoothingEnabled = false;
           // the head and shoulders dip a row into each lick (grooming) or with each breath (sitting)
-          const lickDip = fx && fx.lick && clip.lick ? fx.lick.dip : 0;
+          const lickDip = !rows && fx && fx.lick && clip.lick ? fx.lick.dip : 0;
           const breath = !lickDip && fx && fx.breath && clip.breathe ? 1 : 0;
           const dip = lickDip || breath;
           const cut = lickDip ? clip.lick.dip : breath ? clip.breathe.cut : 0;
@@ -345,7 +371,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
           } else {
             ac.drawImage(src, sx, sy, rect.w, rect.h, ox, oy, rect.w, rect.h);
           }
-          if (fx && fx.lick && clip.lick) {
+          if (!rows && fx && fx.lick && clip.lick) {
             const L = clip.lick;
             // the paw comes up to meet the tongue while the head goes down
             if (fx.lick.paw && L.paw) {
@@ -437,6 +463,17 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       fail(clip.id, entry.status === 'ready' ? 'the sheet is smaller than its frame grid' : 'the sheet failed to load');
       return null;
     }
+    // the beats of a pose change: the outgoing frame squashed (anticipation), then the new one squashed less each beat
+    let step = null;
+    if (c.trans) {
+      step = stepAt(c.trans.plan, now - c.trans.start);
+      if (!step) c.trans = null;
+    }
+    const last = c.last;
+    if (step && step.which === 'old' && last && !bad.has(last.clip.id)) {
+      const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null, squash: { rows: step.rows } };
+      return { body: makeBody(last.clip, last.sheet, last.image, last.index, ctx.canvas.width, ctx.canvas.height, still), wait: step.left };
+    }
     if (!c.shown) {
       c.shown = true;
       c.t0 = now;
@@ -444,12 +481,18 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const reduced = prefersReducedMotion();
     const pos = reduced ? { index: clip.still, wait: Infinity } : frameAt(clip, now - c.t0);
     const fx = motionFor(c, clip, c.params, now, reduced);
+    if (step) {
+      fx.squash = { rows: step.rows };
+      fx.lick = null;
+      fx.breath = 0;
+    }
     fx.record = (f) => {
       c.last = { ...f, at: now };
     };
     const body = makeBody(clip, sheet, entry.image, pos.index, ctx.canvas.width, ctx.canvas.height, fx);
     const hidden = typeof document !== 'undefined' && document.hidden;
     let wait = hidden ? pos.wait : Math.min(pos.wait, fx.wait);
+    if (step) wait = Math.min(wait, step.left);
     // the tail and the tongue move between frames: come back soon (not at all when the tab is hidden)
     if (fx.animating && !hidden) wait = Math.min(wait, fx.lick ? 60 : 100);
     return { body, wait };

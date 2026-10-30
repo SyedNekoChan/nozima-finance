@@ -48,7 +48,7 @@ test('gaps.mjs --strict exits non-zero while stand-ins remain, and --json is par
   assert.equal(JSON.parse(json.stdout).missing.length, missing.length);
 });
 
-/* ---- the generated production frames (51 frames, 13 folders) ---- */
+/* ---- the generated production frames (54 frames, 14 folders) ---- */
 const FUR = new Set(['3,3,5', '9,8,11', '14,13,16', '16,15,19', '18,18,22', '21,21,25', '24,23,27', '24,24,28', '27,27,30', '37,36,39']);
 const loadFrames = (id) =>
   readdirSync(join(HERE, 'art', id))
@@ -61,9 +61,9 @@ const lowestRow = (img) => {
   return -1;
 };
 
-test('generated frames: 13 folders, 51 frames, and the counts match spec.js', () => {
-  assert.equal(generatedIds.length, 13);
-  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 51);
+test('generated frames: 14 folders, 54 frames, and the counts match spec.js', () => {
+  assert.equal(generatedIds.length, 14);
+  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 54);
   for (const id of generatedIds) assert.equal(loadFrames(id).length, ART[id].frames, id);
 });
 
@@ -118,7 +118,7 @@ test('generated frames: each step cycle has five different leg poses (two contac
     for (let y = 44; y < 62; y++) for (let x = 0; x < img.width; x++) h = (h * 31 + img.rgba[(y * img.width + x) * 4 + 3] * (x + 1)) | 0;
     return h;
   };
-  for (const id of generatedIds.filter((x) => /^(walk|creep)_/.test(x))) {
+  for (const id of generatedIds.filter((x) => /^(walk|creep)_/.test(x) && x !== 'walk_side_even')) {
     const hs = loadFrames(id).map(lower);
     assert.equal(new Set(hs).size, 5, `${id}: the five poses (two contacts, standing, two passing) should all differ`);
   }
