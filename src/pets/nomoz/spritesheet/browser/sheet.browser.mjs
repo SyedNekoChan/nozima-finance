@@ -326,9 +326,9 @@ describe('real browser: renderer with the shipped sheets', () => {
   });
 
   // the head region (rows 0-44) of a state's canvas, hashed, once settled; and over a time window
-  const headHash = (page, state, ms = 0, step = 60) =>
+  const headHash = (page, state, ms = 0, step = 60, xMax = 96) =>
     page.evaluate(
-      async ({ state, ms, step }) => {
+      async ({ state, ms, step, xMax }) => {
         const H = window.H;
         const render = H.real();
         const a = H.make(render);
@@ -339,13 +339,13 @@ describe('real browser: renderer with the shipped sheets', () => {
         do {
           const d = a.g.getImageData(0, 0, 96, 64).data;
           let h = 0;
-          for (let y = 0; y < 45; y++) for (let x = 0; x < 96; x++) { const o = (y * 96 + x) * 4; h = (h * 31 + (d[o + 3] ? d[o] * 3 + d[o + 1] * 5 + d[o + 2] * 7 + 1 : 0) + x) | 0; }
+          for (let y = 0; y < 45; y++) for (let x = 0; x < xMax; x++) { const o = (y * 96 + x) * 4; h = (h * 31 + (d[o + 3] ? d[o] * 3 + d[o + 1] * 5 + d[o + 2] * 7 + 1 : 0) + x) | 0; }
           seen.add(h);
           if (ms) await H.wait(step);
         } while (performance.now() - t0 < ms);
         return [...seen];
       },
-      { state, ms, step }
+      { state, ms, step, xMax }
     );
 
   guard('expression: ears (perk, back, flick) and a head lean change the face on the sitting art, in every sitting view', async () => {
@@ -367,8 +367,9 @@ describe('real browser: renderer with the shipped sheets', () => {
       const flick = await headHash(page, { view, ears: 'flickL' }, 1100, 40);
       assert.ok(flick.length >= 2, `${view}: the flicking ear never moved`);
       // walking art has no ears to move: an ears state changes nothing there
-      const walkA = (await headHash(page, { pose: 'stand', legs: 0, view: 'side' }))[0];
-      const walkB = (await headHash(page, { pose: 'stand', legs: 0, view: 'side', ears: 'perk', lean: 1 }))[0];
+      // (left of the tail, which sways on its own)
+      const walkA = (await headHash(page, { pose: 'stand', legs: 0, view: 'side' }, 0, 60, 60))[0];
+      const walkB = (await headHash(page, { pose: 'stand', legs: 0, view: 'side', ears: 'perk', lean: 1 }, 0, 60, 60))[0];
       assert.equal(walkA, walkB);
     }
     assert.deepEqual(errors, []);
