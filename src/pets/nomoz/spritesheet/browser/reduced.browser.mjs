@@ -1,5 +1,5 @@
 /*
- * Reduced motion in the real app (default procedural renderer), Chromium.
+ * Reduced motion in the real app (the sprite-sheet renderer), Chromium.
  *
  *   npm run test:browser
  *

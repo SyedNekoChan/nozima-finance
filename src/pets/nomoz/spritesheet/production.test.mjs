@@ -4,7 +4,6 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SPRITE_RENDERER } from '../config.js';
 import { ART } from './spec.js';
 import { artGaps } from './gaps.mjs';
 import { decodePng } from './png.mjs';
@@ -16,15 +15,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * can show is real, approved art. Frames assembled by code from approved parts
  * (`from: 'built'`) are stand-ins and block that switch; 'generated' art
  * (rendered by code, labelled as such) and 'reference' art pass. This test is the gate:
- * flipping SPRITE_RENDERER.mode to 'sheet' fails here until `gaps.mjs` is clean.
+ * it fails until `gaps.mjs` is clean.
  */
-test('production gate: the sheet renderer is only enabled when no stand-in art is used', () => {
+test('production gate: the sheet renderer is the only renderer, so no stand-in art may be used', () => {
   const { missing } = artGaps();
-  if (SPRITE_RENDERER.mode === 'sheet') {
-    assert.deepEqual(missing.map((m) => m.id), [], 'sheet mode is on but these art folders are code-built stand-ins');
-  } else {
-    assert.equal(SPRITE_RENDERER.mode, 'procedural');
-  }
+  assert.deepEqual(missing.map((m) => m.id), [], 'these art folders are code-built stand-ins');
 });
 
 test('gap report: every art folder is classified, and the lists add up', () => {

@@ -50,28 +50,13 @@ export const REST_PATCH = {
 /* World overrides for this pet (see WORLD in src/pets/config.js). */
 export const WORLD_OVERRIDES = {};
 
-/* Sprite box: 56 x 60 logical pixels, scaled by a whole number. */
+/* Procedural coordinate box: 56 x 60 logical pixels. The overlays (effects, items, cues, vanity) and the head anchors are laid out in it; the sheet canvas (SHEET_SPRITE_SIZE) is larger and centres it. */
 export const SPRITE_SIZE = { width: 56, height: 60 };
 
 /*
- * Which renderer draws the cat.
- *   'sheet'      : the production pet: sprite-sheet clips from
- *                  ./spritesheet/manifest.js (approved reference art plus the
- *                  generated frames, see spritesheet/SPEC.md), with the
- *                  procedural renderer as the per-frame fallback (a sheet that
- *                  fails to load, an unknown pose) and the source of the
- *                  dynamic overlays and live eyes. Gated by
- *                  spritesheet/production.test.mjs: no stand-in art allowed.
- *   'procedural' : the pixel-grid renderer in ./sprites.js, the earlier cat,
- *                  kept as the fallback and for tests.
- */
-export const SPRITE_RENDERER = { mode: 'sheet' };
-
-/*
- * Sprite box of the 'sheet' mode: the reference-style cat is larger than the
- * procedural one (96 x 64 frames, see spritesheet/spec.js). The procedural
- * cat is drawn centred inside it, so it stays the per-frame fallback. Keep
- * width - 56 even. Procedural mode keeps SPRITE_SIZE.
+ * Sprite box of the pet: the sheet frames are 96 x 64 (see spritesheet/spec.js).
+ * The 56 x 60 procedural coordinate box (SPRITE_SIZE) is centred inside it.
+ * Keep width - 56 even.
  */
 export const SHEET_SPRITE_SIZE = { width: 96, height: 64 };
 

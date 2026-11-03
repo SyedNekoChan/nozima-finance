@@ -3,12 +3,10 @@
  *
  * The one place where sprite sheets and animation clips are registered. The
  * renderer (./renderer.js), the loader (./loader.js) and the scheduler never
- * change when an asset is added: add to `sheets`, `clips` and `select`. The
- * sheets are used only when SPRITE_RENDERER.mode in ../config.js is 'sheet'
- * (it is 'sheet', the production setting). Any state with no matching rule,
- * or whose sheet is loading or failed, keeps the frame on screen (the
- * default sitting frame when nothing is shown yet); the procedural cat in
- * ../sprites.js is never drawn in sheet mode. Art, sizes and workflow: ./SPEC.md.
+ * change when an asset is added: add to `sheets`, `clips` and `select`. Any
+ * state with no matching rule, or whose sheet is loading or failed, keeps the
+ * frame on screen (the default sitting frame when nothing is shown yet); no
+ * procedural cat is ever drawn. Art, sizes and workflow: ./SPEC.md.
  *
  * SHEETS   id -> { src, frameWidth, frameHeight, columns, rows, margin?, spacing? }
  *   One row of 96 x 64 frames per art folder (see spec.js), built by

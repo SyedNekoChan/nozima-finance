@@ -705,12 +705,12 @@ frame art those fields select lives in `nomoz/sprites.js`:
 
 #### Sprite-sheet renderer (production)
 
-`nomoz/spritesheet/` can draw the cat from PNG sheets instead of
-`sprites.js`. `SPRITE_RENDERER.mode` in `nomoz/config.js` selects it;
-the shipped value is `'sheet'`; `'procedural'` is the one-line revert. In sheet mode the procedural cat is never drawn,
-not even for a frame: all sheets load when the renderer is created, and a state whose sheet is loading, failed or
-unmatched keeps the frame on screen (`flash.browser.mjs`). Sheet
-mode uses a 96 x 64 box (`SHEET_SPRITE_SIZE`); the procedural drawing sits
+`nomoz/spritesheet/` draws the cat from PNG sheets; it is the only renderer
+(the earlier procedural cat renderer and its `SPRITE_RENDERER` switch have been
+removed). `sprites.js` remains as the overlay layer: live eyes and whiskers, lighting, effects, items, cues and the
+head anchors. Nothing is drawn in place of the cat: all sheets load when the renderer is created, and a state whose sheet is loading, failed or
+unmatched keeps the frame on screen (`flash.browser.mjs`). The sprite
+box is 96 x 64 (`SHEET_SPRITE_SIZE`); the overlay coordinate space sits
 in a 56 x 60 area at the bottom centre, so effects, items and cues keep
 their coordinates and follow the art's head through per-frame anchors.
 
@@ -726,19 +726,16 @@ their coordinates and follow the art's head through per-frame anchors.
   (`art/source/render_cat.py`; not hand-drawn, not SpriteForge).
 - Motion over the still frames (`tail.js`): the tail pixels listed per frame (`art/tails.json`) are bent every ~100 ms with a continuous, eased swing (idle, grooming, dozing, walking, swish, lash), a grooming cat strokes its paw with a tongue while the head dips and the paw rises, single-frame sitting art breathes, and a clip change is a clean hard cut (no dissolve). Reduced motion draws the still frames.
 - World props (the treasure coins) are drawn behind or in front of the pet by depth, but a prop never changes side while it overlaps the pet's body (`core/layering.js`, used by `components/Anomaly.jsx`), and `moveProp(..., { around })` routes a prop that must change side round the pet's footprint, so coins travel in front of or behind the cat, never through it. Props are one list stacked with `z-index` (0 behind, 2 in front, the cat 1), so a prop that changes side keeps its element and its glide; `coins.browser.mjs` runs the real scheduler's `treasure` behavior in the real app and asserts no coin changes side while inside the cat's body.
-- Production gate: `npm run sheets:gaps` separates approved, code-generated and stand-in art; sheet mode may only be on while no stand-ins remain, enforced by `production.test.mjs`.
+- Production gate: `npm run sheets:gaps` separates approved, code-generated and stand-in art; no stand-ins may remain, enforced by `production.test.mjs`.
 - Tooling and tests: `npm run sheets:build`, `sheets:validate`,
   `sheets:audit` (every pose / view / leg state must select a clip) and
   `npm test` (unit tests, approved-frame hash guard, the three tools in
   strict mode). CI runs `npm test` before the build. `npm run test:browser` runs real-Chromium
   tests with the pinned `playwright` devDependency (browser installed by
   `npx playwright install chromium`): the shipped sheets through the real
-  renderer at desktop and mobile sizes, frame timing, reduced motion, fallback,
-  tab hiding, the app on Vite dev servers, and production builds (shipped and
-  procedural/sheet pinned) served with `vite preview`: emitted sheets match the sources byte
-  for byte, load as `image/png`, and render. Sheet mode is switched on in memory
-  by a Vite plugin around the existing `SPRITE_RENDERER` constant; the shipped
-  config is `'sheet'`. Locally the browser tests skip with a reason when
+  renderer at desktop and mobile sizes, frame timing, reduced motion, missing sheets,
+  tab hiding, the app on Vite dev servers, and the production build served with `vite preview`: emitted sheets match the sources byte
+  for byte, load as `image/png`, and render. Locally the browser tests skip with a reason when
   Chromium is missing; with `CI=true` or `REQUIRE_BROWSER=1` that is an error.
   `.github/workflows/ci.yml` (pull requests, non-master pushes) and the deploy
   workflow both run `npm ci`, `npm test`, `test:browser` and the build.

@@ -5,10 +5,10 @@ import { getSheetImage } from './loader.js';
 import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, exprFor, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
 
 /*
- * The sprite-sheet render path, selected by SPRITE_RENDERER in ../config.js.
+ * The sprite-sheet render path: the pet's only renderer (see ../index.js).
  *
- * It wraps the procedural renderer instead of replacing it. Every frame the
- * procedural renderer still runs in full (pupil easing and gaze, the head
+ * It wraps the overlay renderer (renderSprite) instead of replacing it. Every frame the
+ * overlay renderer still runs in full (pupil easing and gaze, the head
  * anchor the vanity items use, lighting, stress / glitch passes, effects,
  * cues, items), and it is always handed a "body" hook that paints a sheet
  * frame where the procedural fur would go, plus any `dynamic` procedural
@@ -46,8 +46,8 @@ function prefersReducedMotion() {
 
 export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) {
   const man = normalizeManifest(manifest);
-  // nothing usable registered: the procedural renderer, unchanged
-  if (!man.select.length) return fallback;
+  // nothing usable registered: nothing is drawn
+  if (!man.select.length) return () => {};
 
   const states = new WeakMap();
   const bad = new Set(); // clip ids that failed once; their frames are replaced by the held / default sheet frame from then on
@@ -375,7 +375,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     if (fx && fx.record) fx.record({ clip, sheet, image, index, rect, ox, oy });
     const body = {
       under: clip.under ? sil() : false,
-      noProcedural: true, // if this body cannot paint, the procedural cat is still not drawn: draw() holds a sheet frame instead
       failed: false,
       paint(ac, info) {
         try {
@@ -569,7 +568,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       try {
         fallback(ctx, params, c.vanity, b);
       } catch (err) {
-        if (!b) throw err;
         fail(b.clipId || (clip && clip.id) || 'body', err.message);
         b.failed = true;
       }

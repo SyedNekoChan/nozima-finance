@@ -41,21 +41,3 @@ export function maybeTransition(S, c, t, { chance = 0.4, pool = TRANSITIONS, opt
   if (c.rng() >= chance) return t;
   return S.play(weighted(c.rng, pool), t, opts) + rnd(c.rng, 150, 450);
 }
-
-/*
- * A burst of typing: paws alternate on the keys (`level` per paw), with
- * onKey(t, i) called for each keystroke so the prop can follow along.
- * fast: an exaggerated flurry. Returns the end time.
- */
-export function typeBurst(S, c, t0, n, { level = 'low', fast = false, onKey } = {}) {
-  let t = t0;
-  const [lo, hi] = fast ? [70, 110] : [130, 240];
-  for (let i = 0; i < n; i++) {
-    const left = i % 2 === 0 || (!fast && c.rng() < 0.25);
-    S.at(t, left ? { pawL: level, pawR: null } : { pawL: null, pawR: level });
-    onKey?.(t, i);
-    t += rnd(c.rng, lo, hi);
-  }
-  S.at(t, { pawL: null, pawR: null });
-  return t + 60;
-}

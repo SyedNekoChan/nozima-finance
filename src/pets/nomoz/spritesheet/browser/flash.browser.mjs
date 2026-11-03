@@ -1,16 +1,16 @@
 /*
- * No procedural cat while the sheet cat is active, in the real app (real scheduler, real React layers, real renderer),
+ * No blank frame while the sheet cat is active, in the real app (real scheduler, real React layers, real renderer),
  * in real Chromium.
  *
  *   npm run test:browser
  *
  * The bug this guards against: a pose whose sheet had not loaded yet (the sheets used to be fetched only when a clip
- * first needed them), a failed sheet or a failed paint made the sheet renderer hand the frame to the OLD procedural
- * cat, which showed for one or more frames in the middle of an animation, then snapped back to the sheet cat.
+ * first needed them), a failed sheet or a failed paint made the sheet renderer hand the frame to a (since removed)
+ * procedural cat, which showed for one or more frames in the middle of an animation, then snapped back to the sheet cat.
+ * That renderer no longer exists; the frame on screen is now held, so no frame may go blank.
  *
- * Two test-server probes (support.mjs, in memory, the source is not edited):
- *   - proceduralProbePlugin records every draw that ends up as the procedural cat (window.__nomozProcedural)
- *   - schedulerProbePlugin exposes the real scheduler, which the test stops and then drives through real state changes
+ * One test-server probe (support.mjs, in memory, the source is not edited): schedulerProbePlugin exposes the real
+ * scheduler, which the test stops and then drives through real state changes
  * and page.route delays or blocks the sheet requests so transitions happen while sheets are missing.
  */
 import { before, after, test } from 'node:test';
@@ -33,7 +33,7 @@ before(async () => {
   } catch (err) {
     return void unavailable(`Chromium could not launch: ${String(err.message).split('\n')[0]}`);
   }
-  dev = await startVite(undefined, { probe: true, proceduralProbe: true });
+  dev = await startVite({ probe: true });
 });
 
 after(async () => {
@@ -94,7 +94,7 @@ async function run({ viewport, mobile, delay = false, block = [], stepMs = 220 }
     async ({ seq, stepMs }) => {
       const sch = window.__nomozScheduler;
       sch.stop(); // the test drives the pet's state itself
-      const out = { frames: 0, blankAfterFirst: 0, firstSeenAt: null, states: 0, ms: 0, procedural: 0 };
+      const out = { frames: 0, blankAfterFirst: 0, firstSeenAt: null, states: 0, ms: 0 };
       let first = false;
       let running = true;
       const t0 = performance.now();
@@ -123,8 +123,6 @@ async function run({ viewport, mobile, delay = false, block = [], stepMs = 220 }
       await new Promise((res) => setTimeout(res, 600));
       running = false;
       out.ms = Math.round(performance.now() - t0);
-      out.procedural = (window.__nomozProcedural || []).length;
-      out.proceduralSample = (window.__nomozProcedural || []).slice(0, 5);
       return out;
     },
     { seq: sequence(), stepMs }
@@ -136,28 +134,25 @@ async function run({ viewport, mobile, delay = false, block = [], stepMs = 220 }
 const SIZES = [['desktop', { width: 1280, height: 800 }, false], ['mobile', { width: 390, height: 780 }, true]];
 
 for (const [name, viewport, mobile] of SIZES) {
-  test(`real app, ${name}, sheets arriving late: no procedural cat, no blank frame, through every direction and pose`, async (t) => {
+  test(`real app, ${name}, sheets arriving late: no blank frame, through every direction and pose`, async (t) => {
     if (skipReason) return t.skip(skipReason);
     const r = await run({ viewport, mobile, delay: true });
     assert.ok(r.states > 40 && r.frames > 100, `the sequence ran (${r.states} states, ${r.frames} frames)`);
-    assert.deepEqual(r.proceduralSample, [], `${r.procedural} procedural draws, first: ${JSON.stringify(r.proceduralSample)}`);
     assert.equal(r.blankAfterFirst, 0, `${r.blankAfterFirst} blank frames after the cat first appeared`);
     assert.deepEqual(r.errors, []);
   });
 
-  test(`real app, ${name}, sheets ready: no procedural cat, no blank frame, through every direction and pose`, async (t) => {
+  test(`real app, ${name}, sheets ready: no blank frame, through every direction and pose`, async (t) => {
     if (skipReason) return t.skip(skipReason);
     const r = await run({ viewport, mobile, stepMs: 120 });
-    assert.deepEqual(r.proceduralSample, [], `${r.procedural} procedural draws`);
     assert.equal(r.blankAfterFirst, 0);
     assert.deepEqual(r.errors, []);
   });
 }
 
-test('real app: sheets that cannot be fetched are never replaced by the procedural cat (the frame on screen is held)', async (t) => {
+test('real app: sheets that cannot be fetched hold the frame on screen (no blank frame)', async (t) => {
   if (skipReason) return t.skip(skipReason);
   const r = await run({ viewport: { width: 1280, height: 800 }, mobile: false, block: ['nomoz_walk_side', 'nomoz_walk_frontQ', 'nomoz_creep_rear', 'nomoz_leap_front'] });
-  assert.deepEqual(r.proceduralSample, [], `${r.procedural} procedural draws`);
   assert.equal(r.blankAfterFirst, 0);
   assert.ok(r.warnings.some((w) => /nomoz sheets/.test(w)), 'the missing sheets are reported');
   assert.deepEqual(r.errors, []);

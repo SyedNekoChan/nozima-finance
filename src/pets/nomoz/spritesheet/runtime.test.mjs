@@ -263,10 +263,15 @@ test('renderer: with no frame on screen yet, a failed clip shows the default (si
   noProcedural(t.calls);
 });
 
-test('renderer: an unusable manifest returns the fallback itself', () => {
-  const fallback = () => {};
-  assert.equal(createSheetRenderer({ manifest: { sheets: {}, clips: {}, select: [] }, fallback }), fallback);
-  assert.equal(createSheetRenderer({ manifest: null, fallback }), fallback);
+test('renderer: an unusable manifest gives a renderer that draws nothing', () => {
+  const calls = [];
+  const fallback = (...a) => calls.push(a);
+  for (const manifest of [{ sheets: {}, clips: {}, select: [] }, null]) {
+    const render = createSheetRenderer({ manifest, fallback });
+    assert.equal(typeof render, 'function');
+    render({}, {}, null);
+  }
+  assert.equal(calls.length, 0);
 });
 
 test('renderer: if the body fails to paint, that frame is redrawn from a sheet frame, never procedurally', () => {

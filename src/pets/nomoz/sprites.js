@@ -1753,19 +1753,19 @@ function paintGrid(ctx, g, ox = 0, oy = 0) {
  *      book, crown, crownLift, coin, droop, glitch, frame, light,
  *      pawL, pawR, ears, tail, focus, pupils, bookPaw, bookShift, fx }
  * vanity: the pet's vanity registry (worn items).
- * The caller's ctx is a canvas context of SPRITE_W x SPRITE_H, or a larger
- * one (the sprite-sheet path): the procedural cat, its effects, items and
- * cues are then drawn in a SPRITE_W x SPRITE_H area centred horizontally and
- * resting on the bottom edge, so every procedural coordinate stays valid.
+ * The caller's ctx is a canvas context larger than SPRITE_W x SPRITE_H (the
+ * sprite-sheet path): effects, items and cues are drawn in a SPRITE_W x
+ * SPRITE_H area centred horizontally and resting on the bottom edge, so
+ * every procedural coordinate stays valid.
  * The base art has its tail on the right (as in the concept art); facing > 0
  * mirrors the whole canvas.
  *
- * body (optional, used by the sprite-sheet path in ./spritesheet): replaces
- * the procedural fur with other body art while everything else (pupils,
- * lighting, vanity, effects, stress / glitch) still runs here.
- *   { under?: false | { mask, footY, feet, poolX }, noProcedural?: true (a failed paint draws no cat, not the procedural one),
+ * body (required, supplied by the sprite-sheet renderer in ./spritesheet): the
+ * sheet art; everything else (pupils, lighting, vanity, effects, stress /
+ * glitch) runs here. Without a body nothing is drawn.
+ *   { under?: false | { mask, footY, feet, poolX },
  *     paint(ac, { grid, hx, hy, ox, oy, light, view, pose, footY, feet, face })
- *     -> falsy to use the procedural body, or
+ *     -> falsy when the paint failed (no cat is drawn), or
  *        { over?: false, anchor?: { hx, hy, chest, chestTurn } } }
  *   `under`: undefined = the procedural floor pool and aura, false = none,
  *   an object = pool and aura from a silhouette mask in canvas coordinates.
@@ -1774,7 +1774,8 @@ function paintGrid(ctx, g, ox = 0, oy = 0) {
  *   procedural ones are.
  * p.replay marks a redraw of an unchanged state (the pupil does not ease).
  */
-export function renderSprite(ctx, p, vanity, body = null) {
+export function renderSprite(ctx, p, vanity, body) {
+  if (!body) return; // the sprite-sheet renderer always supplies the body; there is no procedural cat to fall back to
   const CW = ctx.canvas ? ctx.canvas.width : SPRITE_W;
   const CH = ctx.canvas ? ctx.canvas.height : SPRITE_H;
   const ox = (CW - SPRITE_W) >> 1;
@@ -1827,7 +1828,7 @@ export function renderSprite(ctx, p, vanity, body = null) {
     const under = Array.from({ length: CH }, () => Array(CW).fill('.'));
     drawUnder(under, maskUnder.mask, light, maskUnder.footY, maskUnder.feet[0], maskUnder.feet[1], maskUnder.poolX);
     paintGrid(ac, under);
-  } else if (!body || body.under !== false) {
+  } else if (body.under !== false) {
     paintProceduralUnder();
   }
   let drawn = null;
@@ -1851,13 +1852,12 @@ export function renderSprite(ctx, p, vanity, body = null) {
       drawn = null;
     }
     if (!drawn) {
-      // the body art could not be drawn: start again with the procedural cat
+      // the body art could not be drawn: start again, with no cat
       ac.clearRect(0, 0, CW, CH);
       paintProceduralUnder();
     }
   }
-  // a sheet body that could not paint is never replaced by the procedural cat (the sheet renderer holds a sheet frame)
-  if (!drawn && !(body && body.noProcedural)) paintGrid(ac, lit, ox, oy);
+  // a sheet body that could not paint draws no cat (the sheet renderer holds a sheet frame)
   if (!drawn || drawn.over !== false) paintGrid(ac, over, ox, oy);
   // Where procedural coordinates land on the canvas. By default the 56 x 60
   // area is centred (ox, oy). Art that places its own head carries an anchor:

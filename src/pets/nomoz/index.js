@@ -9,14 +9,11 @@ import {
   REACTIONS_MAP,
   REST_PATCH,
   SHEET_SPRITE_SIZE,
-  SPRITE_RENDERER,
-  SPRITE_SIZE,
   WORLD_OVERRIDES,
 } from './config.js';
 import { FINANCIAL_REACTIONS } from './financial.js';
 import { PROPS } from './props.js';
 import { ITEMS, SLOTS } from './vanity.js';
-import { renderSprite } from './sprites.js';
 import { SHEET_MANIFEST } from './spritesheet/manifest.js';
 import { createSheetRenderer } from './spritesheet/renderer.js';
 
@@ -30,12 +27,10 @@ import { createSheetRenderer } from './spritesheet/renderer.js';
  */
 function build() {
   try {
-    const sheet = SPRITE_RENDERER.mode === 'sheet';
-    const render = sheet ? createSheetRenderer({ manifest: SHEET_MANIFEST }) : renderSprite;
     return definePet({
       id: 'nomoz',
       name: 'NOMOZ.EXE',
-      sprite: { ...(sheet ? SHEET_SPRITE_SIZE : SPRITE_SIZE), render },
+      sprite: { ...SHEET_SPRITE_SIZE, render: createSheetRenderer({ manifest: SHEET_MANIFEST }) },
       lighting: LIGHTING,
       animations: ANIMATIONS,
       behaviors: BEHAVIORS,

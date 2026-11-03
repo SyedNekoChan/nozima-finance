@@ -9,8 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { encodePng, decodePng } from './png.mjs';
 import { normalizeManifest, selectClip, frameAt, frameRect, fitsImage } from './clips.js';
 import { SHEET_MANIFEST } from './manifest.js';
-import { SPRITE_RENDERER, SHEET_SPRITE_SIZE } from '../config.js';
-import { renderSprite } from '../sprites.js';
+import { SHEET_SPRITE_SIZE } from '../config.js';
 import { createSheetRenderer } from './renderer.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -148,13 +147,13 @@ test('shipped manifest normalizes without skipping anything', () => {
 });
 
 test('the production pet is the sheet cat; sheet box is 96 x 64', () => {
-  assert.equal(SPRITE_RENDERER.mode, 'sheet');
   assert.deepEqual({ ...SHEET_SPRITE_SIZE }, { width: 96, height: 64 });
 });
 
-test('a sheet renderer without usable data falls back to the procedural renderer', () => {
-  assert.equal(typeof renderSprite, 'function');
-  assert.equal(typeof createSheetRenderer({ manifest: {} }), 'function');
+test('a sheet renderer without usable data is a renderer that draws nothing', () => {
+  const render = createSheetRenderer({ manifest: {} });
+  assert.equal(typeof render, 'function');
+  assert.equal(render(), undefined);
 });
 
 // The approved (reference-converted) frames must never change by accident.

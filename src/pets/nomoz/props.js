@@ -283,7 +283,6 @@ const HUES = {
   rose: { o: '#4a1a33', b: '#b04a7a', c: '#ff8aa8', w: '#ffe8f0' },
   silver: { o: '#3b424a', b: '#8a949c', c: '#cfd6dc', w: '#f4f4f4' },
 };
-export const HUE_NAMES = Object.keys(HUES);
 const hue = (name) => HUES[name] || HUES.cyan;
 
 /* ------------------------------------------------------------------ */
@@ -546,7 +545,6 @@ const LIQUIDS = {
   silver: ['#3b424a', '#8a949c', '#e6edf2'],
   ember: ['#5a1f10', '#c4502f', '#ff9a4a'],
 };
-export const LIQUID_NAMES = Object.keys(LIQUIDS);
 
 const COIN_FACES = [
   ['..ggg..', '.gGGGg.', 'gGGGGGg', 'gGGGGGg', 'gGGGGGg', '.gGGGg.', '..ggg..'],
@@ -701,7 +699,6 @@ const TRINKETS = {
     paintAt(ctx, rows, 5.5, 5.5, pal);
   },
 };
-export const TRINKET_NAMES = Object.keys(TRINKETS);
 
 function renderTrinket(ctx, spec, frame) {
   ctx.clearRect(0, 0, TK, TK);
@@ -773,7 +770,6 @@ export const CONSTELLATIONS = {
   key: { stars: [[8, 10], [13, 6], [17, 11], [13, 15], [24, 11], [31, 11], [36, 11], [31, 16], [36, 16]], links: [[0, 1], [1, 2], [2, 3], [3, 0], [2, 4], [4, 5], [5, 6], [5, 7], [6, 8]] },
   spiral: { stars: [[22, 14], [26, 12], [27, 17], [21, 20], [15, 15], [17, 8], [26, 5], [34, 10], [34, 20]], links: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]] },
 };
-export const CONSTELLATION_NAMES = Object.keys(CONSTELLATIONS);
 
 /*
  * The patch of sky the cat maps: stars (positions, which may be moved by
