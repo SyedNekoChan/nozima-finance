@@ -18,6 +18,8 @@ const NO_COIN = new Set(['crouch_rear', 'crouch_rearQ', 'creep_rear', 'creep_rea
 const WALKING = /^(walk_|stand_|creep_|crouch_)/;
 const SEEDS = [1, 2];
 
+const GESTURE = /^(idle_front|sit_paws_)/;
+
 test('the matrix covers every behavior', () => {
   assert.equal(set.length, 68);
   assert.equal(new Set(set.map((b) => b.id)).size, 68);
@@ -52,7 +54,8 @@ for (const b of set) {
       for (const s of samples) (runs.length && runs.at(-1).clip === s.clip ? (runs.at(-1).ms += 100) : runs.push({ clip: s.clip, ms: 100 }));
       let flips = 0;
       for (let i = 2; i < runs.length; i++) {
-        if (runs[i - 2].clip === runs[i].clip && runs[i - 1].ms <= 300 && !WALKING.test(runs[i - 1].clip) && !WALKING.test(runs[i].clip)) flips++;
+        // (a raised paw going up and straight down again is the script's own gesture, a tap or a swat, not the picture changing by itself)
+        if (runs[i - 2].clip === runs[i].clip && runs[i - 1].ms <= 300 && !WALKING.test(runs[i - 1].clip) && !WALKING.test(runs[i].clip) && !(GESTURE.test(runs[i - 1].clip) && GESTURE.test(runs[i].clip))) flips++;
       }
       assert.ok(flips <= 2, `${b.id} seed ${seed}: ${flips} flickers (${runs.map((r) => `${r.clip}:${r.ms}`).join(' ')})`);
     }

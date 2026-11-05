@@ -35,6 +35,10 @@ export const ART = {
   // converted from the reference (art/source/convert_reference.py)
   idle_front: { frames: 4, from: 'reference', head: 'front', face: 'front', eyesOff: [3], note: 'sitting, facing us: open, open (tail shifted), wink, eyes closed' },
   walk_side: { frames: 3, from: 'reference', head: 'side', face: 'profile', note: 'walking cycle, facing left; head-aligned' },
+  // every pose of the sitting cat with one or both forepaws raised: the approved idle_front frame 0 with the planted foreleg
+  // replaced by the recess under the shoulder and a hand-drawn raised arm in its fur tones (art/source/make_sit_paws.mjs). One
+  // frame per (left, right) pair of paw levels, 7 x 7 - 1, numbered left * 7 + right - 1 over [none, low, front, out, mid, up, reach].
+  sit_paws: { frames: 48, from: 'generated', head: 'front', face: 'front', note: 'sitting facing us, forepaws raised: every pair of levels (none, low, front, out, mid, up, reach), left and right' },
   sit_threeq: { frames: 1, from: 'reference', head: 'threeq', face: 'threeq', note: 'sitting, three-quarter view facing left' },
   sit_doze: { frames: 1, from: 'reference', head: null, anchors: { crown: [55, 10], chest: [55, 28] }, note: 'sitting, head lowered, eyes closed' },
   // the head is bowed to the paw: the crown rests on its top (the raised ear at the right, the flat crown of the head at the left), the coin hangs on the chest below the muzzle and the paw

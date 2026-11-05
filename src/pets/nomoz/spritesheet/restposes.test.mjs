@@ -157,7 +157,7 @@ const runs = (samples) => {
 // the manifest as it was: grooming art only for one paw at 'mid' / 'high' with the other down
 const OLD = (() => {
   const i = man.select.findIndex((r) => r.clip === 'sit_groom');
-  const rest = man.select.filter((r) => r.clip !== 'sit_groom');
+  const rest = man.select.filter((r) => r.clip !== 'sit_groom' && !r.clip.startsWith('sit_paws_'));
   const oldRules = [
     { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false }, clip: 'sit_groom' },
     { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false }, clip: 'sit_groom' },
@@ -171,7 +171,7 @@ test('grooming: any raised paw of a grooming move selects the grooming art, what
   const sel = (o) => selectClip(man, { ...BASE, ...o }).id;
   for (const eyes of ['open', 'closed', 'down', 'blink', 'happy']) {
     for (const droop of [0, 1]) {
-      for (const paw of ['mid', 'high', 'face', 'ear', 'front']) {
+      for (const paw of ['high', 'face', 'ear']) {
         assert.equal(sel({ pawL: paw, eyes, droop, lean: 1, gaze: 'l' }), 'sit_groom', `left ${paw} ${eyes} ${droop}`);
         assert.equal(sel({ pawR: paw, eyes, droop, ears: 'back' }), 'sit_groom', `right ${paw} ${eyes} ${droop}`);
       }
@@ -180,14 +180,17 @@ test('grooming: any raised paw of a grooming move selects the grooming art, what
   }
 });
 
-test('grooming: other gestures keep the art they always had (casting and brewing hold both paws out)', () => {
+test('grooming: the gestures draw their own raised paws (art/sit_paws), and the grooming art is only for the paw at the mouth, the cheek and the ear', () => {
   const sel = (o) => selectClip(man, { ...BASE, ...o }).id;
-  assert.equal(sel({ pawL: 'front', pawR: 'front' }), 'idle_front');
-  assert.equal(sel({ pawL: 'mid', pawR: 'mid' }), 'idle_front');
-  assert.equal(sel({ pawL: 'front', pawR: 'mid' }), 'idle_front');
-  assert.equal(sel({ pawL: 'up' }), 'idle_front');
-  assert.equal(sel({ pawR: 'low' }), 'idle_front');
-  assert.equal(sel({ pawL: 'reach' }), 'idle_front');
+  assert.equal(sel({ pawL: 'front', pawR: 'front' }), 'sit_paws_front_front');
+  assert.equal(sel({ pawL: 'mid', pawR: 'mid' }), 'sit_paws_mid_mid');
+  assert.equal(sel({ pawL: 'front', pawR: 'mid' }), 'sit_paws_front_mid');
+  assert.equal(sel({ pawL: 'up' }), 'sit_paws_up_n');
+  assert.equal(sel({ pawR: 'low' }), 'sit_paws_n_low');
+  assert.equal(sel({ pawL: 'reach' }), 'sit_paws_reach_n');
+  assert.equal(sel({ pawL: 'mid' }), 'sit_paws_mid_n', 'a single paw held at chest height (inspecting it) is a gesture, not a lick');
+  assert.equal(sel({ pawR: 'front' }), 'sit_paws_n_front');
+  assert.equal(sel({ pawL: 'out', pawR: 'up' }), 'sit_paws_out_up');
   assert.equal(sel({ eyes: 'closed', droop: 1 }), 'sit_doze');
   // blinks, closed and happy eyes are drawn live on the sitting art: the head never swaps to another frame for them
   for (const eyes of ['blink', 'closed', 'happy']) assert.equal(sel({ eyes }), 'idle_front', eyes);
@@ -228,7 +231,8 @@ test('grooming: a whole routine keeps one art through its moves instead of flipp
     const flips = (r) => r.filter(([, ms], i) => i > 0 && i < r.length - 1 && ms < 600).length;
     const cut = (arr) => arr.reduce((o, s) => (o.length && o.at(-1)[0] === s.clip ? (o.at(-1)[1] += 50, o) : [...o, [s.clip, 50]]), []);
     before += flips(cut(naive));
-    const played = runs(play(sc));
+    // (a raised paw that is not a grooming move, the lift that opens a lick or the inspecting of the paw, is a gesture of its own)
+    const played = runs(play(sc)).reduce((o, r) => (r[0].startsWith('sit_paws_') ? o : o.length && o.at(-1)[0] === r[0] ? (o.at(-1)[1] += r[1], o) : [...o, [...r]]), []);
     after += flips(played);
     boundaries += played.filter(([c]) => c === 'sit_groom').length;
     // between its first and its last grooming sample the cat never shows the dozing art

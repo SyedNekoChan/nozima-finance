@@ -43,7 +43,7 @@ test('gaps.mjs --strict exits non-zero while stand-ins remain, and --json is par
   assert.equal(JSON.parse(json.stdout).missing.length, missing.length);
 });
 
-/* ---- the generated production frames (54 frames, 14 folders) ---- */
+/* ---- the generated production frames (102 frames, 15 folders) ---- */
 const FUR = new Set(['3,3,5', '9,8,11', '14,13,16', '16,15,19', '18,18,22', '21,21,25', '24,23,27', '24,24,28', '27,27,30', '37,36,39']);
 const loadFrames = (id) =>
   readdirSync(join(HERE, 'art', id))
@@ -56,9 +56,9 @@ const lowestRow = (img) => {
   return -1;
 };
 
-test('generated frames: 14 folders, 54 frames, and the counts match spec.js', () => {
-  assert.equal(generatedIds.length, 14);
-  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 54);
+test('generated frames: 15 folders, 102 frames, and the counts match spec.js', () => {
+  assert.equal(generatedIds.length, 15);
+  assert.equal(generatedIds.reduce((n, id) => n + loadFrames(id).length, 0), 102);
   for (const id of generatedIds) assert.equal(loadFrames(id).length, ART[id].frames, id);
 });
 
@@ -76,9 +76,19 @@ test('generated frames: 96 x 64, hard alpha, only the approved fur tones and eye
   }
 });
 
-test('generated frames: planted paws end on row 61 (a leap is raised 7 px, to row 54)', () => {
+test('generated frames: planted paws end on row 61 (a leap is raised 7 px, to row 54; a sitting cat with both forepaws raised rests on its haunches)', () => {
   for (const id of generatedIds) {
-    for (const [i, img] of loadFrames(id).entries()) assert.equal(lowestRow(img), id.startsWith('leap') ? 54 : 61, `${id}/${i}`);
+    for (const [i, img] of loadFrames(id).entries()) {
+      if (id === 'sit_paws') {
+        // frame n + 1 = left * 7 + right: with a foreleg planted (level 0) the cat stands on row 61; with both raised it sits on its haunches
+        const n = i + 1;
+        const planted = Math.floor(n / 7) === 0 || n % 7 === 0;
+        if (planted) assert.equal(lowestRow(img), 61, `${id}/${i}`);
+        else assert.ok(lowestRow(img) >= 57 && lowestRow(img) <= 61, `${id}/${i}: lowest row ${lowestRow(img)}`);
+        continue;
+      }
+      assert.equal(lowestRow(img), id.startsWith('leap') ? 54 : 61, `${id}/${i}`);
+    }
   }
 });
 

@@ -294,3 +294,40 @@ describe('grooming, sleeping curled up and stretching, in complete cycles', () =
     });
   }
 });
+
+describe('raised forepaws (art/sit_paws), in real pixels at desktop and mobile sizes', () => {
+  const LEVELS = ['low', 'front', 'out', 'mid', 'up', 'reach'];
+  const ELEVEN = ['constellation', 'alchemy', 'tinker', 'terminalWork', 'treasure', 'spell', 'bookAntics', 'wispPlay', 'music', 'yarnPlay', 'discovery'];
+  for (const [name, options] of SIZES) {
+    guard(`${name}: every level, either paw, is drawn as its own pose, with the crown and the coin both on the cat`, async () => {
+      const jobs = [];
+      for (const lv of LEVELS) for (const side of ['pawL', 'pawR']) jobs.push({ id: `${side}:${lv}`, beats: [{ t: 0, patch: { [side]: lv } }], end: 1200, base: {} });
+      jobs.push({ id: 'both', beats: [{ t: 0, patch: { pawL: 'up', pawR: 'up' } }], end: 1200, base: {} });
+      const { out, errors } = await run(options, jobs);
+      for (const job of out) {
+        const settled = job.rows.filter((r) => r.t >= 400);
+        const want = job.id === 'both' ? 'sit_paws_up_up' : `sit_paws_${job.id.startsWith('pawL') ? `${job.id.split(':')[1]}_n` : `n_${job.id.split(':')[1]}`}`;
+        for (const r of settled) {
+          assert.equal(r.clip, want, `${job.id} t=${r.t}`);
+          assert.ok(r.gold >= 40, `${job.id} t=${r.t}: only ${r.gold} crown / coin pixels`);
+        }
+      }
+      assert.deepEqual(errors, []);
+    });
+
+    guard(`${name}: the eleven gesturing behaviours draw their paws through complete cycles, with the crown and the coin on the cat in every sample`, async () => {
+      const { out, errors } = await run(options, ELEVEN.flatMap((id) => [1, 2, 3].map((seed) => ({ id, seed }))));
+      const drawn = {};
+      for (const job of out) {
+        for (const r of job.rows) {
+          if (!/^sit_paws_/.test(r.clip)) continue;
+          drawn[job.id] = (drawn[job.id] || 0) + 1;
+          assert.ok(r.gold >= 40, `${job.id} seed ${job.seed} t=${r.t} (${r.clip}): only ${r.gold} crown / coin pixels`);
+          assert.ok(r.box[3] <= 62, `${job.id} seed ${job.seed} t=${r.t}: the coin is off the cat`);
+        }
+      }
+      for (const id of ELEVEN) if (id !== 'terminalWork') assert.ok(drawn[id] > 0, `${id}: no raised paw was ever drawn`);
+      assert.deepEqual(errors, []);
+    });
+  }
+});

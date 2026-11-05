@@ -534,6 +534,18 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null, squash: { rows: step.rows } };
       return { body: makeBody(last.clip, last.sheet, last.image, last.index, ctx.canvas.width, ctx.canvas.height, still), wait: step.left };
     }
+    // a paw going up (or down) more than one level at once passes the level half way for a beat
+    if (step && step.which === 'via') {
+      const via = man.clips[step.clip];
+      const vsheet = via && !bad.has(via.id) && man.sheets[via.sheet];
+      const ventry = vsheet && getSheetImage(vsheet.src);
+      if (ventry && ventry.status === 'ready' && fitsImage(vsheet, ventry.image.naturalWidth, ventry.image.naturalHeight)) {
+        const still = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null };
+        return { body: makeBody(via, vsheet, ventry.image, 0, ctx.canvas.width, ctx.canvas.height, still), wait: step.left };
+      }
+      c.trans = null;
+      step = null;
+    }
     if (!c.shown) {
       c.shown = true;
       c.t0 = now;

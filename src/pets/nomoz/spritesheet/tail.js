@@ -257,7 +257,36 @@ const FAMILY = (id) => {
 
 export const clipFamily = FAMILY;
 
+/*
+ * Raising and lowering a forepaw (art/sit_paws). The paw levels in order of height; an arm that goes two or more levels at once
+ * (down to beside the head, the head's level to overhead) passes through the level half way for a beat, so it swings up
+ * rather than being cut there. A paw that goes down to the floor or up one level needs no beat.
+ */
+export const PAW_RANKS = ['n', 'low', 'front', 'out', 'mid', 'up', 'reach'];
+const PAW_CLIP = /^sit_paws_([a-z]+)_([a-z]+)$/;
+const pawLevels = (id) => {
+  if (id === 'idle_front') return ['n', 'n'];
+  const m = PAW_CLIP.exec(id || '');
+  return m ? [m[1], m[2]] : null;
+};
+export function pawVia(fromId, toId) {
+  const from = pawLevels(fromId);
+  const to = pawLevels(toId);
+  if (!from || !to || fromId === toId) return null;
+  const via = [0, 1].map((i) => {
+    const a = PAW_RANKS.indexOf(from[i]);
+    const b = PAW_RANKS.indexOf(to[i]);
+    return Math.abs(b - a) >= 2 ? Math.round((a + b) / 2) : a;
+  });
+  const moved = [0, 1].some((i) => via[i] !== PAW_RANKS.indexOf(from[i]));
+  if (!moved || (via[0] === 0 && via[1] === 0)) return null;
+  const id = `sit_paws_${PAW_RANKS[via[0]]}_${PAW_RANKS[via[1]]}`;
+  return id === toId ? null : [{ ms: 70, which: 'via', clip: id }];
+}
+
 export function transitionPlan(fromId, toId) {
+  const lift = pawVia(fromId, toId);
+  if (lift) return lift;
   const a = FAMILY(fromId || '');
   const b = FAMILY(toId || '');
   if (!a || !b || fromId === toId) return null;

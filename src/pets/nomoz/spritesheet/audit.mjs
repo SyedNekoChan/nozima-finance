@@ -37,18 +37,22 @@ for (const id of Object.keys(ART)) if (!ANCHORS[id]) problems.push(`art ${id}: n
 const poses = ['sit', 'stand', 'crouch', 'stretch', 'low', 'loaf', 'curl'];
 const views = ['front', 'frontQ', 'side', 'rearQ', 'rear'];
 const turning = new Set(['sit', 'stand', 'crouch']); // only these turn (sprites.js TURN_POSES)
+const PAWS = [null, 'low', 'front', 'mid', 'high', 'out', 'up', 'reach', 'ear', 'face'];
+// every left paw level with the right paw down, and every pair of the levels a gesture draws (art/sit_paws)
+const GESTURE = [null, 'low', 'front', 'out', 'mid', 'up', 'reach'];
+const PAW_PAIRS = [...PAWS.map((l) => [l, null]), ...GESTURE.flatMap((l) => GESTURE.filter((r) => r).map((r) => [l, r]))];
 const used = new Set();
 const uncovered = {};
 let total = 0;
 for (const pose of poses)
   for (const view of turning.has(pose) ? views : ['front'])
     for (const legs of [0, 1, 2, 3])
-      for (const paw of [null, 'low', 'front', 'mid', 'high', 'out', 'up', 'reach', 'ear', 'face'])
+      for (const [paw, pawR] of PAW_PAIRS)
         for (const book of [null, 0, 1, 2])
           for (const eyes of ['open', 'closed', 'blink', 'happy', 'wide', 'down'])
             for (const droop of [0, 1]) {
               total++;
-              const p = { pose, view, legs, pawL: paw, pawR: null, book, eyes, droop, mood: 'idle' };
+              const p = { pose, view, legs, pawL: paw, pawR, book, eyes, droop, mood: 'idle' };
               const clip = selectClip(man, p);
               if (clip) used.add(clip.id);
               else (uncovered[`${pose}/${view}/legs ${legs}`] ??= 0), uncovered[`${pose}/${view}/legs ${legs}`]++;

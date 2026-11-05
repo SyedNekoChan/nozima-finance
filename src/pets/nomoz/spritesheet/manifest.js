@@ -44,6 +44,7 @@
  */
 import { ANCHORS } from './anchors.js';
 import { ART, FRAME, sheetId } from './spec.js';
+import { PAW_RANKS } from './tail.js';
 
 const sheetUrl = (name) => new URL(`./sheets/${name}.png`, import.meta.url).href;
 
@@ -100,6 +101,16 @@ const clips = {
   leap_front: clip('leap_front', [0], { floor: 61 }),
   leap_side: clip('leap_side', [0], { floor: 61 }),
 };
+// Sitting with forepaws raised (art/sit_paws: one baked frame per pair of levels, left * 7 + right - 1 over RANKS). The head and
+// shoulders breathe and nod above row 44, so a raised arm beside the head moves with it; ears and lean as on the plain sitting art.
+const pawFrame = (l, r) => PAW_RANKS.indexOf(l) * PAW_RANKS.length + PAW_RANKS.indexOf(r) - 1;
+for (const l of PAW_RANKS) {
+  for (const r of PAW_RANKS) {
+    if (l === 'n' && r === 'n') continue;
+    clips[`sit_paws_${l}_${r}`] = clip('sit_paws', [pawFrame(l, r)], { breathe: { cut: 44, ms: 3600 }, expr: EXPR.idle_front, nod: { cut: 44 } });
+  }
+}
+
 // The approved side walk is a three-frame loop (0 1 2). Every generated walk and
 // creep has five poses: 0 and 2 the two contacts, 1 all four paws down (the
 // standing pose) and 3 and 4 the passing poses between the contacts, where the
@@ -117,16 +128,16 @@ for (const view of VIEWS) {
   clips[`crouch_${view}`] = clip(creepArt, [1], { breathe: { cut: 48, ms: 3900 } });
 }
 
-// Raised forepaws other than grooming (mid / high) are not drawn: those states
-// use the same art with the paws down, so the cat never switches to the
-// procedural style in the middle of a gesture; effects, cues and the open book
-// are drawn over it, aligned to the art's head (see anchors). Reading uses the
-// same art too, with the book on its lap.
+// The open book is not drawn: reading uses the plain sitting art with the book drawn over it, aligned to the art's head (see
+// anchors). Raised forepaws are drawn (art/sit_paws) except while standing or crouching, where the plain art holds the frame.
 const FREE = {};
 
 // paw levels of the grooming moves (animations.js: lickPaw, rubFace, cleanEar, washFace, inspectPaw)
-const GROOM_PAWS = ['mid', 'high', 'face', 'ear', 'front'];
+const GROOM_PAWS = ['high', 'face', 'ear'];
 const WASH_PAWS = ['high', 'face'];
+
+// the render-state values of a paw level (the leg down is no value at all)
+const pawSet = (rank) => (rank === 'n' ? [null, undefined, false] : [rank]);
 
 const select = [
   { when: { pose: 'curl' }, clip: 'curl' },
@@ -153,6 +164,8 @@ const select = [
   { when: { pose: 'sit', view: 'front', pawL: GROOM_PAWS, pawR: false }, clip: 'sit_groom' },
   { when: { pose: 'sit', view: 'front', pawR: GROOM_PAWS, pawL: false }, clip: 'sit_groom' },
   { when: { pose: 'sit', view: 'front', pawL: WASH_PAWS, pawR: WASH_PAWS }, clip: 'sit_groom' },
+  // one or both forepaws raised to a level the grooming art does not show: the baked pose of that pair (the leg down is none)
+  ...PAW_RANKS.flatMap((l) => PAW_RANKS.filter((r) => !(l === 'n' && r === 'n')).map((r) => ({ when: { pose: 'sit', view: 'front', pawL: pawSet(l), pawR: pawSet(r) }, clip: `sit_paws_${l}_${r}` }))),
   { when: { pose: 'sit', view: 'front', eyes: 'closed', droop: true, ...FREE }, clip: 'sit_doze' },
   { when: { pose: 'sit', view: 'front', ...FREE }, clip: 'idle_front' },
 ];
