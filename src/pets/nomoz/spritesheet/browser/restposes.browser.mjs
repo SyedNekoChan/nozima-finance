@@ -68,7 +68,7 @@ const guard = (name, fn) =>
   });
 
 /*
- * Runs `jobs` ([{ id, seed }]) in a page: each script is planned from the real behavior, then played through the real renderer
+ * Runs `jobs` ([{ id, seed }] or [{ id, beats, end, base }] for a hand-made script) in a page: each script is planned from the real behavior, then played through the real renderer
  * (one sample per 50 ms, plus a 0.8 s tail) on a real canvas. Per sample: the clip on screen, the pose, the changed-pixel count
  * against the previous sample, gold (crown + coin) pixels with their bounding box, and the top row of the cat.
  */
@@ -113,7 +113,7 @@ async function run(contextOptions, jobs) {
     await new Promise((r) => setTimeout(r, 800));
     const results = [];
     for (const job of jobs) {
-      const sc = scriptOf(job.id, job.seed);
+      const sc = job.beats ? { end: job.end, view: { ...BASE, ...job.base }, beats: job.beats } : scriptOf(job.id, job.seed);
       const cv = document.createElement('canvas');
       cv.width = 96;
       cv.height = 64;
@@ -151,7 +151,7 @@ async function run(contextOptions, jobs) {
           }
         }
         prev = Uint8ClampedArray.from(d);
-        rows.push({ t, clip: render.clipOf(g), pose: v.pose, diff: rows.length ? diff : 0, gold, box: gold ? [x0, y0, x1, y1] : null, top, facing: v.facing, dip: window.__dip > 0 });
+        rows.push({ t, clip: render.clipOf(g), pose: v.pose, diff: rows.length ? diff : 0, gold, box: gold ? [x0, y0, x1, y1] : null, top, facing: v.facing, dip: window.__dip > 0, eyes: v.eyes, droop: v.droop });
       }
       cv.remove();
       results.push({ ...job, rows });
@@ -232,6 +232,64 @@ describe('grooming, sleeping curled up and stretching, in complete cycles', () =
       }
       assert.ok(curled >= 3, `only ${curled} of ${seeds.length} sleeps curled up`);
       assert.ok(breathingRuns >= 3);
+      assert.deepEqual(errors, []);
+    });
+
+    guard(`${name}: blinks, closed and happy eyes change only the eyes: the head, ears and whiskers of the sitting cat do not jump`, async () => {
+      const beats = [];
+      for (let t = 400; t < 6000; t += 700) beats.push({ t, patch: { eyes: 'blink' } }, { t: t + 140, patch: { eyes: 'open' } });
+      beats.push({ t: 6200, patch: { eyes: 'happy' } }, { t: 7000, patch: { eyes: 'closed' } }, { t: 7800, patch: { eyes: 'open' } });
+      const { out, errors } = await run(options, [{ id: 'blinks', beats, end: 8400, base: { facing: -1 } }]);
+      const rows = out[0].rows;
+      assert.deepEqual([...new Set(rows.map((r) => r.clip))], ['idle_front'], 'a blink swapped the picture');
+      // the pixels that change when the eyes change: a few eye pixels, never the ~1000 of a swap to the closed-eye frame
+      const eyeSteps = rows.filter((r, i) => i && r.eyes !== rows[i - 1].eyes);
+      assert.ok(eyeSteps.length >= 14, `${eyeSteps.length} eye changes`);
+      // (idle_front itself changes frame every second; those two samples are excluded)
+      for (const r of eyeSteps) if (r.t % 1000 > 100 && r.t % 1000 < 900) assert.ok(r.diff < 120, `t=${r.t}: ${r.diff} pixels changed when the eyes changed`);
+      assert.deepEqual(errors, []);
+    });
+
+    guard(`${name}: the crown and the coin go down and up with the head on every breath, a nod and a bite`, async () => {
+      const nod = [];
+      for (let i = 0; i < 5; i++) nod.push({ t: 600 + i * 800, patch: { droop: 1 } }, { t: 900 + i * 800, patch: { droop: 0 } });
+      const { out, errors } = await run(options, [
+        { id: 'breath-threeq', beats: [], end: 9000, base: { view: 'frontQ', facing: -1 } },
+        { id: 'breath-curl', beats: [], end: 9000, base: { pose: 'curl', eyes: 'closed', facing: -1 } },
+        { id: 'nod', beats: nod, end: 5000, base: { facing: -1 } },
+      ]);
+      const [threeq, curl, nodRun] = out;
+      const gold = (rows) => rows.map((r) => r.box && r.box[1]);
+      // the crown's top row takes exactly two values one row apart, in step with the art's dip (diff at each change is the whole upper body)
+      for (const [label, rows] of [['sit_threeq', threeq.rows.filter((r) => r.clip === 'sit_threeq')], ['curl', curl.rows.filter((r) => r.clip === 'curl')]]) {
+        const ys = gold(rows).filter((y) => y !== null);
+        const lo = Math.min(...ys);
+        assert.deepEqual([...new Set(ys)].sort(), [lo, lo + 1], `${label}: the crown does not follow the breath (${[...new Set(ys)]})`);
+        const edges = rows.filter((r, i) => i && r.box && rows[i - 1].box && r.box[1] !== rows[i - 1].box[1]);
+        assert.ok(edges.length >= 3, `${label}: ${edges.length} breath changes`);
+        assert.ok(edges.every((r) => r.diff >= 20), `${label}: the crown moved without the head`);
+      }
+      // the sitting cat's coin goes with its chest when the head and chest breathe
+      const coinTops = threeq.rows.filter((r) => r.clip === 'sit_threeq' && r.box).map((r) => r.box[3]);
+      assert.equal(new Set(coinTops).size, 2, 'the coin does not follow the chest');
+      // a nod: the crown is a row lower exactly while the script's droop is on
+      const nodRows = nodRun.rows.filter((r) => r.box);
+      const down = [...new Set(nodRows.filter((r) => r.droop).map((r) => r.box[1]))];
+      const up = [...new Set(nodRows.filter((r) => !r.droop).map((r) => r.box[1]))];
+      assert.ok(nodRows.filter((r) => r.droop).length > 10 && nodRows.filter((r) => !r.droop).length > 10);
+      assert.deepEqual([up.length, down.length, down[0] - up[0]], [1, 1, 1], `the crown is not exactly a row lower during a nod (up ${up}, down ${down})`);
+      assert.deepEqual(errors, []);
+    });
+
+    guard(`${name}: the grooming cat and the sleeping cat keep their crown (and the groomer its coin) on the head and chest through whole cycles`, async () => {
+      const { out, errors } = await run(options, [1, 2, 3].map((seed) => ({ id: 'groom', seed })).concat([3, 5, 7, 9, 11, 13].map((seed) => ({ id: 'sleep', seed }))));
+      for (const job of out) {
+        for (const r of job.rows) {
+          if (r.clip === 'sit_groom') assert.ok(r.gold >= 40, `${job.id} ${job.seed} t=${r.t}: grooming with only ${r.gold} crown / coin pixels`);
+          if (r.clip === 'curl') assert.ok(r.gold >= 14, `${job.id} ${job.seed} t=${r.t}: curled up with only ${r.gold} crown pixels`);
+        }
+      }
+      assert.ok(out.some((j) => j.rows.some((r) => r.clip === 'curl')) && out.some((j) => j.rows.some((r) => r.clip === 'sit_groom')));
       assert.deepEqual(errors, []);
     });
   }

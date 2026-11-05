@@ -101,6 +101,10 @@ function normalizeClip(id, raw, sheets) {
     throw new Error('breathe needs cut: row and ms: > 400');
   }
 
+  // a nod: while the script's `droop` is set, the art above row `cut` sits a row lower (a head bob while chewing or nodding off);
+  // the same dip as the breath, driven by the script instead of the clock
+  if (raw.nod !== undefined && !(raw.nod && isNat(raw.nod.cut) && raw.nod.cut > 0)) throw new Error('nod needs cut: row');
+
   // facial expression on single-pose sitting art: the ears (rows y .. y + rows, the left and right ear as [x, width]) and the
   // head, which leans a pixel sideways above row `lean` (tilts toward what it looks at)
   const ex = raw.expr;
@@ -118,6 +122,14 @@ function normalizeClip(id, raw, sheets) {
   if (hd !== undefined && !(hd && Number.isFinite(hd.ms) && hd.ms > 0 && Array.isArray(hd.to) && hd.to.length && hd.to.every((t) => typeof t === 'string'))) {
     throw new Error('hold needs ms: > 0 and to: [clip ids]');
   }
+
+  // Dwell: this clip is shown only once it has been the wanted one for `enterAfter` ms; until then the clip on screen stays. A quick
+  // droop with the eyes closed (a nod to music) is a bob of the head, not a swap to the head-lowered dozing art and back.
+  if (raw.enterAfter !== undefined && !(Number.isFinite(raw.enterAfter) && raw.enterAfter > 0)) throw new Error('enterAfter must be ms > 0');
+
+  // Minimum show: once this clip is on screen it stays at least `minShow` ms, so a droop that ends a moment after the dwell does
+  // not leave a flash of the head-lowered art.
+  if (raw.minShow !== undefined && !(Number.isFinite(raw.minShow) && raw.minShow > 0)) throw new Error('minShow must be ms > 0');
 
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
@@ -138,7 +150,10 @@ function normalizeClip(id, raw, sheets) {
     anchors: anchorList,
     floor: raw.floor ?? null,
     lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip, paw: raw.lick.paw || null, sheen: raw.lick.sheen || [] }) : null,
+    enterAfter: raw.enterAfter ?? 0,
+    minShow: raw.minShow ?? 0,
     hold: hd ? Object.freeze({ ms: hd.ms, to: Object.freeze(hd.to.slice()) }) : null,
+    nod: raw.nod ? Object.freeze({ cut: raw.nod.cut }) : null,
     breathe: raw.breathe ? Object.freeze({ cut: raw.breathe.cut, ms: raw.breathe.ms }) : null,
     sway: raw.sway ?? 1,
     expr: ex ? Object.freeze({ ears: Object.freeze({ y: ex.ears.y, rows: ex.ears.rows, l: ex.ears.l, r: ex.ears.r }), lean: ex.lean }) : null,
@@ -226,6 +241,17 @@ export function holdState(cur, wanted, pending, now) {
   const since = pending ? pending.since : now;
   const left = since + cur.hold.ms - now;
   return left > 0 ? { keep: true, pending: { since }, wait: left } : { keep: false, pending: null, wait: Infinity };
+}
+
+/*
+ * Dwell (a clip's `enterAfter`): should `cur` stay on screen because `wanted` has not been wanted for long enough yet? `pending`
+ * is { id, since } from the previous call, or null. Pure, like holdState.
+ */
+export function arriveState(cur, wanted, pending, now) {
+  if (!cur || !wanted || wanted.id === cur.id || !(wanted.enterAfter > 0)) return { keep: false, pending: null, wait: Infinity };
+  const since = pending && pending.id === wanted.id ? pending.since : now;
+  const left = since + wanted.enterAfter - now;
+  return left > 0 ? { keep: true, pending: { id: wanted.id, since }, wait: left } : { keep: false, pending: null, wait: Infinity };
 }
 
 /* ------------------------------------------------------------------ */

@@ -255,6 +255,8 @@ const FAMILY = (id) => {
   return null;
 };
 
+export const clipFamily = FAMILY;
+
 export function transitionPlan(fromId, toId) {
   const a = FAMILY(fromId || '');
   const b = FAMILY(toId || '');
@@ -265,6 +267,7 @@ export function transitionPlan(fromId, toId) {
   if (a === 'up' && (b === 'sit' || b === 'lie')) return [{ ms: 60, which: 'new', rows: 3 }, { ms: 70, which: 'new', rows: 1 }]; // settle
   if (b === 'stretch' && a !== 'stretch') return [{ ms: 80, which: 'old', rows: 3 }]; // gather up, then reach
   if (a === 'stretch') return [{ ms: 60, which: 'new', rows: 2 }, { ms: 50, which: 'new', rows: 1 }]; // come out of it
+  if (a === 'sit' && b === 'lie') return [{ ms: 70, which: 'old', rows: 3 }, { ms: 60, which: 'new', rows: 2 }, { ms: 50, which: 'new', rows: 1 }]; // lowering to eat or lie down
   if (a === 'lie' && b === 'sit') return [{ ms: 60, which: 'new', rows: 2 }];
   if (a === 'lie' && b === 'lie') return [{ ms: 70, which: 'new', rows: 2 }, { ms: 60, which: 'new', rows: 1 }]; // turning over, settling again
   return null;

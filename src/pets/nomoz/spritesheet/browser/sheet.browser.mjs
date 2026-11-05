@@ -353,12 +353,12 @@ describe('real browser: renderer with the shipped sheets', () => {
       // a flick twitches over time: more than one shape in a second
       const flick = await headHash(page, { view, ears: 'flickL' }, 1100, 40);
       assert.ok(flick.length >= 2, `${view}: the flicking ear never moved`);
-      // walking art has no ears to move: an ears state changes nothing there
-      // (left of the tail, which sways on its own)
-      const walkA = (await headHash(page, { pose: 'stand', legs: 0, view: 'side' }, 0, 60, 60))[0];
-      const walkB = (await headHash(page, { pose: 'stand', legs: 0, view: 'side', ears: 'perk', lean: 1 }, 0, 60, 60))[0];
-      assert.equal(walkA, walkB);
     }
+    // walking art has no ears to move: an ears state changes nothing there (left of the tail, which sways on its own). A held
+    // stand breathes, so it is compared over a whole breath: the same shapes, in either case
+    const walkA = (await headHash(page, { pose: 'stand', legs: 0, view: 'side' }, 4300, 60, 60)).sort();
+    const walkB = (await headHash(page, { pose: 'stand', legs: 0, view: 'side', ears: 'perk', lean: 1 }, 4300, 60, 60)).sort();
+    assert.deepEqual(walkB, walkA);
     assert.deepEqual(errors, []);
     await ctx.close();
   });

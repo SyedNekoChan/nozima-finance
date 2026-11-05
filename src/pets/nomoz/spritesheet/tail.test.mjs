@@ -182,9 +182,10 @@ test('transition plans: crisp anticipation and settling frames for the big pose 
   assert.equal(transitionPlan('leap_front', 'stand_front')[0].rows, 3, 'it lands squashed');
   assert.ok(transitionPlan('idle_front', 'stretch'));
   assert.ok(transitionPlan('stretch', 'idle_front'));
-  assert.ok(transitionPlan('idle_front_closed', 'curl') === null, 'sit to curl is a plain cut');
+  assert.ok(transitionPlan('idle_front', 'low_front'), 'lowering to the bowl settles, it is not a bare cut');
+  assert.equal(transitionPlan('idle_front', 'low_front')[0].which, 'old', 'it gathers up first');
+  assert.ok(transitionPlan('curl', 'loaf_front') && transitionPlan('loaf_front', 'curl'), 'turning over settles');
   assert.equal(transitionPlan('walk_front', 'walk_side'), null, 'a change of direction is a plain cut');
-  assert.equal(transitionPlan('idle_front', 'idle_front_closed'), null, 'a blink is not a transition');
   assert.equal(transitionPlan('idle_front', 'sit_groom'), null);
   for (const [a, b] of [['idle_front', 'walk_front'], ['walk_front', 'idle_front'], ['stand_side', 'leap_side'], ['leap_side', 'stand_side'], ['crouch_front', 'stretch'], ['stretch', 'stand_front']]) {
     const plan = transitionPlan(a, b);

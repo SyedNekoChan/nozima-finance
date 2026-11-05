@@ -37,9 +37,11 @@ export const ART = {
   walk_side: { frames: 3, from: 'reference', head: 'side', face: 'profile', note: 'walking cycle, facing left; head-aligned' },
   sit_threeq: { frames: 1, from: 'reference', head: 'threeq', face: 'threeq', note: 'sitting, three-quarter view facing left' },
   sit_doze: { frames: 1, from: 'reference', head: null, anchors: { crown: [55, 10], chest: [55, 28] }, note: 'sitting, head lowered, eyes closed' },
-  sit_groom: { frames: 1, from: 'reference', head: null, anchors: { crown: [37, 8], chest: null }, note: 'sitting, licking a paw' },
+  // the head is bowed to the paw: the crown rests on its top (the raised ear at the right, the flat crown of the head at the left), the coin hangs on the chest below the muzzle and the paw
+  sit_groom: { frames: 1, from: 'reference', head: null, anchors: { crown: [28, 5], chest: [31, 37] }, note: 'sitting, licking a paw' },
   sit_rear: { frames: 1, from: 'reference', head: 'rear', note: 'sitting, seen from behind' },
-  curl: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'curled up asleep' },
+  // the head rests at the left of the mound: the crown rests on it; the neck is tucked in, so there is no coin
+  curl: { frames: 1, from: 'reference', head: null, anchors: { crown: [22, 31], chest: null }, note: 'curled up asleep' },
   // the head is raised at the left (ear tips at row 32, x 18-19 and 27-28: the crown sits between them, as on every head type) and the
   // chest is the bib under it, above the reaching forelegs
   stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: [19, 35], chest: [21, 42] }, note: 'full-body stretch (scaled to fit the box)' },

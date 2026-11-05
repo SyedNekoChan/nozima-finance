@@ -189,7 +189,8 @@ test('grooming: other gestures keep the art they always had (casting and brewing
   assert.equal(sel({ pawR: 'low' }), 'idle_front');
   assert.equal(sel({ pawL: 'reach' }), 'idle_front');
   assert.equal(sel({ eyes: 'closed', droop: 1 }), 'sit_doze');
-  assert.equal(sel({ eyes: 'blink' }), 'idle_front_closed');
+  // blinks, closed and happy eyes are drawn live on the sitting art: the head never swaps to another frame for them
+  for (const eyes of ['blink', 'closed', 'happy']) assert.equal(sel({ eyes }), 'idle_front', eyes);
   assert.equal(sel({ pose: 'stand', view: 'front', legs: 1, pawL: 'high' }), 'walk_front', 'standing, a paw does not change the art');
 });
 
@@ -206,7 +207,7 @@ test('grooming: the bridge between two moves keeps the art, ends on time, and le
   // wanted back to the grooming art: nothing is pending any more
   assert.equal(holdState(g, g, { since: 1000 }, 1100).pending, null);
   // a blink, the dozing art or the settled pose are not bridged
-  for (const id of ['idle_front_closed', 'sit_doze', 'walk_front']) assert.equal(holdState(g, man.clips[id], null, 0).keep, false, id);
+  for (const id of ['sit_doze', 'walk_front']) assert.equal(holdState(g, man.clips[id], null, 0).keep, false, id);
   // other clips have no bridge
   assert.equal(holdState(idle, g, null, 0).keep, false);
 });

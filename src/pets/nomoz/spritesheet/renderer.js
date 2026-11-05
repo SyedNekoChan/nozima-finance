@@ -1,6 +1,6 @@
 import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
-import { fitsImage, frameAt, frameRect, holdState, normalizeManifest, selectClip } from './clips.js';
+import { arriveState, fitsImage, frameAt, frameRect, holdState, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
 import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, exprFor, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
 
@@ -65,7 +65,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, trans: null, lickAt: -1e9, wasLick: false, lickSeen: -1e9, leaving: null, holdWait: Infinity, scratch: null, last: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, trans: null, lickAt: -1e9, wasLick: false, lickSeen: -1e9, leaving: null, arriving: null, holdWait: Infinity, scratch: null, last: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -80,6 +80,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     c.t0 = now;
     c.shown = false; // the clock starts when its first frame is on screen
     c.leaving = null;
+    c.arriving = null;
     return clip;
   };
 
@@ -101,6 +102,16 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       c.leaving = h.pending;
       c.holdWait = h.wait;
       if (h.keep) return cur;
+      // a clip that has only just appeared stays a little (minShow)
+      if (cur.minShow > 0 && wanted && wanted.id !== cur.id && c.shown && now - c.t0 < cur.minShow) {
+        c.holdWait = Math.min(c.holdWait, c.t0 + cur.minShow - now);
+        return cur;
+      }
+      // a clip that wants a moment's dwell (the dozing art) does not replace this one for a droop that lasts a blink
+      const a = arriveState(cur, wanted, c.arriving, now);
+      c.arriving = a.pending;
+      c.holdWait = Math.min(c.holdWait, a.wait);
+      if (a.keep) return cur;
     }
     if (tid === c.target) return cur;
     c.target = tid;
@@ -329,6 +340,19 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     const rows = squash ? squash.rows : 0;
     const X = fx && fx.expr && clip.expr && !rows ? fx.expr : null; // the face's expression (ears, head lean)
     const hdx = X ? X.headDx : 0;
+    // The head and shoulders dip a row into each lick (grooming), with each breath (sitting) and with each nod (a droop in the
+    // script: a head bob while chewing). Everything drawn on them follows the art: the crown, the live eyes and whiskers, the
+    // mouth, and the coin when it hangs above the cut (a coin on the chest below it stays where the body is).
+    const lickDip = !rows && fx && fx.lick && clip.lick ? fx.lick.dip : 0;
+    const nodDip = !lickDip && !rows && !hdx && fx && fx.nod && clip.nod ? 1 : 0;
+    const breath = !lickDip && !nodDip && !hdx && fx && fx.breath && clip.breathe ? 1 : 0;
+    const dip = lickDip || nodDip || breath;
+    const cut = lickDip ? clip.lick.dip : nodDip ? clip.nod.cut : breath ? clip.breathe.cut : 0;
+    if (an && dip && cut > 0) {
+      const dd = (pt, mid = 0) => (pt && pt[1] + mid < cut ? [pt[0], pt[1] + dip, ...pt.slice(2)] : pt);
+      // (the coin is 8 rows tall: it goes with the head when its middle is above the cut, and stays on the chest when not)
+      an = { ...an, crown: dd(an.crown), chest: dd(an.chest, 4), mouth: dd(an.mouth), eyes: an.eyes && an.eyes.map((p) => dd(p)), whiskers: an.whiskers && an.whiskers.map((p) => dd(p)) };
+    }
     if (an && (rows || hdx)) {
       // everything that sits on the head goes down / over with it; the chest goes down with a squash, never sideways
       const dn = (pt) => pt && [pt[0] + hdx, pt[1] + rows, ...pt.slice(2)];
@@ -387,11 +411,6 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       paint(ac, info) {
         try {
           ac.imageSmoothingEnabled = false;
-          // the head and shoulders dip a row into each lick (grooming) or with each breath (sitting)
-          const lickDip = !rows && fx && fx.lick && clip.lick ? fx.lick.dip : 0;
-          const breath = !lickDip && !hdx && fx && fx.breath && clip.breathe ? 1 : 0;
-          const dip = lickDip || breath;
-          const cut = lickDip ? clip.lick.dip : breath ? clip.breathe.cut : 0;
           if (hdx) {
             // the head leans a pixel: everything above the cut moves over, the body stays
             const lc = clip.expr.lean;
@@ -452,8 +471,9 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function motionFor(c, clip, params, now, reduced) {
     const dt = c.tickAt ? now - c.tickAt : 0;
     c.tickAt = now;
-    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, wait: Infinity, record: null, expr: null };
+    const fx = { amp: 0, phase: 0, lick: null, holder: c, animating: false, breath: 0, nod: false, wait: Infinity, record: null, expr: null };
     if (reduced) return fx;
+    fx.nod = !!(clip.nod && params && params.droop);
     // the face's expression: ears and head lean (sitting art only), with a redraw for the next ear twitch
     if (clip.expr) {
       fx.expr = exprFor(c.params, clip.expr, now);
@@ -525,6 +545,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       fx.squash = { rows: step.rows };
       fx.lick = null;
       fx.breath = 0;
+      fx.nod = false;
     }
     fx.record = (f) => {
       c.last = { ...f, at: now };
