@@ -114,7 +114,16 @@ describe('emotion in the app', () => {
     const t1 = await now(page);
     await page.evaluate(() => window.__nomozEmotion.note('startle'));
     assert.equal(await page.evaluate(() => window.__nomozEmotion.get().startled), true);
-    await page.waitForTimeout(9000);
+    // The blink replaces the cat's next idle moment. Even in this accelerated test the idle schedule still has its shipped long
+    // quiets (9-22 s, one moment in seven) and retry delays, so wait for the blink instead of betting on a short window: it is
+    // owed for 30 s, and usually comes within seconds.
+    let blinks = [];
+    for (let waited = 0; waited < 40000 && !blinks.length; waited += 500) {
+      await page.waitForTimeout(500);
+      blinks = slow(await face(page, t1));
+    }
+    assert.equal(blinks.length, 1, 'a composing blink after a start, within 40 s');
+    await page.waitForTimeout(4000); // and it is one blink, not a habit
     assert.equal(slow(await face(page, t1)).length, 1, 'exactly one composing blink after a start');
     // typing is activity (timing only)
     const before = await page.evaluate(() => window.__nomozWorld.lastActivity());
