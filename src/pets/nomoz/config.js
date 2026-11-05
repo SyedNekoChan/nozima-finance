@@ -142,3 +142,68 @@ export const ENCOUNTERS = {
     followOn: { look: 3, sit: 2, observe: 2, watchBeyond: 2 },
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Personality and emotion (see core/emotion.js, core/attention.js)    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * NOMOZ.EXE's temperament: observant, reserved, dryly composed. Quick to be curious about something new, slow to play
+ * (strongest around the yarn), hard to irritate and quick to get over it, a cat that dozes now and then but is not
+ * a sleepy cat. Her tells are consistent: irritation shows in the tail first and the ears second, never in wide eyes;
+ * curiosity is a head tilt with open pupils; sleepiness is slow blinks and squints; after a start there is always a slow,
+ * composing blink.
+ *
+ * Emotion is NOT the financial mood (idle / content / stressed). Nothing here changes behavior weights or the scheduler.
+ *
+ *   gain / cap       how strongly an event charges each emotion, and the most it can reach
+ *   halfLifeMs       how fast an emotion fades on its own (sleepy is driven by `sleepy` below instead)
+ *   threshold/exit   charge needed to show an emotion / the lower charge at which it is let go
+ *   margin/minDwell  a rival emotion must beat the current one by this much, after this long
+ *   inhibit          { by: { damped: factor } } a strong emotion damps another
+ *   events           what an event does: add (to charges, x magnitude x gain), drop, settle (x arousal), slept, reflex, compose, stim
+ *   behaviors        a finished behavior -> an event
+ *   moments          idle-moment weights per emotion: mul (x factor) and add (a share carved out of the others; the
+ *                    total weight is kept, so emotion changes WHICH moment, not how often)
+ *   displayGapMs     at least this long between two flavoured moments of a kind (nothing is exaggerated)
+ */
+export const PERSONALITY = {
+  threshold: 0.35,
+  exit: 0.2,
+  margin: 0.15,
+  minDwellMs: 15000,
+  reflexMs: 2500,
+  composeMs: 30000, // after a genuine start, the next idle moment is a slow, composing blink (if it comes within this long)
+  maxStepMs: 5000,
+  gain: { curious: 1.2, playful: 0.7, sleepy: 1, irritated: 0.6 },
+  cap: { curious: 0.9, playful: 0.8, sleepy: 0.6, irritated: 0.6 },
+  halfLifeMs: { curious: 25000, playful: 45000, irritated: 35000 },
+  // sleepiness rises only after quietMs without any stimulation (an event, or the pointer moving anywhere), takes riseMs
+  // to reach the display threshold, drains within recoverMs of activity, shows for at most maxDwellMs and then cannot
+  // return for refractoryMs: even a cat left alone all day is sleepy for roughly a seventh of the time
+  sleepy: { quietMs: 90000, riseMs: 540000, recoverMs: 45000, maxDwellMs: 150000, refractoryMs: 480000 },
+  inhibit: { sleepy: { playful: 0.6, curious: 0.25 }, irritated: { playful: 0.6, curious: 0.3 } },
+  events: {
+    noticed: { add: { curious: 0.55 } }, // attention took notice of something (x interest x novelty)
+    'noticed:yarn': { add: { playful: 0.5 } },
+    disturb: { add: { irritated: 0.28 }, drop: { sleepy: 0.1 } }, // the mouse keeps sweeping past
+    return: { add: { curious: 0.15 }, drop: { sleepy: 0.3 } }, // the tab is back
+    play: { add: { playful: 0.55 }, drop: { sleepy: 0.2 } },
+    comfort: { settle: 0.5, stim: false }, // an enjoyable, calm thing: the stirred-up feelings settle
+    slept: { slept: true, settle: 0.4, stim: false },
+    startle: { reflex: true, compose: true, add: { curious: 0.15 }, stim: false }, // a genuine start (the startle behavior)
+  },
+  behaviors: {
+    yarnPlay: 'play', wispPlay: 'play', treasure: 'play', tinker: 'play',
+    groom: 'comfort', eat: 'comfort', music: 'comfort', relax: 'comfort', relief: 'comfort',
+    sleep: 'slept',
+    startle: 'startle',
+  },
+  moments: {
+    sleepy: { mul: { squint: 2.4, tail: 0.5, alert: 0.4, glance: 0.8, listen: 0.8, tilt: 0.7, sly: 0.5 }, add: { slowBlink: 1.4 } },
+    curious: { mul: { tilt: 2.2, listen: 1.5, glance: 1.2, alert: 1.3, squint: 0.5, sly: 0.8 } },
+    playful: { mul: { tail: 2.2, sly: 2.4, glance: 1.4, squint: 0.4 } },
+    irritated: { mul: { tail: 1.6, listen: 0.7, tilt: 0.4, sly: 0.3, squint: 0.6, alert: 0.6 }, add: { huff: 2.2 } },
+  },
+  displayGapMs: { huff: 45000, slowBlink: 20000 },
+};

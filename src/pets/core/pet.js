@@ -24,6 +24,7 @@ import { createWorld } from './space.js';
  *   financialReactions  [defineFinancialReaction(...)]  how this pet reacts to
  *               financial transitions and successful operations, mapped onto
  *               its own behaviors (the shared adapter / director is reused)
+ *   personality traits of the emotion model (see core/emotion.js); absent = no emotion layer
  *   world       overrides for depth range, scale, bounds (see config.js)
  *   initial     { poses, ... } hints for the random first placement
  *

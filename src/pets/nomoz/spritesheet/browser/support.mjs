@@ -41,15 +41,49 @@ export function schedulerProbePlugin() {
   };
 }
 
+/*
+ * Test-server only: hands the page the real emotion model (window.__nomozEmotion) and records every patch the attention
+ * layer applies (window.__nomozFace), so a test can read how the pet feels and what its face did. With `fast`, the idle
+ * moments come every second or so (a test would otherwise wait minutes); the rules, weights and expressions are the
+ * shipped ones. Sources are not edited; this rewrites usePet.js / config.js in memory.
+ */
+export function emotionProbePlugin({ fast = false } = {}) {
+  return {
+    name: 'nomoz-emotion-probe-for-test',
+    enforce: 'pre',
+    transform(code, id) {
+      const file = id.split('?')[0];
+      if (file.endsWith('/src/pets/usePet.js')) {
+        const needle = 'const emotion = emotionRef.current;';
+        if (!code.includes(needle)) throw new Error('emotion probe: usePet.js no longer reads emotionRef.current');
+        const apply = 'apply: commit,\n      timing: AMBIENT.attention,';
+        if (!code.includes(apply)) throw new Error('emotion probe: usePet.js attention call changed');
+        const wn = '      world,\n      // any behavior but the quiet sitting ones';
+        if (!code.includes(wn)) throw new Error('emotion probe: usePet.js attention call changed (world)');
+        return code
+          .replace(wn, "      world: typeof window !== 'undefined' ? (window.__nomozWorld = world) : world,\n      // any behavior but the quiet sitting ones")
+          .replace(needle, `${needle} if (typeof window !== 'undefined') window.__nomozEmotion = emotion;`)
+          .replace(apply, `apply: (p) => { if (typeof window !== 'undefined') (window.__nomozFace ||= []).push({ t: Math.round(performance.now()), ...p }); commit(p); },\n      timing: AMBIENT.attention,`);
+      }
+      if (fast && file.endsWith('/src/pets/config.js')) {
+        const re = /firstMs: \[3500, 9000\],\n\s*everyMs: \[3800, 10500\],/;
+        if (!re.test(code)) throw new Error('emotion probe: AMBIENT.attention timing changed');
+        return code.replace(re, 'firstMs: [600, 900],\n    everyMs: [900, 1300],');
+      }
+      return null;
+    },
+  };
+}
+
 /* A dev server running the shipped configuration (the sprite-sheet cat). */
-export async function startVite({ probe = false } = {}) {
+export async function startVite({ probe = false, emotionProbe = false, fast = false } = {}) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
   const server = await vite.createServer({
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(probe ? [schedulerProbePlugin()] : [])],
+    plugins: [react(), ...(probe ? [schedulerProbePlugin()] : []), ...(emotionProbe ? [emotionProbePlugin({ fast })] : [])],
     server: { host: '127.0.0.1', port: 0, strictPort: false },
     logLevel: 'error',
     clearScreen: false,

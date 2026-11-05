@@ -9,7 +9,7 @@
  *   return        the tab is back in view after a while away
  *
  *   getRect  () => the cat's client rect | null
- * Returns { read() -> events since the last call, rect(), pointerPos() -> { x, y } | null (null once the mouse has left the page), stop() }.
+ * Returns { read() -> events since the last call, rect(), lastActivity() -> when the pointer last moved or the keyboard was last used anywhere (0 = never; timing only), pointerPos() -> { x, y } | null (null once the mouse has left the page), stop() }.
  */
 export function watchWorld({ getRect, win = typeof window !== 'undefined' ? window : null, doc = typeof document !== 'undefined' ? document : null, clock = () => performance.now() }) {
   const queue = [];
@@ -21,12 +21,14 @@ export function watchWorld({ getRect, win = typeof window !== 'undefined' ? wind
   let firedDwell = false;
   let sweeps = []; // when it swept past close by recently
   let hiddenAt = 0;
+  let activeAt = 0; // the pointer (of any kind) last moved, or the keyboard was last used, anywhere on the page
 
   const push = (e) => {
     if (queue.length < 6) queue.push(e);
   };
 
   function onMove(ev) {
+    activeAt = clock();
     if (ev.pointerType && ev.pointerType !== 'mouse' && ev.pointerType !== 'pen') return;
     const t = clock();
     const r = getRect && getRect();
@@ -70,6 +72,12 @@ export function watchWorld({ getRect, win = typeof window !== 'undefined' ? wind
     }
   }
 
+  // The keyboard (or a screen keyboard / IME) was used: only WHEN, never what. The handler does not read the event at all.
+  // There is no key logging here, and nothing else listens to the keyboard for the pet.
+  const onKey = () => {
+    activeAt = clock();
+  };
+
   // the mouse left the page: there is nothing there to look at any more
   const onLeave = () => {
     px = null;
@@ -79,6 +87,8 @@ export function watchWorld({ getRect, win = typeof window !== 'undefined' ? wind
   };
 
   if (win) win.addEventListener('pointermove', onMove, { passive: true });
+  if (win) win.addEventListener('keydown', onKey, { passive: true });
+  if (win) win.addEventListener('input', onKey, { passive: true, capture: true }); // typing on a screen keyboard may fire no keydown
   if (doc) doc.addEventListener('visibilitychange', onVisibility);
   if (doc && doc.documentElement) doc.documentElement.addEventListener('mouseleave', onLeave);
 
@@ -88,8 +98,11 @@ export function watchWorld({ getRect, win = typeof window !== 'undefined' ? wind
     },
     rect: () => (getRect ? getRect() : null),
     pointerPos: () => (px === null ? null : { x: px, y: py }),
+    lastActivity: () => activeAt,
     stop() {
       if (win) win.removeEventListener('pointermove', onMove);
+      if (win) win.removeEventListener('keydown', onKey);
+      if (win) win.removeEventListener('input', onKey, { capture: true });
       if (doc) doc.removeEventListener('visibilitychange', onVisibility);
       if (doc && doc.documentElement) doc.documentElement.removeEventListener('mouseleave', onLeave);
     },

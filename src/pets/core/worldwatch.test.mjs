@@ -103,3 +103,29 @@ test('touch is ignored; the mouse leaving the page clears the pointer; the tab c
   assert.equal(win.count('pointermove'), 0);
   assert.equal(doc.count('visibilitychange'), 0);
 });
+
+test('it remembers when the pointer last moved anywhere (any kind of pointer, near the cat or not), and reads nothing else from it', () => {
+  const { w, win, move } = make();
+  assert.equal(w.lastActivity(), 0);
+  move(5, 5, 100); // far from the cat
+  assert.equal(w.lastActivity(), 100);
+  t += 500;
+  win.emit('pointermove', { clientX: 10, clientY: 10, pointerType: 'touch' }); // a finger is activity too, but never a stimulus
+  assert.equal(w.lastActivity(), 600);
+  assert.deepEqual(w.read(), []);
+});
+
+test('typing counts as activity (a key, or text entered on a screen keyboard), and the handlers never look at what was typed', () => {
+  const { w, win } = make();
+  const secret = new Proxy({}, { get: (_, k) => { throw new Error(`read ${String(k)} of a keyboard event`); } });
+  t = 100;
+  win.emit('keydown', secret);
+  assert.equal(w.lastActivity(), 100);
+  t = 900;
+  win.emit('input', secret);
+  assert.equal(w.lastActivity(), 900);
+  assert.deepEqual(w.read(), []);
+  w.stop();
+  assert.equal(win.count('keydown'), 0);
+  assert.equal(win.count('input'), 0);
+});

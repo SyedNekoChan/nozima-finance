@@ -3,6 +3,7 @@ import { REACTIONS } from '../lib/nomoz.js';
 import { AMBIENT, SCHEDULER } from './config.js';
 import { startAmbientBlink } from './core/ambient.js';
 import { startAttention } from './core/attention.js';
+import { createEmotion } from './core/emotion.js';
 import { planLookBefore } from './core/lookahead.js';
 import { watchWorld } from './core/worldwatch.js';
 import { attachInteractions } from './core/interactions.js';
@@ -130,6 +131,7 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
   const directorRef = useRef(null);
   const flagsRef = useRef([]);
   const reactionTimers = useRef([]);
+  const emotionRef = useRef(null); // how the pet feels (core/emotion.js); not the financial mood, which is `mood`
 
   if (directorRef.current === null) {
     directorRef.current = new FinancialDirector({ reactions: pet.financialReactions, rng: rngRef.current });
@@ -277,7 +279,16 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
     if (!blinks) return undefined;
     // the world it can notice: the mouse near it (only the mouse, and only its position) and the tab coming back
     const world = watchWorld({ getRect: () => document.querySelector('canvas[data-mood]')?.getBoundingClientRect() ?? null });
+    // the emotion outlives the attention loop (which restarts with the financial mood), so a feeling is not forgotten
+    if (emotionRef.current === null && pet.personality) {
+      emotionRef.current = createEmotion({
+        traits: pet.personality,
+        sources: { behavior: () => (schedRef.current && schedRef.current.last ? { last: schedRef.current.last, at: schedRef.current.lastAt[schedRef.current.last] } : null) },
+      });
+    }
+    const emotion = emotionRef.current;
     const stop = startAttention({
+      emotion,
       rng: createRng(runtimeSeed()),
       getView: () => curRef.current,
       apply: commit,
@@ -294,7 +305,7 @@ export default function usePet({ pet, mood, compact, reduced, geo, approaching =
       stop();
       world.stop();
     };
-  }, [blinks, commit, mood]);
+  }, [blinks, commit, mood, pet]);
 
   // Financial mood / breakpoint / motion preference changed: the same
   // scheduler abandons its current behavior and carries on.

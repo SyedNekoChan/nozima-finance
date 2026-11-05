@@ -1,3 +1,4 @@
+import { NO_EMOTION } from './emotion.js';
 import { pick, rnd } from './rng.js';
 
 /*
@@ -35,6 +36,10 @@ import { pick, rnd } from './rng.js';
  *   busy      () => true while the scheduler is running a behavior that is not just sitting quietly: nothing is started then,
  *             and a moment under way stops (a behavior always has priority, even in a neutral pause between its own beats)
  *   now       () => ms (the clock habituation uses; performance.now by default)
+ *   emotion   optional (./emotion.js): how the cat feels. It colours HOW the idle face plays (which moments are likely, with
+ *             the total weight kept, and the ears / pupils / tail / lean inside an episode) and is told what is noticed. It
+ *             never changes WHETHER or WHEN anything happens: the gaps, rests, habituation and the busy / neutral rules
+ *             above are untouched, and with no emotion (or a content one) the face is exactly as before.
  * Returns stop(): cancels the timers and gives back anything it still holds.
  */
 
@@ -91,10 +96,11 @@ const MOMENTS = {
   // head tilt at something it cannot quite place: curious pupils, the ears come forward, then it relaxes in stages
   tilt(c) {
     const s = pick(c.rng, [-1, 1]);
+    const curious = c.emo.kind === 'curious';
     return [
-      [0, { lean: s, pupils: 2 }],
+      [0, { lean: s, pupils: curious ? 3 : 2 }],
       [rnd(c.rng, 200, 450), { ears: 'perk', gaze: s < 0 ? 'l' : 'r' }],
-      [rnd(c.rng, 1000, 2400), { gaze: 'c' }],
+      [rnd(c.rng, 1000, 2400) * (curious ? 1 + 0.5 * c.emo.level : 1), { gaze: 'c' }],
       [rnd(c.rng, 250, 700), { pupils: null }],
       [rnd(c.rng, 200, 600), { ears: null }],
       [rnd(c.rng, 150, 500), { lean: 0 }],
@@ -102,13 +108,32 @@ const MOMENTS = {
   },
   // a relaxed, sleepy squint: the lids sink and the pupils narrow, sometimes ending in a slow blink
   squint(c) {
-    const steps = [[0, { eyes: 'down', pupils: 0 }], [rnd(c.rng, 600, 1500), { eyes: 'open' }], [rnd(c.rng, 120, 400), { pupils: null }]];
-    if (c.rng() < 0.4) steps.push([rnd(c.rng, 250, 700), { eyes: 'blink' }], [rnd(c.rng, 260, 380), { eyes: 'open' }]);
+    const sleepy = c.emo.kind === 'sleepy' ? c.emo.level : 0;
+    const steps = [[0, { eyes: 'down', pupils: 0 }], [rnd(c.rng, 600, 1500) * (1 + 0.8 * sleepy), { eyes: 'open' }], [rnd(c.rng, 120, 400), { pupils: null }]];
+    if (c.rng() < 0.4 + 0.3 * sleepy) steps.push([rnd(c.rng, 250, 700), { eyes: 'blink' }], [rnd(c.rng, 260, 380) * (1 + sleepy), { eyes: 'open' }]);
     return steps;
   },
   // the tip of the tail stirs
   tail(c) {
+    // a playful cat's tail swishes with bright eyes and ears up (the tail mode `up` is hardly different from rest, so it
+    // cannot carry a mood); an irritated one swishes with narrow pupils and ears back (see huff)
+    if (c.emo.kind === 'playful') return [[0, { tail: 'swish', pupils: 3, ears: 'perk' }], [rnd(c.rng, 1000, 2200), { tail: null }], [rnd(c.rng, 200, 500), { pupils: null, ears: null }]];
     return [[0, { tail: 'swish' }], [rnd(c.rng, 1000, 2200), { tail: null }]];
+  },
+  // irritation, dryly: a look aside, the ears back, the tail stirring, then composure (the tail tells first)
+  huff(c) {
+    const s = pick(c.rng, ['l', 'r']);
+    return [
+      [0, { tail: 'swish', pupils: 1 }],
+      [rnd(c.rng, 250, 550), { ears: 'back', gaze: s }],
+      [rnd(c.rng, 900, 1600), { gaze: 'c', pupils: null }],
+      [rnd(c.rng, 250, 500), { tail: null }],
+      [rnd(c.rng, 300, 700), { ears: null }],
+    ];
+  },
+  // a slow blink: sleepy, and the sign of an easy cat
+  slowBlink(c) {
+    return [[0, { eyes: 'blink', pupils: 1 }], [rnd(c.rng, 450, 750), { eyes: 'open' }], [rnd(c.rng, 150, 350), { pupils: null }]];
   },
   // startled-awake alertness: wide eyes, big pupils, ears up, then it settles
   alert(c) {
@@ -134,6 +159,9 @@ const MOMENTS = {
 };
 
 // the fields each step of a moment may set, tracked while it runs
+MOMENTS.huff.flavoured = true;
+MOMENTS.slowBlink.flavoured = true;
+
 const FIELDS = ['gaze', 'ears', 'lean', 'tail', 'pupils', 'eyes'];
 const EYES_NEUTRAL = 'open';
 
@@ -143,15 +171,22 @@ const EYES_NEUTRAL = 'open';
  * episode early (the thing is gone or the cat's rig was taken), null skips the step.
  */
 export function episode(c, interest, aim, opts = {}) {
-  if (opts.glance) return glance(c, aim, opts.gone);
+  const emo = c.emo || NO_EMOTION;
+  if (opts.glance) return glance(c, aim, opts.gone, emo);
   const surprise = interest > 0.8 && c.rng() < 0.45;
   const long = interest > 0.55 && c.rng() < 0.14;
   const watch = long ? rnd(c.rng, 7000, 12000) : rnd(c.rng, 1100, 2200) + interest * rnd(c.rng, 1200, 4200);
-  const leanOn = c.rng() < 0.35;
+  const leanOn = c.rng() < 0.35 || (emo.kind === 'curious' && emo.level > 0.5);
   const steps = [];
   const side = () => aim();
   // notice: the ears come up and the pupils open a little (or the eyes go wide for something unexpected)
-  steps.push([rnd(c.rng, 120, 520), surprise ? { eyes: 'wide', pupils: 3, ears: 'perk' } : { ears: 'perk', pupils: 2 }]);
+  // (curious and playful: the pupils open wide; irritated: the ears go back and the pupils narrow; sleepy: no ears, small pupils)
+  const notice =
+    emo.kind === 'irritated' ? { ears: 'back', pupils: 1 }
+    : emo.kind === 'sleepy' ? { pupils: 1 }
+    : emo.kind === 'curious' || emo.kind === 'playful' ? { ears: 'perk', pupils: 3 }
+    : { ears: 'perk', pupils: 2 };
+  steps.push([rnd(c.rng, 120, 520), surprise ? { eyes: 'wide', pupils: 3, ears: 'perk' } : notice]);
   // orient: the eyes turn to it, the head sometimes follows
   steps.push([rnd(c.rng, 160, 480), () => {
     const s = side();
@@ -170,7 +205,7 @@ export function episode(c, interest, aim, opts = {}) {
     steps.push([dt, () => {
       const s = side();
       if (s === undefined) return false;
-      return { gaze: s || 'c', ...(midway ? { pupils: 3 } : {}) };
+      return { gaze: s || 'c', ...(midway && emo.kind !== 'irritated' ? { pupils: 3 } : {}) };
     }]);
   }
   // lose interest: the pupils settle first, the eyes drift back (a slow blink now and then), then the ears and head
@@ -185,10 +220,10 @@ export function episode(c, interest, aim, opts = {}) {
  * A glance at something secondary (the mouse): the eyes go to where it was, once, for a second or two, and come back. The
  * side is fixed when the look begins: the eyes never follow it about; if it has gone away (`gone()`), the look ends early.
  */
-function glance(c, aim, gone) {
+function glance(c, aim, gone, emo = NO_EMOTION) {
   let fixed;
   const steps = [];
-  if (c.rng() < 0.5) steps.push([rnd(c.rng, 100, 450), { pupils: 2 }]);
+  if (c.rng() < 0.5) steps.push([rnd(c.rng, 100, 450), emo.kind === 'irritated' ? { ears: 'back', pupils: 1 } : { pupils: 2 }]);
   steps.push([rnd(c.rng, 140, 420), () => {
     fixed = aim();
     if (fixed === undefined) return false;
@@ -196,12 +231,12 @@ function glance(c, aim, gone) {
   }]);
   const watch = rnd(c.rng, 800, 2000);
   steps.push([watch, () => (gone && gone() ? false : null)]);
-  steps.push([rnd(c.rng, 150, 450), { gaze: 'c', pupils: null }]);
+  steps.push([rnd(c.rng, 150, 450), emo.kind === 'irritated' ? { gaze: 'c', pupils: null, ears: null } : { gaze: 'c', pupils: null }]);
   if (c.rng() < 0.3) steps.push([rnd(c.rng, 150, 400), { eyes: 'blink' }], [rnd(c.rng, 250, 380), { eyes: 'open' }]);
   return steps;
 }
 
-export function startAttention({ rng, getView, apply, timing, mood = 'content', world = null, busy = () => false, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) }) {
+export function startAttention({ rng, getView, apply, timing, mood = 'content', world = null, busy = () => false, emotion = null, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) }) {
   let timer = null;
   let watcher = null;
   let alive = true;
@@ -273,9 +308,9 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
 
   const scale = () => (mood === 'content' ? 1.15 : 1) * (1.25 - alertness * 0.5);
 
-  function weights() {
+  function weights(emo) {
     const a = alertness;
-    return {
+    const w = {
       glance: 3.5,
       listen: 2.5,
       tilt: 1.6 + 2 * a,
@@ -284,11 +319,13 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
       alert: 0.25 + 2.4 * a,
       sly: 0.7,
     };
+    // the emotion re-weights the same total: which moment, never how often
+    return emotion && emo.kind !== 'content' ? emotion.shape(w, emo) : w;
   }
 
-  function chooseMoment() {
-    const w = weights();
-    const names = Object.keys(w).filter((n) => n !== last);
+  function chooseMoment(emo, skip = null) {
+    const w = weights(emo);
+    const names = Object.keys(w).filter((n) => n !== last && n !== skip);
     const total = names.reduce((s, n) => s + w[n], 0);
     let r = rng() * total;
     for (const n of names) {
@@ -314,7 +351,7 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
       const moved = prev && Math.hypot((spec.sx ?? 0) - (prev.sx ?? 0), (spec.sy ?? 0) - (prev.sy ?? 0)) > 14;
       if (prev && !moved) continue;
       const base = PROP_INTEREST[spec.kind] ?? 0.4;
-      out.push({ key: `prop:${spec.kind || ''}:${id}`, interest: base * (prev ? 0.8 : 1), aim: () => (getView()?.props?.[id] ? sideOf(getView(), getView().props[id].sx) : undefined) });
+      out.push({ kind: spec.kind, key: `prop:${spec.kind || ''}:${id}`, interest: base * (prev ? 0.8 : 1), aim: () => (getView()?.props?.[id] ? sideOf(getView(), getView().props[id].sx) : undefined) });
     }
     for (const id of [...seenProps.keys()]) if (!props[id]) seenProps.delete(id);
     primed = true;
@@ -326,6 +363,9 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
     if (!world) return [];
     const out = [];
     for (const e of world.read()) {
+      // (seen even while the cat is resting from the mouse: repeated disturbance is what irritates it)
+      if (emotion && e.kind === 'pointer-fast') emotion.note('disturb');
+      if (emotion && e.kind === 'return') emotion.note('return');
       const base = EVENT_INTEREST[e.kind];
       if (!base) continue;
       const pointer = e.kind !== 'return';
@@ -369,6 +409,12 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
       return false;
     }
     habit.set(s.key, { n: h.n + 1, until: t + rnd(rng, ...(s.habituateMs || timing.habituateMs)) });
+    // what it actually took notice of stirs it, less each time it has seen the same thing (the mouse is only a glance)
+    if (emotion && !s.glance) {
+      const m = s.interest * Math.pow(0.55, h.n);
+      emotion.note('noticed', m);
+      if (s.kind) emotion.note(`noticed:${s.kind}`, m);
+    }
     return true;
   }
 
@@ -376,7 +422,7 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
     playing = true;
     last = 'episode';
     alertness = Math.min(1, alertness + (s.glance ? 0.05 : 0.2 + 0.2 * s.interest)); // a glance at the mouse hardly stirs it
-    play(episode({ rng }, s.interest, s.aim, { glance: s.glance, gone: s.gone }), () => {
+    play(episode({ rng, emo: emotion ? emotion.get() : NO_EMOTION }, s.interest, s.aim, { glance: s.glance, gone: s.gone }), () => {
       playing = false;
       restUntil = now() + rnd(rng, ...timing.episodeRestMs);
       scheduleMoment(rnd(rng, ...timing.everyMs) * scale());
@@ -386,6 +432,7 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
   // the watcher: cheap, a few times a second; it only ever starts something when the cat is idle and rested
   function watch() {
     if (!alive) return;
+    if (emotion) emotion.tick({ activityAt: world && world.lastActivity ? world.lastActivity() : 0 });
     const v = getView();
     const stim = [...propStimuli(v), ...worldStimuli()];
     if (!playing && stim.length && now() >= restUntil && !busy() && isNeutral(v)) {
@@ -411,9 +458,15 @@ export function startAttention({ rng, getView, apply, timing, mood = 'content', 
     if (playing) return void later(tick, rnd(rng, ...timing.retryMs));
     alertness = Math.max(0, alertness - 0.04);
     if (busy() || !isNeutral(getView())) return void later(tick, rnd(rng, ...timing.retryMs));
-    last = chooseMoment();
+    const emo = emotion ? emotion.get() : NO_EMOTION;
+    // after a genuine start (never ordinary wide-eyed attention) the next idle moment is a slow, composing blink; it replaces
+    // that moment, so nothing extra happens
+    const compose = !!emotion && !!emotion.takeCompose && emotion.takeCompose();
+    last = compose ? 'slowBlink' : chooseMoment(emo);
+    // a flavoured moment (huff, slow blink) is allowed only now and then: if it is too soon, a plain moment instead
+    if (!compose && emotion && emo.kind !== 'content' && MOMENTS[last].flavoured && !emotion.permit(last)) last = chooseMoment(emo, last);
     playing = true;
-    play(MOMENTS[last]({ rng }), () => {
+    play(MOMENTS[last]({ rng, emo }), () => {
       playing = false;
       // a gap that varies a lot: usually a few seconds, now and then a long quiet
       const quiet = rng() < timing.longQuietChance ? rnd(rng, ...timing.longQuietMs) : 0;

@@ -392,3 +392,276 @@ test('sideOf: straight ahead and unknown give no side', () => {
   assert.equal(sideOf({ sx: 100 }, 300), 'r');
   assert.equal(sideOf({ sx: 100 }, undefined), null);
 });
+
+/* ---- emotion: it colours the idle face and never changes whether or when anything happens ---------------------------- */
+
+import { createEmotion } from './emotion.js';
+import { PERSONALITY } from '../nomoz/config.js';
+
+// an emotion held at full strength (the real weights, the real display rationing), counting what it is told
+const held = (kind, level = 1) => {
+  const real = createEmotion({ traits: PERSONALITY, now: () => t });
+  const heard = [];
+  return {
+    heard,
+    get: () => ({ kind, level: kind === 'content' ? 0 : level, startled: false, charge: {} }),
+    shape: (w, emo) => real.shape(w, emo),
+    permit: (n) => real.permit(n),
+    note: (n, m) => heard.push([n, m]),
+    tick: () => {},
+  };
+};
+const startE = (emotion, seed = 1, world = null) => startAttention({ rng: createRng(seed), getView: () => view, apply, timing: AMBIENT.attention, mood: 'content', world, emotion, now: clock });
+const episodes = () => log.filter(([, p]) => p.eyes === 'wide' || p.ears === 'perk' || p.ears === 'back').length;
+
+test('a content cat is exactly the cat without any emotion layer', () => {
+  for (const seed of [2, 3, 8]) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const a = startAttention({ rng: createRng(seed), getView: () => view, apply, timing: AMBIENT.attention, mood: 'content', now: clock });
+    run(300000);
+    a();
+    const without = log;
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const b = startE(held('content'), seed);
+    run(300000);
+    b();
+    assert.deepEqual(log, without, `seed ${seed}`);
+  }
+});
+
+test('each emotion has its own tells, and the content cat never shows them', () => {
+  const tell = {
+    irritated: ([, p]) => p.ears === 'back',
+    playful: ([, p]) => p.tail === 'swish' && p.pupils === 3 && p.ears === 'perk',
+    sleepy: ([, p]) => p.eyes === 'blink' && p.pupils === 1,
+    curious: ([, p]) => p.pupils === 3 && p.lean !== undefined && p.lean !== 0,
+  };
+  for (const [kind, is] of Object.entries(tell)) {
+    let shown = 0;
+    let baseline = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      for (const [k, tally] of [[kind, 'shown'], ['content', 'baseline']]) {
+        view = { ...REST, props: {} };
+        log = [];
+        t = 0;
+        const stop = startE(held(k), seed);
+        run(300000);
+        stop();
+        assert.ok(isNeutral(view), `${k}: left on ${JSON.stringify(view)}`);
+        const n = log.filter(is).length;
+        if (tally === 'shown') shown += n;
+        else baseline += n;
+      }
+    }
+    assert.ok(shown > baseline * 1.5 + 3, `${kind}: ${shown} tells against ${baseline} when content`);
+    if (kind === 'irritated' || kind === 'playful' || kind === 'sleepy') assert.equal(baseline, 0, `${kind}: its tell appears when content`);
+  }
+});
+
+test('irritation tells in the tail first, then the ears, and never in wide eyes', () => {
+  let huffs = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const stop = startE(held('irritated'), seed);
+    run(600000);
+    stop();
+    assert.ok(!log.some(([, p]) => p.tail === 'lash'), 'lash is the stressed look');
+    const i = log.findIndex(([, p]) => p.ears === 'back');
+    if (i >= 0) {
+      huffs++;
+      assert.ok(!log.some(([time, p]) => p.eyes === 'wide' && time > log[i][0] - 800 && time < log[i][0] + 2800), 'wide eyes in a huff');
+      assert.ok(log.slice(0, i).some(([time, p]) => p.tail === 'swish' && time >= log[i][0] - 2500), 'the ears moved before the tail');
+    }
+  }
+  assert.ok(huffs >= 6);
+});
+
+test('emotion changes which moment, not how often: the pace is the same for every emotion', () => {
+  const count = (k, seed) => {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const stop = startE(held(k), seed);
+    run(600000);
+    stop();
+    let n = 0;
+    let prev = -1e9;
+    for (const [time, p] of log) {
+      if (time - prev > 2500 && Object.values(p).some((v) => v !== null && v !== 'c' && v !== 0 && v !== 'open')) n++;
+      prev = time;
+    }
+    return n;
+  };
+  for (const seed of [1, 2, 3]) {
+    const base = count('content', seed);
+    for (const k of ['curious', 'playful', 'sleepy', 'irritated']) {
+      const n = count(k, seed);
+      assert.ok(n > base * 0.7 && n < base * 1.35, `${k} seed ${seed}: ${n} moments against ${base}`);
+    }
+  }
+});
+
+test('a flavoured moment is rationed: an irritated cat huffs now and then, not on a clock', () => {
+  view = { ...REST, props: {} };
+  log = [];
+  t = 0;
+  const stop = startE(held('irritated'), 4);
+  run(600000);
+  stop();
+  const times = log.filter(([, p]) => p.ears === 'back').map(([time]) => time);
+  assert.ok(times.length >= 3);
+  const gaps = times.slice(1).map((x, i) => x - times[i]).filter((g) => g > 3000);
+  assert.ok(Math.min(...gaps) >= PERSONALITY.displayGapMs.huff - 2000, `two huffs ${Math.min(...gaps)} ms apart`);
+});
+
+test('emotion never overrides a behavior and never acts when the rig is not neutral', () => {
+  const busy = [{ pawL: 'high' }, { eyes: 'closed' }, { gaze: 'l' }, { ears: 'back' }, { tail: 'swish' }, { pupils: 3 }, { pose: 'curl' }, { legs: 1 }, { offscreen: true }, { droop: 1 }];
+  for (const kind of ['curious', 'playful', 'sleepy', 'irritated']) {
+    for (const b of busy) {
+      view = { ...REST, ...b, props: {} };
+      log = [];
+      t = 0;
+      const stop = startE(held(kind), 5);
+      run(60000);
+      stop();
+      assert.deepEqual(log, [], `${kind} acted over ${JSON.stringify(b)}`);
+    }
+  }
+  // and a behavior that takes over mid-moment keeps the face
+  view = { ...REST, props: {} };
+  log = [];
+  t = 0;
+  const stop = startE(held('irritated'), 7);
+  let taken = false;
+  for (let i = 0; i < 80000 && !taken; i += 10) {
+    run(10, 10);
+    if (view.ears || view.gaze !== 'c' || view.tail) {
+      Object.assign(view, { pose: 'stand', legs: 1, ears: 'perk', gaze: 'r', tail: 'lash' });
+      taken = true;
+    }
+  }
+  const n = log.length;
+  run(60000);
+  stop();
+  assert.ok(taken);
+  assert.equal(log.length, n);
+  assert.deepEqual([view.ears, view.gaze, view.tail], ['perk', 'r', 'lash']);
+});
+
+test('habituation and rest are untouched: an object that never changes is noticed as rarely whatever the cat feels', () => {
+  for (const kind of ['content', 'curious', 'playful', 'sleepy', 'irritated']) {
+    let worst = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      view = { ...REST, props: {} };
+      log = [];
+      t = 0;
+      const e = held(kind);
+      const stop = startE(e, seed);
+      run(500);
+      view.props = { w: { kind: 'wisp', sx: 400, sy: 50 } };
+      run(600000);
+      stop();
+      worst = Math.max(worst, e.heard.filter(([n]) => n === 'noticed').length);
+    }
+    assert.ok(worst <= 4, `${kind}: noticed a static object ${worst} times`);
+  }
+});
+
+test('it tells the emotion what it takes notice of, how often, and what disturbs it', () => {
+  let noticedAny = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const w = mouseWorld();
+    const e = held('content');
+    const stop = startE(e, seed, w);
+    run(500);
+    view.props = { y: { kind: 'yarn', sx: 400, sy: 50 } };
+    run(300);
+    w.queue.push({ kind: 'pointer-fast', strength: 0.6 }, { kind: 'return', strength: 0.5 });
+    run(30000);
+    stop();
+    const heard = e.heard.map(([n]) => n);
+    assert.ok(heard.includes('disturb'), `seed ${seed}: ${heard.join()}`);
+    assert.ok(heard.includes('return'));
+    // each noticed thing is reported once as a thing and once as its kind; the mouse is a glance and is never reported as excitement
+    assert.equal(heard.filter((n) => n === 'noticed').length, heard.filter((n) => n === 'noticed:yarn').length);
+    if (heard.includes('noticed')) noticedAny++;
+  }
+  assert.ok(noticedAny >= 3, `the yarn was noticed in only ${noticedAny} of 10 runs`);
+});
+
+test('ordinary wide-eyed attention is not a startle: no composing blink, no reflex, and the episode is the one it always was', () => {
+  for (let seed = 1; seed <= 12; seed++) {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const em = createEmotion({ traits: PERSONALITY, now: () => t });
+    const stop = startE(em, seed);
+    run(500);
+    view.props = { d: { kind: 'distortion', sx: 400, sy: 50 } }; // interest .9: sometimes met with wide eyes
+    run(25000);
+    stop();
+    assert.equal(em.get().startled, false, `seed ${seed}`);
+    assert.equal(em.takeCompose(), false, `seed ${seed}`);
+    // the slow, composing blink (a long blink with small pupils) is not part of an ordinary look
+    assert.ok(!log.some(([, p]) => p.eyes === 'blink' && p.pupils === 1), `seed ${seed}`);
+  }
+});
+
+test('a genuine start is followed, at the next idle moment, by one slow composing blink, and the pace does not change', () => {
+  const count = (compose) => {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const em = createEmotion({ traits: PERSONALITY, now: () => t });
+    const stop = startE(em, 5);
+    run(1000);
+    if (compose) em.note('startle');
+    run(120000);
+    stop();
+    let n = 0;
+    let prev = -1e9;
+    for (const [time, p] of log) {
+      if (time - prev > 2500 && Object.values(p).some((v) => v !== null && v !== 'c' && v !== 0 && v !== 'open')) n++;
+      prev = time;
+    }
+    return { n, slow: log.filter(([, p]) => p.eyes === 'blink' && p.pupils === 1).length, first: log.findIndex(([, p]) => p.eyes === 'blink' && p.pupils === 1) };
+  };
+  const calm = count(false);
+  const startled = count(true);
+  assert.equal(calm.slow, 0);
+  assert.equal(startled.slow, 1, 'one composing blink');
+  assert.ok(startled.first >= 0 && startled.first < 3, 'it came at the first idle moment');
+  assert.ok(Math.abs(startled.n - calm.n) <= 3, `${startled.n} moments against ${calm.n}`);
+});
+
+test('keyboard activity keeps it from artificial sleepiness; without it a long idle stretch does make it drowsy', () => {
+  const run15 = (typing) => {
+    view = { ...REST, props: {} };
+    log = [];
+    t = 0;
+    const em = createEmotion({ traits: PERSONALITY, now: () => t });
+    const w = { read: () => [], rect: () => null, pointerPos: () => null, lastActivity: () => (typing ? Math.max(0, t - 800) : 0) };
+    const stop = startE(em, 2, w);
+    let sleepy = 0;
+    for (let i = 0; i < 15 * 60; i++) {
+      run(1000, 100);
+      if (em.get().kind === 'sleepy') sleepy++;
+    }
+    stop();
+    return { sleepy, charge: em.get().charge.sleepy };
+  };
+  const typing = run15(true);
+  const idle = run15(false);
+  assert.equal(typing.sleepy, 0);
+  assert.equal(typing.charge, 0);
+  assert.ok(idle.sleepy > 0, 'it never got drowsy');
+});
