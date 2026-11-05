@@ -80,7 +80,11 @@ describe('emotion and running behaviors', () => {
       });
       const running = new Set();
       for (let i = 0; i < 16; i++) {
-        await page.evaluate((k) => window.__nomozEmotion.note(['disturb', 'noticed', 'play'][k % 3], 1), i);
+        // ask the real scheduler for busy behaviors (at its next boundary), so the test does not depend on what it picks by chance
+        await page.evaluate((k) => {
+          window.__nomozEmotion.note(['disturb', 'noticed', 'play'][k % 3], 1);
+          window.__nomozScheduler.request(['stretch', 'groom', 'yawn', 'survey', 'shakeOff', 'pawCheck'][k % 6]);
+        }, i);
         for (let k = 0; k < 3; k++) {
           await page.waitForTimeout(1000);
           const cur = await page.evaluate(() => window.__nomozScheduler.current);
@@ -88,7 +92,8 @@ describe('emotion and running behaviors', () => {
         }
       }
       // the scheduler really had the face for much of the time (this would be vacuous otherwise)
-      assert.ok(running.size >= 3, `only ${[...running].join()} ran in 48 s`);
+      const busy = [...running].filter((b) => !IDLE.includes(b));
+      assert.ok(busy.length >= 2, `only ${[...running].join()} ran in 48 s`);
       // While a behavior runs the attention layer may only HAND BACK what it was holding when the behavior began (values at
       // rest: no ears, centred gaze, no lean, automatic pupils, no tail); it never sets anything of its own.
       const rest = (p) => Object.entries(p).every(([k, v]) => k === 't' || k === 'cur' || v === null || v === 'c' || v === 0 || v === 'open');

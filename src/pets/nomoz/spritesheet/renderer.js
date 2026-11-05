@@ -1,6 +1,6 @@
 import { LIGHTING } from '../config.js';
 import { renderSprite, paletteColor } from '../sprites.js';
-import { fitsImage, frameAt, frameRect, normalizeManifest, selectClip } from './clips.js';
+import { fitsImage, frameAt, frameRect, holdState, normalizeManifest, selectClip } from './clips.js';
 import { getSheetImage } from './loader.js';
 import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, exprFor, squashMap, stepAt, stepTail, tailTarget, transitionPlan } from './tail.js';
 
@@ -34,6 +34,7 @@ import { bendTail, breathAt, decodeTail, lickAt, mouthLick, newTailState, exprFo
  * `mouth: 'lick'` shows the tongue at the muzzle.
  */
 
+const LICK_GRACE_MS = 450;
 const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 function prefersReducedMotion() {
@@ -64,7 +65,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function stateFor(ctx) {
     let c = states.get(ctx);
     if (!c) {
-      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, trans: null, lickAt: -1e9, wasLick: false, scratch: null, last: null };
+      c = { clip: null, target: undefined, shown: false, t0: 0, timer: 0, params: null, vanity: null, onReady: null, tail: newTailState(), tickAt: 0, trans: null, lickAt: -1e9, wasLick: false, lickSeen: -1e9, leaving: null, holdWait: Infinity, scratch: null, last: null };
       c.onReady = () => redraw(ctx, c);
       states.set(ctx, c);
     }
@@ -78,6 +79,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     c.clip = clip;
     c.t0 = now;
     c.shown = false; // the clock starts when its first frame is on screen
+    c.leaving = null;
     return clip;
   };
 
@@ -85,6 +87,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
   function settle(c, wanted, now) {
     const tid = wanted ? wanted.id : null;
     const cur = c.clip;
+    c.holdWait = Infinity;
     if (cur) {
       const finished = c.shown && !cur.loop && now - c.t0 >= cur.total;
       const nxt = finished && cur.next && !bad.has(cur.next) ? man.clips[cur.next] : null;
@@ -93,6 +96,11 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
         return begin(c, nxt, now);
       }
       if (!finished && cur.lock && !cur.loop) return cur; // let it finish
+      // a short gap inside one action (the paw lowered between grooming moves) does not flip to other art and back
+      const h = holdState(cur, wanted, c.leaving, now);
+      c.leaving = h.pending;
+      c.holdWait = h.wait;
+      if (h.keep) return cur;
     }
     if (tid === c.target) return cur;
     c.target = tid;
@@ -464,9 +472,11 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     // it keeps coming back while the tail should swing (also from rest: the swing eases in over the redraws)
     const hasTail = !!(clip.anchors && clip.anchors.some((a) => a && a.tail));
     fx.animating = hasTail && (target.amp > 0.08 || c.tail.amp > 0.08);
-    // grooming: licking while a paw is at the mouth; any clip: a scripted lick
+    // grooming: licking while a paw is at the mouth (and for a moment after, so a paw that moves from the mouth to the cheek
+    // and back does not chop the strokes); any clip: a scripted lick
     const paw = params && (params.pawL === 'high' || params.pawR === 'high');
-    if (clip.lick && paw) {
+    if (paw) c.lickSeen = now;
+    if (clip.lick && (paw || now - c.lickSeen < LICK_GRACE_MS)) {
       fx.lick = lickAt(now);
       fx.animating = true;
     } else if (params && params.mouth === 'lick') {
@@ -562,6 +572,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     let shown = clip ? bodyFor(ctx, c, clip, now) : null;
     let body = shown && shown.body;
     let wait = shown ? shown.wait : Infinity;
+    // when a bridged clip is due to give way, come back then
+    if (c.holdWait < Infinity) wait = Math.min(wait, Math.max(16, Math.ceil(c.holdWait)));
     const params = replay ? { ...c.params, replay: true } : c.params;
 
     const paint = (b) => {
@@ -605,7 +617,7 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
     }
   }
 
-  return function renderSheetSprite(ctx, p, vanity) {
+  function renderSheetSprite(ctx, p, vanity) {
     const c = stateFor(ctx);
     c.params = p;
     c.vanity = vanity;
@@ -615,5 +627,8 @@ export function createSheetRenderer({ manifest, fallback = renderSprite } = {}) 
       // the frame on screen stays (the procedural cat is never drawn in its place)
       console.warn('[nomoz sheets] drawing stopped for this frame:', err);
     }
-  };
+  }
+  // which clip a canvas is showing (for tests and tools; nothing in the app reads it)
+  renderSheetSprite.clipOf = (ctx) => (states.get(ctx) && states.get(ctx).clip ? states.get(ctx).clip.id : null);
+  return renderSheetSprite;
 }

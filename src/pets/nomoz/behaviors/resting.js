@@ -92,8 +92,8 @@ export const sleep = defineBehavior({
       } else if (ev === 'turn') {
         // shifts position: lifts a little, turns over, settles again
         facing = -facing;
-        S.at(u, { pose: 'loaf', droop: 0 });
-        S.at(u + 400, { facing });
+        // (one change, not a lift, a mirror flip and a settle: the cat lifts and turns over as a single move)
+        S.at(u, { pose: 'loaf', droop: 0, facing });
         pose = pose === 'curl' || c.rng() < 0.5 ? 'curl' : 'loaf';
         S.at(u + 900, { pose });
         u += 1300;

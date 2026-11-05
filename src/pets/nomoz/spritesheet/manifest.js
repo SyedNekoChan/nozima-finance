@@ -83,9 +83,12 @@ const clips = {
   sit_threeq: clip('sit_threeq', [0], { breathe: { cut: 46, ms: 3600 }, expr: EXPR.sit_threeq }),
   sit_doze: clip('sit_doze', [0], { breathe: { cut: 44, ms: 4400 } }),
   // grooming: the tongue strokes the paw (spot on the art); the head above row 36 dips into each lick, the paw rect comes up to meet it and the licked fur shines
-  sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36, paw: [27, 28, 22, 9], sheen: [[33, 30], [34, 30], [36, 31]] } }),
+  // (a paw lowered for a moment between two grooming moves keeps this art for hold.ms, instead of flipping to the plain
+  // sitting art and back; a blink, a shake or the settled pose after it take over at once)
+  sit_groom: clip('sit_groom', [0], { lick: { at: [30, 26], dip: 36, paw: [27, 28, 22, 9], sheen: [[33, 30], [34, 30], [36, 31]] }, hold: { ms: 560, to: ['idle_front'] } }),
   sit_rear: clip('sit_rear', [0], { breathe: { cut: 40, ms: 3800 }, expr: EXPR.sit_rear }),
-  curl: clip('curl', [0]),
+  // a slow breath on the sleeping mound: everything above row 50 rises and falls a row, as the sitting art does
+  curl: clip('curl', [0], { breathe: { cut: 50, ms: 4200 } }),
   stretch: clip('stretch', [0]),
   low_front: clip('low_front', [0, 1], { ms: 1000 }),
   loaf_front: clip('loaf_front', [0, 1], { ms: 1000 }),
@@ -115,6 +118,10 @@ for (const view of VIEWS) {
 // same art too, with the book on its lap.
 const FREE = {};
 
+// paw levels of the grooming moves (animations.js: lickPaw, rubFace, cleanEar, washFace, inspectPaw)
+const GROOM_PAWS = ['mid', 'high', 'face', 'ear', 'front'];
+const WASH_PAWS = ['high', 'face'];
+
 const select = [
   { when: { pose: 'curl' }, clip: 'curl' },
   { when: { pose: 'stretch' }, clip: 'stretch' },
@@ -133,8 +140,13 @@ const select = [
   // sitting
   { when: { pose: 'sit', view: ['rear', 'rearQ'] }, clip: 'sit_rear' },
   { when: { pose: 'sit', view: ['frontQ', 'side'] }, clip: 'sit_threeq' },
-  { when: { pose: 'sit', view: 'front', pawL: ['mid', 'high'], pawR: false }, clip: 'sit_groom' },
-  { when: { pose: 'sit', view: 'front', pawR: ['mid', 'high'], pawL: false }, clip: 'sit_groom' },
+  // Grooming: the art follows the paw, never the eyes or the droop that its moves toggle every few hundred ms (cleaning an ear
+  // or rubbing the cheek used to alternate this art with the dozing and the plain sitting art). One paw at the mouth, on the
+  // cheek, at the ear or held out to look at (the single 'front' paw is the inspecting move; casting holds both paws out and
+  // keeps the plain art), or both paws washing the face.
+  { when: { pose: 'sit', view: 'front', pawL: GROOM_PAWS, pawR: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', pawR: GROOM_PAWS, pawL: false }, clip: 'sit_groom' },
+  { when: { pose: 'sit', view: 'front', pawL: WASH_PAWS, pawR: WASH_PAWS }, clip: 'sit_groom' },
   { when: { pose: 'sit', view: 'front', eyes: 'closed', droop: true, ...FREE }, clip: 'sit_doze' },
   { when: { pose: 'sit', view: 'front', eyes: ['closed', 'blink', 'happy'], ...FREE }, clip: 'idle_front_closed' },
   { when: { pose: 'sit', view: 'front', ...FREE }, clip: 'idle_front' },

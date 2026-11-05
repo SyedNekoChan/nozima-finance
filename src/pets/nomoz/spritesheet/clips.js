@@ -111,6 +111,14 @@ function normalizeClip(id, raw, sheets) {
     }
   }
 
+  // Bridging: when the wanted clip becomes one of the clips in `hold.to`, this clip stays on screen for `hold.ms` first, so a
+  // short gap between two parts of one action (the paw lowered for a moment between grooming moves) does not flip to other art
+  // and back. A wanted clip that is not listed (a blink, a shake) takes over at once.
+  const hd = raw.hold;
+  if (hd !== undefined && !(hd && Number.isFinite(hd.ms) && hd.ms > 0 && Array.isArray(hd.to) && hd.to.length && hd.to.every((t) => typeof t === 'string'))) {
+    throw new Error('hold needs ms: > 0 and to: [clip ids]');
+  }
+
   const still = raw.still ?? 0;
   if (!isNat(still) || still >= frames.length) throw new Error('still is outside the clip');
 
@@ -130,6 +138,7 @@ function normalizeClip(id, raw, sheets) {
     anchors: anchorList,
     floor: raw.floor ?? null,
     lick: raw.lick ? Object.freeze({ at: raw.lick.at, dip: raw.lick.dip, paw: raw.lick.paw || null, sheen: raw.lick.sheen || [] }) : null,
+    hold: hd ? Object.freeze({ ms: hd.ms, to: Object.freeze(hd.to.slice()) }) : null,
     breathe: raw.breathe ? Object.freeze({ cut: raw.breathe.cut, ms: raw.breathe.ms }) : null,
     sway: raw.sway ?? 1,
     expr: ex ? Object.freeze({ ears: Object.freeze({ y: ex.ears.y, rows: ex.ears.rows, l: ex.ears.l, r: ex.ears.r }), lean: ex.lean }) : null,
@@ -203,6 +212,20 @@ export function selectClip(manifest, p) {
     if (matches(rule.when, facts)) return manifest.clips[rule.clip];
   }
   return null;
+}
+
+/*
+ * Bridging (a clip's `hold`): should `cur` stay on screen although `wanted` is now selected? `pending` is the state from
+ * the previous call ({ since } or null); returns { keep, pending, wait } where wait is how long until the bridge ends.
+ * Pure, so a replay of a script can be checked without a canvas.
+ */
+export function holdState(cur, wanted, pending, now) {
+  if (!cur || !cur.hold || !wanted || wanted.id === cur.id || !cur.hold.to.includes(wanted.id)) {
+    return { keep: false, pending: null, wait: Infinity };
+  }
+  const since = pending ? pending.since : now;
+  const left = since + cur.hold.ms - now;
+  return left > 0 ? { keep: true, pending: { since }, wait: left } : { keep: false, pending: null, wait: Infinity };
 }
 
 /* ------------------------------------------------------------------ */

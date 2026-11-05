@@ -40,7 +40,9 @@ export const ART = {
   sit_groom: { frames: 1, from: 'reference', head: null, anchors: { crown: [37, 8], chest: null }, note: 'sitting, licking a paw' },
   sit_rear: { frames: 1, from: 'reference', head: 'rear', note: 'sitting, seen from behind' },
   curl: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'curled up asleep' },
-  stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: null, chest: null }, note: 'full-body stretch (scaled to fit the box)' },
+  // the head is raised at the left (ear tips at row 32, x 18-19 and 27-28: the crown sits between them, as on every head type) and the
+  // chest is the bib under it, above the reaching forelegs
+  stretch: { frames: 1, from: 'reference', head: null, anchors: { crown: [19, 35], chest: [21, 42] }, note: 'full-body stretch (scaled to fit the box)' },
   // generated (art/source/generate_production.py)
   walk_front: { frames: 5, from: 'generated', head: 'front', face: 'front', note: 'walking toward us: contact, standing, contact, two passing poses (0 3 2 4); rendered body and legs, approved head and ruff' },
   walk_side_even: { frames: 3, from: 'generated', head: 'side', face: 'profile', note: 'the approved walk_side with one tail in every frame (frame 1\'s tail pasted over the others\' own; art/source/unify_walk_side.py): the production side walk' },
