@@ -19,7 +19,7 @@ All tiers collapse to 0ms under `prefers-reduced-motion`.
 
 | Layer                                   | z-index |
 | --------------------------------------- | ------- |
-| Pet backdrop layer (NOMOZ.EXE)          | 0       |
+| Backdrop layer (NOMOZ.EXE or the city)  | 0       |
 | Active tab content                      | 10      |
 | `[ ! OVER BUDGET ! ]` readout           | 20      |
 | Header                                  | 30      |
@@ -34,6 +34,70 @@ footer. Nothing in it can intercept input, scroll the page, or sit above
 foreground UI. Its perspective belongs to the layer itself; no foreground
 element is a transformed descendant of it, so it cannot create clipping or
 stacking problems for dropdowns and modals.
+
+The city backdrop (City mode, below) follows the same contract: the same
+z-0 layer box inside the main area, `pointer-events-none`, `aria-hidden`.
+
+## Visual modes
+
+The header carries a text-only toggle, `[ MODE: PET ]` / `[ MODE: CITY ]`
+(desktop: left of the clock; phones: the free top-right cell of the header
+grid, same type and padding as its neighbours, so the header does not change
+size; its touch area extends invisibly down over the clock cell). The choice
+is stored in the Dexie `settings` table under `visualMode` and defaults to
+`pet`; any unknown stored value reads as `pet` (`lib/visualMode.js`,
+`hooks/useVisualMode.js`). Nothing mode-specific is shown until the stored
+value has been read, so a City choice never flashes the snow first.
+
+- **Pet mode** is the app as it always was: NOMOZ.EXE in the backdrop and
+  the snow over everything.
+- **City mode** shows the night city in the backdrop and no snow. The pet is
+  not unmounted: it keeps living (position, behavior, scheduler, seed) but is
+  not painted (`visibility: hidden` on a `display: contents` wrapper, so its
+  layer measures exactly as in Pet mode). Switching back shows it wherever it
+  has got to.
+
+### City mode
+
+A pixel-art view straight down from the top of a supertall tower into the
+downtown after a rainy night: the avenue below runs away as a deep canyon
+between towers whose roofs are all well beneath the viewer, the wet streets
+glow with sodium lamps and the odd car, mist lies in the low streets and
+between the towers, and the city fades into a lit haze (on tall screens, a
+sliver of overcast sky at the horizon). It is dark on purpose: white UI text
+sits on it with no scrim, so its mean brightness stays under ~0.1 and only
+windows, lamps and beacons reach the bright end of the palette.
+
+Phase 1 is a still frame (no animation yet).
+
+- **Pixels.** One city pixel is `round(3 x devicePixelRatio)` device pixels
+  on every screen (`city/layout.js`). The scene buffer is as many city pixels
+  as fit the layer; the composition adapts to its shape rather than being
+  scaled. The canvas is sized in device pixels and the buffer is drawn onto
+  it at that whole-number scale (overshoot under one city pixel is cropped).
+- **Composition** (`city/scene.js`). The camera stands 640 m up at the end of
+  an avenue. Its lens is set from the screen's diagonal and its tilt from the
+  shape: the bottom edge looks steeply down at the street below (80-86
+  degrees on tall screens; on wide ones the top keeps the distant lights and
+  the bottom looks at least 62 degrees down, and a phone on its side gives up
+  the distant lights for that), never past straight down, and the towers
+  converge downward in three-point perspective. The towers flanking the avenue are placed by hand; the rest of
+  the city is generated from a fixed seed, so it is the same city every time.
+- **Rendering** (`city/render.js`). One ray per city pixel through the block
+  grid; facades with generated window grids (sparse, mostly warm light, some
+  crown lighting), wet roofs and streets that reflect the overcast and the
+  facades, height fog thickening toward the streets, two thin mist layers,
+  bloom on lights, then an ordered dither into the fixed palette
+  (`city/palette.js`), so every pixel is a palette colour.
+- **Authored art** (`city/art.js`, hand-drawn character grids): the viewer's
+  wet parapet along the bottom edge, a helipad and rooftop plant mapped onto
+  roofs in perspective, a vertical neon sign (НОЗИМА) on one canyon wall, and
+  the glow of the aircraft warning lights on the tallest towers.
+- **Cost.** A frame is rendered once per size, in ~10 ms slices so the page
+  never stalls (roughly 0.2-0.4 s of work in all), then it is just an image:
+  no loop, no timers. A resize re-renders after a short pause, keeping the
+  last frame up meanwhile. Any error leaves the layer black; the app carries
+  on.
 
 ## Persistent budget readout
 

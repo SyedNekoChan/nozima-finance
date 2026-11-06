@@ -2,7 +2,38 @@ import { useState, useEffect } from 'react';
 import { formatTime } from '../lib/date.js';
 import { getDistanceBetweenUs, formatDistance } from '../lib/distance.js';
 import { SYSTEM_MESSAGE } from '../lib/constants.js';
+import { nextVisualMode, visualModeLabel } from '../lib/visualMode.js';
+import useVisualMode from '../hooks/useVisualMode.js';
 import Modal from './Modal.jsx';
+
+/*
+ * [ MODE: PET ] / [ MODE: CITY ]: text-only toggle for the backdrop's visual
+ * mode. On phones it fills the empty top-right cell of the header grid with
+ * the same type and padding as its neighbours, so no row changes height; an
+ * invisible extension of its hit area down over the (non-interactive) clock
+ * cell makes it a comfortable touch target without moving anything. The
+ * focus ring is for keyboard focus only: after a tap or click a ring around
+ * the cell would read as the header changing.
+ */
+function ModeToggle({ className = '', mobile = false }) {
+  const mode = useVisualMode((s) => s.mode);
+  const toggle = useVisualMode((s) => s.toggle);
+  const label = visualModeLabel(mode);
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      data-mode-toggle={mode}
+      aria-label={`Visual mode: ${label.toLowerCase()}. Switch to ${nextVisualMode(mode)}.`}
+      title={`Switch to ${nextVisualMode(mode)} mode`}
+      className={`font-mono uppercase whitespace-nowrap cursor-pointer select-none motion-btn hover:text-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2 ${
+        mobile ? "relative after:content-[''] after:absolute after:inset-x-0 after:top-0 after:h-[200%]" : ''
+      } ${className}`}
+    >
+      [ MODE: {label} ]
+    </button>
+  );
+}
 
 export default function Header() {
   const [showSystemMessage, setShowSystemMessage] = useState(false);
@@ -26,6 +57,11 @@ export default function Header() {
           >
             SYSTEM: ONLINE
           </span>
+
+          <ModeToggle
+            mobile
+            className="col-start-2 row-start-1 min-w-0 px-3 pt-2 pb-1.5 text-right text-gray-400 tracking-wider leading-none"
+          />
 
           <span className="col-start-1 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-gray-500 whitespace-nowrap">
             [ DISTANCE: {distance} ]
@@ -55,8 +91,11 @@ export default function Header() {
             </span>
           </div>
 
-          <span className="text-white whitespace-nowrap">
-            [ {formatTime(now)} _ ]
+          <span className="flex items-center gap-4 lg:gap-6">
+            <ModeToggle className="text-gray-400 tracking-widest" />
+            <span className="text-white whitespace-nowrap">
+              [ {formatTime(now)} _ ]
+            </span>
           </span>
         </div>
       </header>

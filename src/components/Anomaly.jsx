@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AnimatePresence, motion } from 'framer-motion';
 import useFinanceStore from '../hooks/useFinanceStore.js';
 import useCurrentMonth from '../hooks/useCurrentMonth.js';
+import useVisualMode from '../hooks/useVisualMode.js';
+import CityBackdrop from '../city/CityBackdrop.jsx';
 import usePet from '../pets/usePet.js';
 import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
@@ -356,18 +358,31 @@ export default function Anomaly() {
   const isOverBudget = useFinanceStore((s) => s.getIsOverBudgetThisMonth());
   // The registered pet shown in the backdrop (NOMOZ.EXE unless configured).
   const pet = getActivePet();
+  // City mode puts the city in the backdrop (see design.md, "Visual modes").
+  const city = useVisualMode((s) => s.hydrated && s.mode === 'city');
 
   return (
     <>
+      {city && <CityBackdrop />}
+
       {/*
         NOMOZ.EXE stays at z-0 (behind every tab's z-10 content), a
         background presence that picks open backdrop space rather than
         sitting on top of anything.
+
+        In City mode the pet stays mounted and keeps living (position,
+        behavior, scheduler, seed), it is only not painted: the wrapper
+        generates no box (display: contents), so the pet's layer and its
+        measurements are exactly those of Pet mode, and visibility: hidden
+        is inherited by everything inside it. Switching back shows it
+        wherever it has got to, without a remount.
       */}
       {pet && (
-        <PetErrorBoundary key={pet.id}>
-          <Pet pet={pet} />
-        </PetErrorBoundary>
+        <div data-pet-backdrop="" style={{ display: 'contents', visibility: city ? 'hidden' : undefined }}>
+          <PetErrorBoundary key={pet.id}>
+            <Pet pet={pet} />
+          </PetErrorBoundary>
+        </div>
       )}
 
       {/*
