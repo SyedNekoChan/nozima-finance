@@ -89,10 +89,20 @@ Phase 1 is a still frame (no animation yet).
   facades, height fog thickening toward the streets, two thin mist layers,
   bloom on lights, then an ordered dither into the fixed palette
   (`city/palette.js`), so every pixel is a palette colour.
+- **Calm.** The scene sits behind the dashboard, so scattered points of light
+  are kept down. Past ~170 m the upper floors' lit windows thin out (to about
+  three in four by ~320 m: only windows that would be lit anyway, none
+  appear), while the deep canyon below ~60 m keeps every light, since its glow
+  through the mist is what makes the streets read as far below. Two lamp heads
+  in three show as points (every lamp still pools light on the wet street).
+  Crown lighting is kept a fine unbroken line at any distance instead of
+  breaking into dots. Aircraft warning lights go on only the two or three
+  tallest towers in view (two on narrow frames), spread apart and away from
+  the frame's edges.
 - **Authored art** (`city/art.js`, hand-drawn character grids): the viewer's
   wet parapet along the bottom edge, a helipad and rooftop plant mapped onto
   roofs in perspective, a vertical neon sign (НОЗИМА) on one canyon wall, and
-  the glow of the aircraft warning lights on the tallest towers.
+  the glow of the aircraft warning lights.
 - **Cost.** A frame is rendered once per size, in ~10 ms slices so the page
   never stalls (roughly 0.2-0.4 s of work in all), then it is just an image:
   no loop, no timers. A resize re-renders after a short pause, keeping the

@@ -150,7 +150,6 @@ function buildBlock(i, j) {
       // architectural crown lighting on some tall towers
       crown: h > 200 && hash3(i, j, s + 16) < 0.3 ? (hash3(i, j, s + 17) < 0.5 ? 'cool' : 'amber') : null,
       shops: hash3(i, j, s + 18) < 0.55,
-      beacon: h > 470 || (h > 380 && hash3(i, j, s + 32) < 0.25),
       seed: Math.floor(hash3(i, j, s + 19) * 1e6),
     };
 

@@ -58,6 +58,17 @@ const MIST = [
   { y0: 150, y1: 240, scale: 260, lo: 0.55, hi: 0.8, k: 0.007, seed: 402 },
 ];
 const MAX_T = 7500;
+/*
+ * Lit windows thin out with distance: past the nearest facades only part of
+ * them stay lit (a window that is dark close up stays dark; some lit ones
+ * beyond go out), so the towers' upper floors read as a calm field with the
+ * odd light rather than a speckle. The deep canyon is left alone: below
+ * `low` every light stays, since that glow through the mist is what makes the
+ * streets read as far below.
+ */
+const WINDOW_THIN = { from: 170, to: 320, keep: 0.74, low: [60, 160] };
+// 0 near or low down, 1 far and high up
+const calmAt = (dist, y) => smoothstep(WINDOW_THIN.from, WINDOW_THIN.to, dist) * smoothstep(WINDOW_THIN.low[0], WINDOW_THIN.low[1], y);
 const EPS = 1e-3;
 
 /* ------------------------------------------------------------------ */
@@ -232,10 +243,10 @@ const add3 = (o, a, k) => {
   o[2] += a[2] * k;
 };
 
-function windowLight(b, face, floor, col, out) {
+function windowLight(b, face, floor, col, keep, out) {
   const id = b.id * 4 + face;
   const floorMood = 0.35 + 1.3 * hash3(id, floor, SEED + 5); // whole floors left on or off
-  const on = hash3(id, floor * 977 + col, SEED + 6) < b.lit * floorMood;
+  const on = hash3(id, floor * 977 + col, SEED + 6) < b.lit * floorMood * keep;
   if (!on) return 0;
   const r = hash3(id, floor * 131 + col, SEED + 7);
   const tone = r < b.warm * 0.55 ? C.warm : r < Math.max(b.warm, 0.55) ? C.soft : r < 0.97 ? C.cool : C.tv;
@@ -274,7 +285,7 @@ function signPixel(b, box, axis, sign, u, v, base, emit) {
   return true;
 }
 
-function shadeFacade(b, box, axis, sign, x, y, z, pf, base = BASE, emit = EMIT) {
+function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = EMIT) {
   emit[0] = emit[1] = emit[2] = 0;
   const style = b.style;
   // horizontal position along this face, and the face's length
@@ -310,7 +321,7 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, base = BASE, emit = EMIT) 
   // street-level shops on the podium
   if (y < 5.5 && b.shops) {
     const bay = Math.floor(u / 6);
-    if (hash3(b.id, bay, SEED + 9) < 0.7) {
+    if (hash3(b.id, bay, SEED + 9) < 0.6) {
       const tone = hash3(b.id, bay, SEED + 10) < 0.7 ? C.warm : C.white;
       add3(emit, tone, 0.75);
       return;
@@ -318,15 +329,22 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, base = BASE, emit = EMIT) 
   }
 
   const floorH = b.floor;
+  const calm = calmAt(dist, y);
+  const keep = 1 - (1 - WINDOW_THIN.keep) * calm;
   const fi = Math.floor(y / floorH);
   const fv = y / floorH - fi;
   const ci = Math.floor(u / style.col);
   const fu = u / style.col - ci;
 
-  // architectural crown lighting: lit spandrels on the top two floors
+  // architectural crown lighting: lit spandrels on the top two floors. A spandrel thinner than
+  // a pixel would break up into dots, so it is kept one pixel thick and dimmed by the share of
+  // that pixel it covers: the crown stays a fine unbroken line at any distance
   if (b.crown && box.y1 >= b.h - 0.01 && box.part === 'shaft' && b.h - y < floorH * 2) {
-    if (fv < style.winV[0]) {
-      add3(emit, CROWN[b.crown], 0.55);
+    // (a little over a pixel, so a floor line running across the pixel grid on a slant never gaps)
+    const band = style.winV[0] * floorH;
+    const thick = Math.max(band, pf * 1.4);
+    if (fv < thick / floorH) {
+      add3(emit, CROWN[b.crown], 0.55 * Math.sqrt(band / thick)); // a line reads brighter than its area
       return;
     }
   }
@@ -339,7 +357,7 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, base = BASE, emit = EMIT) 
       if (style.name === 'glass' && fv < style.winV[0]) for (let c = 0; c < 3; c++) base[c] *= 1.25;
       return;
     }
-    if (windowLight(b, face, fi, ci, tmp)) {
+    if (windowLight(b, face, fi, ci, keep, tmp)) {
       set3(emit, tmp);
       for (let c = 0; c < 3; c++) base[c] = 0;
     } else {
@@ -351,7 +369,7 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, base = BASE, emit = EMIT) 
   }
   // far: each pixel stands for a window bay, lit or not
   const cover = (style.winU[1] - style.winU[0]) * (style.winV[1] - style.winV[0]);
-  if (windowLight(b, face, fi, ci, tmp)) add3(emit, tmp, cover * 0.4);
+  if (windowLight(b, face, fi, ci, keep, tmp)) add3(emit, tmp, cover * 0.4);
   for (let c = 0; c < 3; c++) base[c] = base[c] * (1 - cover) + style.glass[c] * cover;
 }
 
@@ -381,7 +399,7 @@ function reflection(city, x, y, z, dx, dy, dz, out) {
     out[1] = C.roof[1];
     out[2] = C.roof[2];
   } else {
-    shadeFacade(h.box.b, h.box, h.axis, h.sign, px, py, pz, t / 200, rBase, rEmit);
+    shadeFacade(h.box.b, h.box, h.axis, h.sign, px, py, pz, t / 200, t, rBase, rEmit);
     out[0] = rBase[0] + rEmit[0];
     out[1] = rBase[1] + rEmit[1];
     out[2] = rBase[2] + rEmit[2];
@@ -480,21 +498,28 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
       set3(base, C.walk);
       r0 = 0.3;
     }
-    // sodium lamps along the kerbs
+    // sodium lamps along the kerbs: every lamp pools light on the wet street, but only two lamp
+    // heads in three (staggered across the road) show as a bright point, so the avenue reads as
+    // a lit line rather than a string of pinpricks
     let near = Infinity;
+    let head = false;
     if (inAve && !inStr) {
-      const kx = lx < g.avenue / 2 ? g.sidewalk - 0.6 : g.avenue - g.sidewalk + 0.6;
+      const side = lx < g.avenue / 2 ? 0 : 1;
+      const kx = side ? g.avenue - g.sidewalk + 0.6 : g.sidewalk - 0.6;
       const lzm = ((z % 26) + 26) % 26;
       near = Math.hypot(lx - kx, lzm - 13);
+      head = (((Math.floor(z / 26) + side) % 3) + 3) % 3 !== 0;
     } else if (inStr && !inAve) {
-      const kz = lz < g.street / 2 ? g.sidewalk - 0.6 : g.street - g.sidewalk + 0.6;
+      const side = lz < g.street / 2 ? 0 : 1;
+      const kz = side ? g.street - g.sidewalk + 0.6 : g.sidewalk - 0.6;
       const lxm = ((x % 30) + 30) % 30;
       near = Math.hypot(lz - kz, lxm - 15);
+      head = (((Math.floor(x / 30) + side) % 3) + 3) % 3 !== 0;
     }
     if (near < 14) {
       const pool = Math.exp(-(near * near) / 48);
       add3(base, C.sodium, pool * 0.3);
-      if (near < Math.max(0.7, pf * 0.6)) add3(emit, C.sodium, 0.9);
+      if (head && near < Math.max(0.7, pf * 0.6)) add3(emit, C.sodium, 0.9);
     }
     // from far off the streets themselves are threads of sodium light
     if (pf > 6) add3(emit, C.sodium, 0.12 * smoothstep(6, 14, pf));
@@ -529,7 +554,7 @@ function shadeCars(i, j, lx, lz, x, z, inAve, inStr, aveRoad, strRoad, pf) {
   } else return;
   const slot = Math.floor(along / 9);
   const key = aveRoad ? i * 7 + lane : j * 7 + lane + 1000;
-  if (hash3(key, slot, SEED + 21) > 0.11) return;
+  if (hash3(key, slot, SEED + 21) > 0.09) return;
   const at = along - (slot * 9 + 4.5);
   if (Math.abs(at) > 2.3 || Math.abs(across) > 0.95) {
     // wet road ahead of the car catches its headlights
@@ -578,7 +603,7 @@ export function createCityFrame(w, h) {
       const pf = t / cam.f;
       const { box } = hit;
       if (hit.axis === 1) shadeRoof(city, box.b, box, x, y, z, dx, dy, dz, pf);
-      else shadeFacade(box.b, box, hit.axis, hit.sign, x, y, z, pf);
+      else shadeFacade(box.b, box, hit.axis, hit.sign, x, y, z, pf, t);
     } else if (tGround <= MAX_T) {
       dist = tGround;
       shadeGround(city, ox + dx * tGround, oz + dz * tGround, dx, dy, dz, tGround / cam.f);
@@ -609,12 +634,17 @@ export function createCityFrame(w, h) {
   }
 
   let rowsDone = 0;
+  let beaconCount = 0;
 
   return {
     w,
     h,
     camera: cam,
     city,
+    /* aircraft warning lights placed by finish() */
+    get beacons() {
+      return beaconCount;
+    },
     get progress() {
       return rowsDone / h;
     },
@@ -629,7 +659,7 @@ export function createCityFrame(w, h) {
     },
     /* Whole-frame passes; returns RGBA bytes (w * h * 4). */
     finish() {
-      addBeacons(city, cam, w, h, light, depth);
+      beaconCount = addBeacons(city, cam, w, h, light, depth);
       const glow = bloom(light, w, h);
       const rgba = new Uint8ClampedArray(w * h * 4);
       for (let py = 0; py < h; py++) {
@@ -661,44 +691,63 @@ export function createCityFrame(w, h) {
   };
 }
 
-/* Red aircraft warning lights on the corners and spires of the tall towers. */
+/*
+ * Aircraft warning lights: only on the tallest towers in view, two or three
+ * of them (two on narrow frames), spread apart and kept off the frame's
+ * edges, so they mark the skyline's high points rather than dot the scene. A tower's light sits on its spire
+ * when it has one, else on a roof corner.
+ */
+const BEACON_MIN_HEIGHT = 380;
+const BEACON_MAX_DEPTH = 1600; // beyond this they are lost in the haze
+
 function addBeacons(city, cam, w, h, light, depth) {
+  const limit = w >= 200 ? 3 : 2;
+  const spacing = Math.max(14, w * 0.2);
+  const bottom = h - PARAPET_TILES[0].length - 2;
+  // not jammed against the frame's edges, where a lone red point reads as a stray pixel
+  const marginX = Math.max(3, Math.round(w * 0.08));
+  const marginY = Math.max(3, Math.round(h * 0.06));
   const seen = new Set();
+  const candidates = [];
   // the blocks any ray reached are the ones already generated
   for (const blk of city.blocks()) {
-    {
-      for (const box of blk.boxes) {
-        const b = box.b;
-        if (!b.beacon || seen.has(b.id)) continue;
-        seen.add(b.id);
-        const r = b.roof;
-        const pts = b.spireTop ? [b.spireTop] : [[r.x0 + 0.5, b.h + 1.5, r.z0 + 0.5]];
-        for (const [x, y, z] of pts) {
-          const p = project(cam, x, y, z);
-          if (!p) continue;
-          const sx = Math.floor(p.x);
-          const sy = Math.floor(p.y);
-          if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
-          if (p.depth > 1600) continue; // far ones are lost in the haze
-          if (depth[sy * w + sx] < p.depth - 4) continue; // hidden behind something nearer
-          const tr = Math.exp(-opticalDepth(cam.pos[1], (y - cam.pos[1]) / p.depth, p.depth));
-          const near = p.depth < 900 ? 1 : 0.6;
-          for (let oy = -2; oy <= 2; oy++) {
-            for (let ox = -2; ox <= 2; ox++) {
-              const k = BEACON[oy + 2][ox + 2] * near;
-              if (!k) continue;
-              if (near < 1 && (Math.abs(ox) > 1 || Math.abs(oy) > 1)) continue;
-              const qx = sx + ox;
-              const qy = sy + oy;
-              if (qx < 0 || qy < 0 || qx >= w || qy >= h) continue;
-              const n = (qy * w + qx) * 3;
-              for (let c = 0; c < 3; c++) light[n + c] += C.red[c] * k * tr * 0.4;
-            }
-          }
-        }
+    for (const box of blk.boxes) {
+      const b = box.b;
+      if (b.h < BEACON_MIN_HEIGHT || seen.has(b.id)) continue;
+      seen.add(b.id);
+      const r = b.roof;
+      const [x, y, z] = b.spireTop || [r.x0 + 0.5, b.h + 1.5, r.z0 + 0.5];
+      const p = project(cam, x, y, z);
+      if (!p || p.depth > BEACON_MAX_DEPTH) continue;
+      const sx = Math.floor(p.x);
+      const sy = Math.floor(p.y);
+      if (sx < marginX || sy < marginY || sx >= w - marginX || sy >= bottom) continue;
+      if (depth[sy * w + sx] < p.depth - 4) continue; // hidden behind something nearer
+      candidates.push({ top: y, sx, sy, y, depth: p.depth, id: b.id });
+    }
+  }
+  // tallest first; ties go to the nearer tower, then a fixed order
+  candidates.sort((a, b) => b.top - a.top || a.depth - b.depth || a.id - b.id);
+  const chosen = [];
+  for (const c of candidates) {
+    if (chosen.length >= limit) break;
+    if (chosen.some((o) => Math.hypot(o.sx - c.sx, o.sy - c.sy) < spacing)) continue;
+    chosen.push(c);
+  }
+  for (const { sx, sy, y, depth: d } of chosen) {
+    const tr = Math.exp(-opticalDepth(cam.pos[1], (y - cam.pos[1]) / d, d));
+    const near = d < 900 ? 1 : 0.6;
+    for (let oy = -2; oy <= 2; oy++) {
+      for (let ox = -2; ox <= 2; ox++) {
+        const k = BEACON[oy + 2][ox + 2] * near;
+        if (!k) continue;
+        if (near < 1 && (Math.abs(ox) > 1 || Math.abs(oy) > 1)) continue;
+        const n = ((sy + oy) * w + sx + ox) * 3;
+        for (let c = 0; c < 3; c++) light[n + c] += C.red[c] * k * tr * 0.4;
       }
     }
   }
+  return chosen.length;
 }
 
 /* Blur a buffer of light in place into a new buffer (separable box blur). */

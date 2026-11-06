@@ -142,3 +142,31 @@ test('the parapet runs along the bottom edge', () => {
   const o = ((h - 1) * w + 3) * 4;
   assert.deepEqual([rgba[o], rgba[o + 1], rgba[o + 2]], want);
 });
+
+test('two or three aircraft warning lights, on the tallest towers in view, never crowded', () => {
+  for (const [w, h, most] of [
+    [480, 266, 3],
+    [427, 206, 3],
+    [256, 309, 3],
+    [282, 98, 3],
+    [130, 249, 2],
+    [107, 157, 2],
+  ]) {
+    const f = createCityFrame(w, h);
+    f.renderRows(0, h);
+    const rgba = f.finish();
+    assert.ok(f.beacons >= 2 && f.beacons <= most, `${w}x${h}: ${f.beacons} beacons`);
+    // and nothing else in the frame is beacon red
+    let red = 0;
+    for (let i = 0; i < rgba.length; i += 4) if (rgba[i] === 0xff && rgba[i + 1] === 0x44 && rgba[i + 2] === 0x36) red++;
+    assert.ok(red <= f.beacons * 3, `${w}x${h}: ${red} beacon-red pixels`);
+  }
+});
+
+test('the neon sign still shows on a phone', () => {
+  const rgba = renderCity(130, 249);
+  const neon = new Set([0x5e1630, 0xa82f5c, 0xec5f92]);
+  let n = 0;
+  for (let i = 0; i < rgba.length; i += 4) if (neon.has((rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2])) n++;
+  assert.ok(n >= 4, `only ${n} neon pixels`);
+});
