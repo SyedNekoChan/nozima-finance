@@ -1391,11 +1391,25 @@ function fxWith(fx, flag) {
  * rides on the paw: a rune, a spark, a held object). side 'l' | 'r'; hy is
  * the head's row (4 at rest, 6 with the eyes lowered).
  */
+// where each raised forepaw is in the sitting sheet art (art/sit_paws: the centre of the paw's toes), left arm; the right is the mirror
+// about column 37 except where the art draws it elsewhere (its own `out` arm lies in the opening of the tail's curl)
+const ART_PAW = {
+  low: { l: [33, 56] },
+  front: { l: [36, 47] },
+  out: { l: [18, 46], r: [54, 41] },
+  mid: { l: [23, 37] },
+  up: { l: [22, 30] },
+  reach: { l: [19, 21] },
+};
+const ART_DX = 9; // the sitting art's head is 9 columns right of base space (crown 33 - 12 - HX)
+const ART_HY = 8; // the art's head row at rest (crown row 11 - 3)
 export function pawSpot(level, side = 'l', hy = 4) {
-  const at = PAW_AT[level];
+  const at = ART_PAW[level];
   if (!at) return [28, 50];
-  const [x, y] = at(HX, hy);
-  return [side === 'l' ? x : 55 - x, y];
+  // the centre of the paw the sheet art draws (art/sit_paws, in art coordinates), in base space: an effect is carried to the art by
+  // the head's anchor (art crown x - 12 at rest is 9 columns right of base space, and the head row moves with hy)
+  const [x, y] = side === 'l' ? at.l : at.r || [74 - at.l[0], at.l[1]];
+  return [x - ART_DX, y - ART_HY + hy];
 }
 
 /* ------------------------------------------------------------------ */

@@ -132,6 +132,8 @@ async function run(contextOptions, jobs) {
         let diff = 0;
         let gold = 0;
         let top = -1;
+        let th = 0;
+        let bh = 0;
         let x0 = 99;
         let x1 = -1;
         let y0 = 99;
@@ -140,6 +142,8 @@ async function run(contextOptions, jobs) {
           for (let x = 0; x < 96; x++) {
             const i = (y * 96 + x) * 4;
             if (d[i + 3] && top < 0) top = y;
+            if (x >= 56) th = (th * 31 + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3] + x * y) >>> 0;
+            else bh = (bh * 31 + d[i] * 3 + d[i + 1] * 5 + d[i + 2] * 7 + d[i + 3] + x * y) >>> 0;
             if (prev && (d[i] !== prev[i] || d[i + 1] !== prev[i + 1] || d[i + 2] !== prev[i + 2] || d[i + 3] !== prev[i + 3])) diff++;
             if (d[i + 3] && d[i] > 200 && d[i + 1] > 140 && d[i + 2] < 90) {
               gold++;
@@ -151,7 +155,7 @@ async function run(contextOptions, jobs) {
           }
         }
         prev = Uint8ClampedArray.from(d);
-        rows.push({ t, clip: render.clipOf(g), pose: v.pose, diff: rows.length ? diff : 0, gold, box: gold ? [x0, y0, x1, y1] : null, top, facing: v.facing, dip: window.__dip > 0, eyes: v.eyes, droop: v.droop });
+        rows.push({ t, th, bh, clip: render.clipOf(g), pose: v.pose, diff: rows.length ? diff : 0, gold, box: gold ? [x0, y0, x1, y1] : null, top, facing: v.facing, dip: window.__dip > 0, eyes: v.eyes, droop: v.droop });
       }
       cv.remove();
       results.push({ ...job, rows });
@@ -327,6 +331,24 @@ describe('raised forepaws (art/sit_paws), in real pixels at desktop and mobile s
         }
       }
       for (const id of ELEVEN) if (id !== 'terminalWork') assert.ok(drawn[id] > 0, `${id}: no raised paw was ever drawn`);
+      assert.deepEqual(errors, []);
+    });
+
+    guard(`${name}: a held raised paw keeps breathing and the tail keeps moving, as the plain sitting cat does, without flicker`, async () => {
+      const jobs = [['plain', {}], ['up', { pawL: 'up' }], ['mid/mid', { pawL: 'mid', pawR: 'mid' }], ['out R', { pawR: 'out' }], ['front', { pawL: 'front' }]].map(([id, patch]) => ({ id, beats: [{ t: 0, patch }], end: 12000, base: {} }));
+      const { out, errors } = await run(options, jobs);
+      const stat = (job) => {
+        const rows = job.rows.filter((r) => r.t >= 500);
+        return { tails: new Set(rows.map((r) => r.th)).size, bodies: new Set(rows.map((r) => r.bh)).size, edges: rows.filter((r, i) => i && r.bh !== rows[i - 1].bh).length, clips: new Set(rows.map((r) => r.clip)).size };
+      };
+      const plain = stat(out[0]);
+      for (const job of out.slice(1)) {
+        const s = stat(job);
+        assert.equal(s.clips, 1, `${job.id}: the picture changes by itself`);
+        assert.ok(s.tails >= plain.tails * 0.6, `${job.id}: the tail shows ${s.tails} pictures against ${plain.tails} on the plain cat`);
+        assert.ok(s.bodies >= 2, `${job.id}: the body does not breathe`);
+        assert.ok(s.bodies <= Math.max(20, plain.bodies * 2.5), `${job.id}: ${s.bodies} body pictures against ${plain.bodies} on the plain cat (flicker)`);
+      }
       assert.deepEqual(errors, []);
     });
   }

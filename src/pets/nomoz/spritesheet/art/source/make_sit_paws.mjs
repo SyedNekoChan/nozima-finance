@@ -59,10 +59,16 @@ const ARMS = {
   reach: { path: [[29, 43, 6], [22, 37, 6], [20, 30, 6], [19, 24, 5]], paw: [PAW, 16, 18] },
 };
 
+// Arms drawn for the right side in their own (absolute) coordinates where mirroring the left one would not fit: the right
+// `out` arm lies in the opening of the tail's curl (columns 54-59, rows 37-47) instead of across the tail, and is lit from the upper right.
+const ARMS_R = {
+  out: { path: [[44, 41, 7], [47, 41, 7], [51, 41, 6]], paw: [turn(PAW, 1), 51, 38] },
+};
+
 const hash = (x, y) => (Math.imul(x * 73856093 ^ y * 19349663, 2654435761) >>> 16) & 255;
 
-function stroke(put, has, path, paw) {
-  const L = [-0.6, -0.8];
+function stroke(put, has, path, paw, { light = [-0.6, -0.8], ring = false, lift = 0 } = {}) {
+  const L = light;
   const cells = new Map();
   const xs = path.map((p) => p[0]);
   const ys = path.map((p) => p[1]);
@@ -106,9 +112,11 @@ function stroke(put, has, path, paw) {
   // a dark ring where the paw lies over fur, so a black paw still reads against a black chest
   for (const k of on) {
     const [x, y] = k.split(',').map(Number);
-    for (let dy = 0; dy <= 1; dy++) for (let dx = 0; dx <= 1; dx++) if (!on.has(`${x + dx},${y + dy}`) && has(x + dx, y + dy)) put(x + dx, y + dy, 1);
+    // (an arm held in front of the chest is ringed on every side; elsewhere the lit side is left to the engine's rim light)
+    for (let dy = ring ? -1 : 0; dy <= 1; dy++) for (let dx = ring ? -1 : 0; dx <= 1; dx++) if (!on.has(`${x + dx},${y + dy}`) && has(x + dx, y + dy)) put(x + dx, y + dy, 1);
   }
-  rows.forEach((row, j) => [...row].forEach((ch, i) => { if (ch !== '.') put(ox + i, oy + j, Number(ch)); }));
+  // (a paw held against the chest is a step lighter than the fur behind it, seams kept dark, so it reads against black fur)
+  rows.forEach((row, j) => [...row].forEach((ch, i) => { if (ch !== '.') put(ox + i, oy + j, Number(ch) >= 2 ? Math.min(9, Number(ch) + lift) : Number(ch)); }));
 }
 
 export function build(base, left, right) {
@@ -123,7 +131,8 @@ export function build(base, left, right) {
   };
   for (const [level, mirror] of [[left, false], [right, true]]) {
     if (level === 'n') continue;
-    const X = (x) => (mirror ? AXIS - x : x);
+    const XM = (x) => (mirror ? AXIS - x : x);
+    let X = XM;
     if (level === 'low') {
       // the foot comes up three rows: the leg is three rows shorter and its paw is off the floor
       const col = (x) => { const o = []; for (let y = 54; y <= 61; y++) { const i = px(X(x), y); o.push(out.slice(i, i + 4)); } return o; };
@@ -134,22 +143,24 @@ export function build(base, left, right) {
       }
       continue;
     }
-    const A = ARMS[level];
+    const own = mirror && ARMS_R[level];
+    const A = own || ARMS[level];
     if (!A) continue;
+    X = own ? (x) => x : XM;
     // the planted leg gives way to the recess under the shoulder
     for (let y = 45; y <= 61; y++) for (let x = 31; x <= 36; x++) {
-      if (y >= 59) put(X(x), y, 'x');
-      else if (y >= 57) put(X(x), y, (x + y) % 3 ? 0 : 1);
+      if (y >= 59) put(XM(x), y, 'x');
+      else if (y >= 57) put(XM(x), y, (x + y) % 3 ? 0 : 1);
       else {
         // the shadow under the shoulder: the chest fur above it fades into the dark, with a few lighter hairs running down
         const base = y < 48 ? 4 : y < 51 ? 3 : y < 54 ? 2 : y < 57 ? 1 : 0;
         const v = base + (hash(x, y) % 7 === 0 ? 1 : 0) - (hash(y, x) % 6 === 0 ? 1 : 0) + (x === 31 || x === 36 ? -1 : 0);
-        put(X(x), y, Math.max(0, Math.min(9, v)));
+        put(XM(x), y, Math.max(0, Math.min(9, v)));
       }
     }
     const has = (x, y) => out[px(X(x), y) + 3] > 0;
     const putL = (x, y, t) => put(X(x), y, t);
-    stroke(putL, has, A.path, A.paw);
+    stroke(putL, has, A.path, A.paw, { light: own ? [0.6, -0.8] : [-0.6, -0.8], ring: level === 'front', lift: level === 'front' || level === 'mid' || own ? 2 : 0 });
   }
   return out;
 }

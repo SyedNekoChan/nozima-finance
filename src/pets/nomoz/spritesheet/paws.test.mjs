@@ -9,6 +9,7 @@ import { selectClip } from './clips.js';
 import { PAW_RANKS, pawVia, transitionPlan } from './tail.js';
 import { BASE, drive, installFakes, man, removeFakes, script } from './testkit.mjs';
 import { ANCHORS } from './anchors.js';
+import { pawSpot } from '../sprites.js';
 
 /*
  * The raised forepaws (art/sit_paws): the baked arm poses, which state picks which, the beat between distant levels, and the 11
@@ -120,3 +121,56 @@ for (const id of ELEVEN) {
     assert.ok(drawn > 0 || ['terminalWork'].includes(id), `${id}: no raised paw was ever drawn`);
   });
 }
+
+test('the right out arm lies in the opening of the tail curl: no pixel of it is on a tail pixel', () => {
+  const tail = ANCHORS.sit_paws[frame('n', 'out')].tail;
+  const img = load('sit_paws', frame('n', 'out'));
+  const tailAt = new Set();
+  tail.rows.forEach((row, j) => [...row].forEach((c, i) => { if (c === '#') tailAt.add(`${tail.x + i},${tail.y + j}`); }));
+  let arm = 0;
+  const overlap = [];
+  for (let y = 36; y <= 47; y++) for (let x = 44; x <= 62; x++) {
+    if (px(img, x, y) === px(idle, x, y)) continue;
+    arm++;
+    if (tailAt.has(`${x},${y}`)) overlap.push([x, y, Number(px(img, x, y).split(',')[0])]);
+  }
+  // (at most a couple of the dark outline's pixels fall on the tail's inner tip: no fur of the arm itself is on the tail)
+  assert.ok(overlap.length <= 3 && overlap.every(([, , r]) => r <= 9), `the arm is over the tail at ${JSON.stringify(overlap)}`);
+  assert.ok(arm >= 40);
+});
+
+test('an effect that rides a raised paw (pawSpot) lands on the paw the art draws, for every level and side', () => {
+  for (const level of ['front', 'out', 'mid', 'up', 'reach']) {
+    for (const side of ['l', 'r']) {
+      const [bx, by] = pawSpot(level, side, 4);
+      const [ax, ay] = [bx + 9, by + 4]; // the head anchor carries base space onto the art: 9 columns right, the head row at rest
+      const img = load('sit_paws', side === 'l' ? frame(level, 'n') : frame('n', level));
+      let near = 0;
+      for (let y = ay - 3; y <= ay + 3; y++) for (let x = ax - 3; x <= ax + 3; x++) if (px(img, x, y) !== px(idle, x, y)) near++;
+      assert.ok(near >= 12, `${level} ${side}: the spot ${ax},${ay} is not on the drawn paw (${near} changed pixels near it)`);
+    }
+  }
+});
+
+test('outside the sitting front view the eleven behaviours raise a paw only in a few known brief moments, which keep the art they have', () => {
+  // measured over the scripts: a paw low while lying (the loaf's paws are tucked), a reach in the air or standing, a swat from a crouch.
+  // New artwork is only worth drawing for a sequence that lasts; a new combination appearing here should be looked at, not ignored.
+  const allowed = new Set(['loaf/front/low', 'stand/front/reach', 'crouch/front/out']);
+  const seen = {};
+  for (const id of ELEVEN) {
+    for (const seed of [1, 2, 3]) {
+      const sc = script(id, seed);
+      for (const s of drive(sc.beats, sc.end + 400, sc.view, 50)) {
+        const { pose, view, pawL, pawR } = s.state;
+        for (const paw of [pawL, pawR]) {
+          if (!GESTURE.has(paw) || (pose === 'sit' && view === 'front')) continue;
+          const key = `${pose}/${view}/${paw}`;
+          seen[key] = (seen[key] || 0) + 50;
+          assert.ok(allowed.has(key), `${id} seed ${seed}: a raised paw (${key}) with no art for it`);
+        }
+      }
+    }
+  }
+  // (a reach in a hop is the leap art, whose forelegs are thrown forward; the others are fractions of a second)
+  for (const [k, ms] of Object.entries(seen)) assert.ok(ms <= 3 * 1500, `${k}: ${ms} ms over three runs`);
+});
