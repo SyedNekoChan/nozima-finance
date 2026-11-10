@@ -164,6 +164,18 @@ html, body, #root {
     transition: opacity var(--motion-ambient) var(--motion-ease);
   }
 
+  /* City mode atmosphere: mist, haze and light over the pixel art. It is
+     light, not art: drawn with smooth scaling and screen-blended, so it can
+     only brighten what is under it and never moves or re-dithers a pixel. */
+  .city-air {
+    position: absolute; /* placed and sized over the city by CityBackdrop */
+    display: block;
+    image-rendering: auto; /* stretched smoothly: it is air, not pixel art */
+    mix-blend-mode: screen;
+    pointer-events: none;
+    transition: opacity var(--motion-ambient) var(--motion-ease);
+  }
+
   /* touch devices have no hover: give a short pressed dim instead */
   @media (hover: none) {
     .motion-btn:active {

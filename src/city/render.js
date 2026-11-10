@@ -4,26 +4,29 @@ import { CITY_PALETTE, paletteIndex } from './palette.js';
 import { CAMERA_HEIGHT, FOCAL, GRID, SEED, createCity, makeCamera, project, rayDir } from './scene.js';
 
 /*
- * The static city frame, rendered into a w x h buffer of city pixels.
+ * The static city frame, rendered into a w x h buffer of city pixels: the
+ * crisp pixel-art layer of City mode.
  *
  * Each pixel casts one ray from the camera through the block grid (a DDA over
  * blocks, exact ray / box tests inside each) and shades what it meets: facades
- * with their window grids, wet roofs, wet streets with lamps and the odd car.
- * Roofs and streets are mirrors to a degree, so they trace a second ray for
- * their reflection. Height fog thickens toward the streets, two thin mist
- * layers drift between the towers, lights bloom, and the result is quantised
- * to the city palette with an ordered dither. The viewer's parapet is pasted
- * along the bottom last.
+ * with their window grids (lit in rooms and whole floors), wet roofs, wet
+ * streets with sodium-lit kerbs. Roofs and streets are mirrors to a degree, so
+ * they trace a second ray for their reflection. Height fog thickens toward the
+ * streets and the distance, lights bloom, and the result is quantised to the
+ * city palette with an ordered dither. The viewer's parapet is pasted along the
+ * bottom last. Mist is not part of this frame: it is the atmosphere layer drawn
+ * over it (atmos.js), so it can move without touching a pixel of the art.
  *
  * Work is split by rows (renderRows) so the caller can spread it over several
  * frames; finish() does the whole-frame passes and returns RGBA bytes.
  *
- * With `capture`, the frame also keeps what the ambient animation needs
- * (animate.js): for every pixel, its value before quantisation and how that
- * value responds to the mist, the wet reflections, the far haze, its window
- * switching on or off and each beacon's light. Every one of those enters the
- * pixel linearly, so the animation can add exact changes to the baked frame
- * without tracing a single ray again. The frame itself is the same either way.
+ * With `capture`, the frame also keeps what the animation and the atmosphere
+ * need: every pixel's value before quantisation and what a window switching on
+ * or off and each beacon's light add to it (all linear, so the animation can
+ * add exact changes to the baked frame without tracing a ray again), and, for
+ * the atmosphere, how far each pixel's ray runs through each mist layer, the
+ * distant haze in front of it, the city light around it, its wet reflection and
+ * the neon sign's light. The frame itself is the same either way.
  */
 
 /* ------------------------------------------------------------------ */
@@ -37,7 +40,6 @@ const C = {
   fogHigh: [0.06, 0.072, 0.095],
   fogLow: [0.16, 0.112, 0.092],
   hazeFar: [0.12, 0.085, 0.11],
-  mist: [0.13, 0.155, 0.17],
   sodium: [1.0, 0.6, 0.24],
   warm: [1.0, 0.68, 0.34],
   soft: [1.0, 0.84, 0.56],
@@ -59,10 +61,17 @@ const CROWN = { cool: [0.5, 0.8, 0.9], amber: [0.95, 0.62, 0.3] };
 
 // Height fog: sigma(y) = A exp(-y / H) + B per metre
 const FOG = { A: 1 / 300, H: 110, B: 1 / 11000 };
-// Mist layers: altitude band, noise scale, threshold, strength
-const MIST = [
-  { y0: 15, y1: 110, scale: 170, lo: 0.42, hi: 0.72, k: 0.02, seed: 401 },
-  { y0: 150, y1: 240, scale: 260, lo: 0.55, hi: 0.8, k: 0.007, seed: 402 },
+/*
+ * The atmosphere's layers (altitude bands, metres): mist low in the streets,
+ * mist between the towers, and a thin veil just below the viewer. They are not
+ * baked into the frame: the atmosphere (atmos.js) draws them as a separate,
+ * moving layer over it. The frame only records how far each pixel's ray runs
+ * through each of them before it meets a surface.
+ */
+export const ATMOS_SLABS = [
+  [15, 110],
+  [150, 250],
+  [560, 615],
 ];
 const MAX_T = 7500;
 /*
@@ -73,7 +82,9 @@ const MAX_T = 7500;
  * `low` every light stays, since that glow through the mist is what makes the
  * streets read as far below.
  */
-const WINDOW_THIN = { from: 170, to: 320, keep: 0.74, low: [60, 160] };
+const WINDOW_THIN = { from: 170, to: 320, keep: 0.85, low: [60, 160] };
+// a far window bay (one pixel) gives its lit window's light times the window's share of the bay, times this
+const FAR_BAY = 1.1;
 // 0 near or low down, 1 far and high up
 const calmAt = (dist, y) => smoothstep(WINDOW_THIN.from, WINDOW_THIN.to, dist) * smoothstep(WINDOW_THIN.low[0], WINDOW_THIN.low[1], y);
 const EPS = 1e-3;
@@ -186,41 +197,14 @@ function opticalDepth(oy, dy, t) {
   return fogT + FOG.B * t;
 }
 
-// per mist layer, the last mistCover call's optical depth and its depth at full density
-const mistTau = [0, 0];
-const mistCap = [0, 0];
-
-/* Fraction of what lies at distance t that the mist layers hide. */
-function mistCover(ox, oy, oz, dx, dy, dz, t) {
-  let keep = 1;
-  mistTau[0] = mistTau[1] = mistCap[0] = mistCap[1] = 0;
-  for (let l = 0; l < MIST.length; l++) {
-    const m = MIST[l];
-    let a = 0;
-    let b = t;
-    if (Math.abs(dy) < 1e-6) {
-      if (oy < m.y0 || oy > m.y1) continue;
-    } else {
-      const ta = (m.y0 - oy) / dy;
-      const tb = (m.y1 - oy) / dy;
-      a = Math.max(0, Math.min(ta, tb));
-      b = Math.min(t, Math.max(ta, tb));
-    }
-    const seg = b - a;
-    if (seg <= 0) continue;
-    let dens = 0;
-    for (let s = 0; s < 3; s++) {
-      const u = a + seg * (s + 0.5) / 3;
-      const n = fbm((ox + dx * u) / m.scale, (oz + dz * u) / m.scale, SEED + m.seed);
-      dens += smoothstep(m.lo, m.hi, n);
-    }
-    const cap = seg * m.k;
-    const tau = (dens / 3) * cap;
-    mistTau[l] = tau;
-    mistCap[l] = cap;
-    keep *= Math.exp(-tau);
-  }
-  return 1 - keep;
+/* Metres of the ray from (oy, dy) inside the band [y0, y1] before distance t. */
+function slabRun(oy, dy, t, y0, y1) {
+  if (Math.abs(dy) < 1e-6) return oy >= y0 && oy <= y1 ? t : 0;
+  const ta = (y0 - oy) / dy;
+  const tb = (y1 - oy) / dy;
+  const a = Math.max(0, Math.min(ta, tb));
+  const b = Math.min(t, Math.max(ta, tb));
+  return Math.max(0, b - a);
 }
 
 const sky = (dx, dy, dz, out) => {
@@ -251,6 +235,7 @@ const tmp = [0, 0, 0];
 // what the pixel being shaded reflects (R x reflected light), and its window, for capture
 const reflR = [0, 0, 0];
 const win = { key: 0, lit: 0, dBase: [0, 0, 0], on: [0, 0, 0] };
+let signLit = 0; // the neon light of the pixel being shaded, for capture
 
 const set3 = (o, a) => {
   o[0] = a[0];
@@ -263,10 +248,29 @@ const add3 = (o, a, k) => {
   o[2] += a[2] * k;
 };
 
+/*
+ * Lit windows come in rooms: a few windows side by side share one light (and
+ * one colour of light), lit or dark together, so a facade shows clusters
+ * rather than a scatter. Some floors of office towers are lit end to end
+ * (people working late, cleaners). Rooms shift from floor to floor, so the
+ * clusters do not stack into columns.
+ */
+const ROOM_BOOST = 1.35; // rooms are lit a little more often than windows used to be
+const roomWidth = (id) => 2 + Math.floor(hash3(id, 0, SEED + 30) * 3);
+const roomOf = (id, floor, col) => {
+  const rw = roomWidth(id);
+  return Math.floor((col + Math.floor(hash3(id, floor, SEED + 33) * rw)) / rw);
+};
+const floorLitShare = (b) => (b.style.floor === 'office' ? 0.05 : 0.015) * (0.5 + hash3(b.id, 1, SEED + 34));
+
 function windowOn(b, face, floor, col, keep) {
   const id = b.id * 4 + face;
-  const floorMood = 0.35 + 1.3 * hash3(id, floor, SEED + 5); // whole floors left on or off
-  return hash3(id, floor * 977 + col, SEED + 6) < b.lit * floorMood * keep;
+  // a floor lit end to end: nearly every window on
+  if (hash3(id, floor, SEED + 31) < floorLitShare(b) * keep) return hash3(id, floor * 977 + col, SEED + 6) < 0.9;
+  const floorMood = 0.35 + 1.3 * hash3(id, floor, SEED + 5); // whole floors busier or quieter
+  const room = roomOf(id, floor, col);
+  if (hash3(id, floor * 577 + room, SEED + 32) >= b.lit * ROOM_BOOST * floorMood * keep) return false;
+  return hash3(id, floor * 977 + col, SEED + 6) < 0.85; // the odd window in a lit room has its blind down
 }
 
 function windowLight(b, face, floor, col, keep, out) {
@@ -275,18 +279,23 @@ function windowLight(b, face, floor, col, keep, out) {
   return 1;
 }
 
-/* The light a window gives when it is on (whether or not it is). */
+/* The light a window gives when it is on (whether or not it is): one colour per room. */
 function windowTone(b, face, floor, col, out) {
   const id = b.id * 4 + face;
-  const r = hash3(id, floor * 131 + col, SEED + 7);
+  const room = roomOf(id, floor, col);
+  const r = hash3(id, floor * 131 + room, SEED + 7);
   const tone = r < b.warm * 0.55 ? C.warm : r < Math.max(b.warm, 0.55) ? C.soft : r < 0.97 ? C.cool : C.tv;
-  const k = 0.42 + 0.4 * hash3(id, floor * 53 + col, SEED + 8);
+  const k = 0.5 + 0.3 * hash3(id, floor * 53 + col, SEED + 8);
   out[0] = tone[0] * k;
   out[1] = tone[1] * k;
   out[2] = tone[2] * k;
 }
 
-const windowKey = (b, face, floor, col) => (b.id * 4 + face) * 1048576 + floor * 1024 + (col & 1023);
+// the switchable unit: a room
+const windowKey = (b, face, floor, col) => {
+  const id = b.id * 4 + face;
+  return id * 1048576 + floor * 1024 + (roomOf(id, floor, col) & 1023);
+};
 
 function signPixel(b, box, axis, sign, u, v, base, emit) {
   const s = FOCAL.sign;
@@ -312,7 +321,9 @@ function signPixel(b, box, axis, sign, u, v, base, emit) {
   base[0] = 0.05;
   base[1] = 0.02;
   base[2] = 0.04;
-  add3(emit, C.neon, ch === 'F' ? 0.38 : 0.85);
+  const glow = ch === 'F' ? 0.38 : 0.85;
+  add3(emit, C.neon, glow);
+  if (base === BASE) signLit = glow;
   return true;
 }
 
@@ -406,19 +417,19 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
     }
     return;
   }
-  // far: each pixel stands for a window bay, lit or not
+  // far: each pixel stands for a window bay, lit or not, with the bay's share of the window's light
   const cover = (style.winU[1] - style.winU[0]) * (style.winV[1] - style.winV[0]);
   if (base === BASE) {
     win.key = windowKey(b, face, fi, ci);
     windowTone(b, face, fi, ci, win.on);
     for (let c = 0; c < 3; c++) {
-      win.on[c] *= cover * 0.4;
+      win.on[c] *= FAR_BAY * cover;
       win.dBase[c] = 0;
     }
     win.lit = 0;
   }
   if (windowLight(b, face, fi, ci, keep, tmp)) {
-    add3(emit, tmp, cover * 0.4);
+    add3(emit, tmp, FAR_BAY * cover);
     if (base === BASE) win.lit = 1;
   }
   for (let c = 0; c < 3; c++) base[c] = base[c] * (1 - cover) + style.glass[c] * cover;
@@ -547,33 +558,28 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
         const d = Math.abs(lx - g.avenue / 2);
         if (d < Math.max(0.2, pf * 0.35)) for (let c = 0; c < 3; c++) base[c] = C.marking[c] * 0.6;
       }
-      shadeCars(i, j, lx, lz, x, z, inAve, inStr, aveRoad, strRoad, pf);
     } else {
       set3(base, C.walk);
       r0 = 0.3;
     }
-    // sodium lamps along the kerbs: every lamp pools light on the wet street, but only two lamp
-    // heads in three (staggered across the road) show as a bright point, so the avenue reads as
-    // a lit line rather than a string of pinpricks
-    let near = Infinity;
-    let head = false;
+    // sodium lamps along the kerbs, seen from far above as a continuous glow along each kerb, a
+    // little brighter under each lamp: lit lines, not points (the only points of light on the roads
+    // are the moving cars of the animation)
+    let across = Infinity;
+    let along = 0;
     if (inAve && !inStr) {
-      const side = lx < g.avenue / 2 ? 0 : 1;
-      const kx = side ? g.avenue - g.sidewalk + 0.6 : g.sidewalk - 0.6;
-      const lzm = ((z % 26) + 26) % 26;
-      near = Math.hypot(lx - kx, lzm - 13);
-      head = (((Math.floor(z / 26) + side) % 3) + 3) % 3 !== 0;
+      const kx = lx < g.avenue / 2 ? g.sidewalk - 0.6 : g.avenue - g.sidewalk + 0.6;
+      across = lx - kx;
+      along = ((z % 26) + 26) % 26;
     } else if (inStr && !inAve) {
-      const side = lz < g.street / 2 ? 0 : 1;
-      const kz = side ? g.street - g.sidewalk + 0.6 : g.sidewalk - 0.6;
-      const lxm = ((x % 30) + 30) % 30;
-      near = Math.hypot(lz - kz, lxm - 15);
-      head = (((Math.floor(x / 30) + side) % 3) + 3) % 3 !== 0;
+      const kz = lz < g.street / 2 ? g.sidewalk - 0.6 : g.street - g.sidewalk + 0.6;
+      across = lz - kz;
+      along = ((x % 30) + 30) % 30;
     }
-    if (near < 14) {
-      const pool = Math.exp(-(near * near) / 48);
-      add3(base, C.sodium, pool * 0.3);
-      if (head && near < Math.max(0.7, pf * 0.6)) add3(emit, C.sodium, 0.9);
+    if (Math.abs(across) < 9) {
+      const band = Math.exp(-(across * across) / 14);
+      const rhythm = 0.78 + 0.22 * Math.cos((along / 26) * Math.PI * 2);
+      add3(base, C.sodium, band * rhythm * 0.26);
     }
     // from far off the streets themselves are threads of sodium light
     if (pf > 6) add3(emit, C.sodium, 0.12 * smoothstep(6, 14, pf));
@@ -587,45 +593,6 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
     base[c] = base[c] * (1 - R) + refl[c] * R;
     reflR[c] = refl[c] * R;
   }
-}
-
-function shadeCars(i, j, lx, lz, x, z, inAve, inStr, aveRoad, strRoad, pf) {
-  const g = GRID;
-  if (inAve && inStr) return; // intersections stay clear
-  let lane;
-  let along;
-  let across;
-  let dir;
-  if (aveRoad) {
-    const w = (g.avenue - 2 * g.sidewalk) / 4;
-    lane = Math.floor((lx - g.sidewalk) / w);
-    across = (lx - g.sidewalk) - (lane + 0.5) * w;
-    along = z;
-    dir = lane < 2 ? -1 : 1;
-  } else if (strRoad) {
-    const w = (g.street - 2 * g.sidewalk) / 2;
-    lane = Math.floor((lz - g.sidewalk) / w);
-    across = (lz - g.sidewalk) - (lane + 0.5) * w;
-    along = x;
-    dir = lane < 1 ? 1 : -1;
-  } else return;
-  const slot = Math.floor(along / 9);
-  const key = aveRoad ? i * 7 + lane : j * 7 + lane + 1000;
-  if (hash3(key, slot, SEED + 21) > 0.09) return;
-  const at = along - (slot * 9 + 4.5);
-  if (Math.abs(at) > 2.3 || Math.abs(across) > 0.95) {
-    // wet road ahead of the car catches its headlights
-    const ahead = at * dir;
-    if (ahead > 2.3 && ahead < 12 && Math.abs(across) < 1.3) add3(emit, C.soft, 0.1 * (1 - (ahead - 2.3) / 9.7));
-    return;
-  }
-  const front = at * dir;
-  const tone = hash3(key, slot, SEED + 22);
-  const body = tone < 0.4 ? [0.05, 0.05, 0.06] : tone < 0.7 ? [0.11, 0.11, 0.12] : tone < 0.85 ? [0.12, 0.05, 0.04] : [0.13, 0.11, 0.06];
-  set3(base, body);
-  const lampW = Math.max(0.45, pf * 0.5);
-  if (front > 2.3 - lampW) add3(emit, C.white, 0.85);
-  else if (front < -2.3 + lampW) add3(emit, C.red, 0.7);
 }
 
 /* ------------------------------------------------------------------ */
@@ -673,15 +640,12 @@ export function createCityFrame(w, h, { capture = false } = {}) {
   const n3 = w * h * 3;
   const cap = capture
     ? {
-        // mist: each layer's optical depth, and its depth were the layer at full density
-        tau0: new Float32Array(w * h),
-        cap0: new Float32Array(w * h),
-        tau1: new Float32Array(w * h),
-        cap1: new Float32Array(w * h),
-        fade: new Float32Array(w * h), // how much the mist counts at this distance
-        G: new Float32Array(n3), // change of the pixel's value per unit of mist cover
+        // per atmosphere layer (ATMOS_SLABS): metres of the ray inside it before the surface
+        slabs: ATMOS_SLABS.map(() => new Float32Array(w * h)),
+        haze: new Float32Array(w * h), // how much distant haze lies in front of the surface
+        sign: new Float32Array(w * h), // the neon sign's light
         S: new Float32Array(n3), // the wet reflection's share of the value
-        H: new Float32Array(n3), // the far haze's share
+        U: null, // the city's light around the pixel (wide bloom): what lights the mist (finish)
         winKey: new Float64Array(w * h), // 0: not a window
         winLit: new Uint8Array(w * h),
         winD: new Float32Array(n3), // value of the window on minus off
@@ -695,6 +659,7 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     const [dx, dy, dz] = dir;
     reflR[0] = reflR[1] = reflR[2] = 0;
     win.key = 0;
+    signLit = 0;
     const tGround = dy < 0 ? -oy / dy : Infinity;
     const tEnd = Math.min(tGround, MAX_T);
     const t = trace(city, ox, oy, oz, dx, dy, dz, tEnd);
@@ -722,8 +687,6 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     const tr = dist >= MAX_T && t < 0 && dy >= 0 ? 1 : Math.exp(-opticalDepth(oy, dy, dist));
     const low = Math.exp(-Math.max(0, yEnd) / 90);
     const far = smoothstep(1200, 6500, dist);
-    const fade = 1 - smoothstep(1400, 4200, dist);
-    const mist = mistCover(ox, oy, oz, dx, dy, dz, dist) * fade;
     // lights carry through the haze better than the surfaces around them
     const trL = Math.sqrt(tr);
     const n = py * w + px;
@@ -732,24 +695,18 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     for (let c = 0; c < 3; c++) {
       let fogC = C.fogHigh[c] + (C.fogLow[c] - C.fogHigh[c]) * low;
       fogC += (C.hazeFar[c] - fogC) * far;
-      let v = base[c] * tr + fogC * (1 - tr);
+      color[k + c] = base[c] * tr + fogC * (1 - tr);
+      light[k + c] = emit[c] * trL;
       if (cap) {
-        cap.G[k + c] = 0.85 * (C.mist[c] - v) * vig - 0.6 * emit[c] * trL;
-        cap.S[k + c] = reflR[c] * tr * (1 - 0.85 * mist) * vig;
-        cap.H[k + c] = fogC * (1 - tr) * far * (1 - 0.85 * mist) * vig;
-        if (win.key) cap.winD[k + c] = win.dBase[c] * tr * (1 - 0.85 * mist) * vig + win.on[c] * trL * (1 - 0.6 * mist);
+        cap.S[k + c] = reflR[c] * tr * vig;
+        if (win.key) cap.winD[k + c] = win.dBase[c] * tr * vig + win.on[c] * trL;
       }
-      v += (C.mist[c] - v) * mist * 0.85;
-      color[k + c] = v;
-      light[k + c] = emit[c] * trL * (1 - mist * 0.6);
     }
     depth[n] = dist;
     if (cap) {
-      cap.tau0[n] = mistTau[0];
-      cap.cap0[n] = mistCap[0];
-      cap.tau1[n] = mistTau[1];
-      cap.cap1[n] = mistCap[1];
-      cap.fade[n] = fade;
+      for (let l = 0; l < ATMOS_SLABS.length; l++) cap.slabs[l][n] = slabRun(oy, dy, dist, ATMOS_SLABS[l][0], ATMOS_SLABS[l][1]);
+      cap.haze[n] = far * (1 - tr);
+      cap.sign[n] = signLit * trL;
       if (win.key) {
         cap.winKey[n] = win.key;
         cap.winLit[n] = win.lit;
@@ -789,8 +746,12 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     finish() {
       const placed = addBeacons(city, cam, w, h, light, depth);
       beaconCount = placed.length;
-      const glow = bloom(light, w, h);
+      const tight = boxBlur(light, w, h, 1);
+      const wide = boxBlur(boxBlur(light, w, h, 4), w, h, 4);
+      const glow = new Float32Array(n3);
+      for (let i = 0; i < n3; i++) glow[i] = tight[i] * 0.45 + wide[i] * 0.9;
       if (cap) {
+        cap.U = wide;
         cap.F = new Float32Array(n3);
         cap.beacons = placed.map((bc) => beaconPatch(bc, w, h));
       }
@@ -892,18 +853,26 @@ function stampBeacon(buf, w, { sx, sy, depth: d, tr }) {
  * the rectangle it touches.
  */
 function beaconPatch(bc, w, h) {
-  const only = new Float32Array(w * h * 3);
-  stampBeacon(only, w, bc);
-  const glow = bloom(only, w, h);
-  let x0 = w;
-  let y0 = h;
+  // bloom reaches 1 + 4 + 4 pixels: blurring a crop that reaches that far round the light gives exactly
+  // what blurring the whole frame would (outside it there is nothing; at the frame's edges the crop's
+  // edges are the frame's, clamped the same way)
+  const reach = 2 + 9;
+  const cx0 = Math.max(0, bc.sx - reach);
+  const cy0 = Math.max(0, bc.sy - reach);
+  const cw = Math.min(w, bc.sx + reach + 1) - cx0;
+  const ch = Math.min(h, bc.sy + reach + 1) - cy0;
+  const only = new Float32Array(cw * ch * 3);
+  stampBeacon(only, cw, { ...bc, sx: bc.sx - cx0, sy: bc.sy - cy0 });
+  const glow = bloom(only, cw, ch);
+  let x0 = cw;
+  let y0 = ch;
   let x1 = -1;
   let y1 = -1;
-  for (let n = 0; n < w * h; n++) {
+  for (let n = 0; n < cw * ch; n++) {
     const k = n * 3;
     if (only[k] + glow[k] + only[k + 1] + glow[k + 1] + only[k + 2] + glow[k + 2] > 1e-5) {
-      const x = n % w;
-      const y = (n / w) | 0;
+      const x = n % cw;
+      const y = (n / cw) | 0;
       if (x < x0) x0 = x;
       if (x > x1) x1 = x;
       if (y < y0) y0 = y;
@@ -915,12 +884,12 @@ function beaconPatch(bc, w, h) {
   const L = new Float32Array(Math.max(0, pw * ph * 3));
   for (let y = 0; y < ph; y++) {
     for (let x = 0; x < pw; x++) {
-      const k = ((y0 + y) * w + x0 + x) * 3;
+      const k = ((y0 + y) * cw + x0 + x) * 3;
       const q = (y * pw + x) * 3;
       for (let c = 0; c < 3; c++) L[q + c] = only[k + c] + glow[k + c];
     }
   }
-  return { x0, y0, w: pw, h: ph, L, sx: bc.sx, sy: bc.sy };
+  return { x0: cx0 + x0, y0: cy0 + y0, w: pw, h: ph, L, sx: bc.sx, sy: bc.sy };
 }
 
 /* Blur a buffer of light in place into a new buffer (separable box blur). */

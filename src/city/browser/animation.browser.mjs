@@ -3,10 +3,12 @@
  *
  *   npm run test:browser
  *
- * The city moves a little, at whole-pixel scale and no faster than 12 frames
- * a second; it stops while the page is hidden; under prefers-reduced-motion
- * it never moves at all, and turning that setting on while it runs puts the
- * exact still frame back. With CI=true a missing browser is an error.
+ * Two canvases: the pixel-art city, whose only changes are its lights, at
+ * whole-pixel scale; and the atmosphere over it, which drifts. Together no
+ * faster than 12 frames a second; nothing moves while the page is hidden;
+ * under prefers-reduced-motion nothing moves at all, and turning that setting
+ * on while it runs puts the exact still city back. With CI=true a missing
+ * browser is an error.
  */
 import { before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,16 +52,19 @@ async function cityMode(page) {
 
 const state = (page) =>
   page.evaluate(() => {
-    const c = document.querySelector('[data-city] canvas');
+    const c = document.querySelector('[data-city] canvas.city-canvas');
     return { anim: c.dataset.cityAnim || null, frames: Number(c.dataset.cityFrames || 0) };
   });
 
-// keep a copy of the canvas in the page under `name`
-const snap = (page, name) =>
-  page.evaluate((n) => {
-    const c = document.querySelector('[data-city] canvas');
-    (window.__snaps ||= {})[n] = c.getContext('2d').getImageData(0, 0, c.width, c.height).data.slice();
-  }, name);
+// keep a copy of a canvas in the page under `name`: the city (pixel art) or the air (atmosphere)
+const snap = (page, name, which = 'city') =>
+  page.evaluate(
+    ([n, wh]) => {
+      const c = document.querySelector(wh === 'air' ? '[data-city] canvas[data-city-air]' : '[data-city] canvas.city-canvas');
+      (window.__snaps ||= {})[n] = c.getContext('2d').getImageData(0, 0, c.width, c.height).data.slice();
+    },
+    [name, which]
+  );
 
 // share of device pixels that differ between two snapshots
 const differ = (page, a, b) =>
@@ -77,7 +82,7 @@ const differ = (page, a, b) =>
 // inside one city pixel every device pixel has the same colour (rows across the middle and near the top)
 const brokenSquares = (page) =>
   page.evaluate(() => {
-    const c = document.querySelector('[data-city] canvas');
+    const c = document.querySelector('[data-city] canvas.city-canvas');
     const s = Number(c.dataset.cityPx);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
     const offY = c.height - Number(c.dataset.cityH) * s;
@@ -104,24 +109,28 @@ for (const [name, viewport, mobile] of [
   ['desktop', { width: 1280, height: 800 }, false],
   ['phone', { width: 390, height: 844 }, true],
 ]) {
-  guard(`${name}: the city moves quietly, in whole pixels, at most 12 frames a second`, async () => {
+  guard(`${name}: the air drifts over the city; the art changes only at its lights, in whole pixels; at most 12 frames a second`, async () => {
     const { ctx, page, log } = await openAt(browser, dev.url, { viewport, mobile });
     try {
       await cityMode(page);
-      await page.waitForFunction(() => document.querySelector('[data-city] canvas').dataset.cityAnim === 'running');
+      await page.waitForFunction(() => document.querySelector('[data-city] canvas.city-canvas').dataset.cityAnim === 'running');
       // measure the steady state: the first seconds also hold the one-off ease-in from the still frame,
       // which on a small canvas can by itself come close to the limit below
       await page.waitForTimeout(5000);
       await snap(page, 'a');
+      await snap(page, 'airA', 'air');
       const s0 = await state(page);
       const t0 = Date.now();
       await page.waitForTimeout(12000);
       await snap(page, 'b');
+      await snap(page, 'airB', 'air');
       const s1 = await state(page);
       const secs = (Date.now() - t0) / 1000;
       const changed = await differ(page, 'a', 'b');
-      assert.ok(changed > 0, 'nothing moved in 12 s');
-      assert.ok(changed < 0.1, `${(changed * 100).toFixed(1)}% of the canvas changed in 12 s`);
+      assert.ok(changed > 0, 'no light changed in 12 s');
+      // the buildings themselves never move: only lights (cars, rooms, beacons) change pixels
+      assert.ok(changed < 0.05, `${(changed * 100).toFixed(1)}% of the city's pixels changed in 12 s`);
+      assert.ok((await differ(page, 'airA', 'airB')) > 0.2, 'the air did not move');
       const fps = (s1.frames - s0.frames) / secs;
       assert.ok(s1.frames > s0.frames && fps <= 12.5, `${fps.toFixed(1)} redraws a second`);
       assert.equal(await brokenSquares(page), 0, 'city pixels are not whole squares');
@@ -136,7 +145,7 @@ guard('it stops while the page is hidden and carries on when it is back', async 
   const { ctx, page } = await openAt(browser, dev.url, { viewport: { width: 1024, height: 700 } });
   try {
     await cityMode(page);
-    await page.waitForFunction(() => document.querySelector('[data-city] canvas').dataset.cityAnim === 'running');
+    await page.waitForFunction(() => document.querySelector('[data-city] canvas.city-canvas').dataset.cityAnim === 'running');
     await page.waitForTimeout(5000); // past the ease-in, so it is drawing
     const setHidden = (hidden) =>
       page.evaluate((h) => {
@@ -154,7 +163,7 @@ guard('it stops while the page is hidden and carries on when it is back', async 
     assert.equal(await differ(page, 'hidden', 'hidden2'), 0);
     await setHidden(false);
     assert.equal((await state(page)).anim, 'running');
-    await page.waitForFunction((n) => Number(document.querySelector('[data-city] canvas').dataset.cityFrames || 0) > n, paused.frames, { timeout: 8000 });
+    await page.waitForFunction((n) => Number(document.querySelector('[data-city] canvas.city-canvas').dataset.cityFrames || 0) > n, paused.frames, { timeout: 8000 });
   } finally {
     await ctx.close();
   }
@@ -165,10 +174,14 @@ guard('reduced motion: the city is completely still', async () => {
   try {
     await cityMode(page);
     assert.equal((await state(page)).anim, 'static');
+    await page.waitForTimeout(1000); // the atmosphere is set up just after the city appears
     await snap(page, 'a');
+    await snap(page, 'airA', 'air');
     await page.waitForTimeout(8000);
     await snap(page, 'b');
+    await snap(page, 'airB', 'air');
     assert.equal(await differ(page, 'a', 'b'), 0, 'the city moved under reduced motion');
+    assert.equal(await differ(page, 'airA', 'airB'), 0, 'the air moved under reduced motion');
     assert.equal((await state(page)).frames, 0);
     assert.deepEqual(log.errors, []);
   } finally {
@@ -186,12 +199,17 @@ guard('turning reduced motion on while it runs puts the still frame back exactly
     await snap(page, 'moving');
     assert.ok((await differ(page, 'still', 'moving')) > 0, 'nothing had moved');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.waitForFunction(() => document.querySelector('[data-city] canvas').dataset.cityAnim === 'static');
+    await page.waitForFunction(() => document.querySelector('[data-city] canvas.city-canvas').dataset.cityAnim === 'static');
     await snap(page, 'back');
     assert.equal(await differ(page, 'still', 'back'), 0, 'not the still frame');
+    // and the air holds still too
+    await snap(page, 'airX', 'air');
+    await page.waitForTimeout(3000);
+    await snap(page, 'airY', 'air');
+    assert.equal(await differ(page, 'airX', 'airY'), 0, 'the air kept moving');
     // and it comes back to life when the setting is turned off again
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.waitForFunction(() => document.querySelector('[data-city] canvas').dataset.cityAnim === 'running', null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('[data-city] canvas.city-canvas').dataset.cityAnim === 'running', null, { timeout: 15000 });
   } finally {
     await ctx.close();
   }

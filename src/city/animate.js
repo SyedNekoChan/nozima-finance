@@ -1,59 +1,61 @@
-import { hash3 } from './noise.js';
 import { CITY_PALETTE } from './palette.js';
 import { lightThrough, quantize } from './render.js';
 import { GRID, project } from './scene.js';
 
 /*
- * City mode's ambient animation (Phase 2). Quiet on purpose: the city should
- * feel alive without any one movement catching the eye.
+ * City mode's animation of the pixel-art layer: the lights. The air (mist,
+ * haze, light shafts, glow) is the atmosphere layer over it (atmos.js); this
+ * module only ever changes pixels that are light sources, so the buildings
+ * themselves never shift, flicker or re-dither.
+ *
+ *   windows   now and then a room somewhere switches its light on or off
+ *   beacons   the warning lights blink slowly, each on its own clock
+ *   traffic   a few cars drive the length of the avenue far below: oncoming
+ *             ones show their headlights (white), receding ones their tail
+ *             lights (red), each with a dim light at its other end and its
+ *             light streaked on the wet road toward the viewer; one speed per
+ *             lane, spaced like traffic, appearing out of the far haze or
+ *             from under the viewer's ledge and leaving the same way; a quiet
+ *             night: gaps between them and now and then a lull
  *
  * It works on the baked frame (createCityFrame with `capture`): every pixel's
- * value before quantisation is known, and so is how that value responds to
- * each moving thing. An effect is an exact change added to the baked value;
- * when it changes, only the pixels it touches are re-quantised (same palette,
- * same ordered dither), and only those that actually change colour are
- * rewritten. Nothing is traced again, nothing moves by a fraction of a pixel,
- * and nothing is allocated per tick.
+ * value before quantisation is known, and so is exactly what a window or a
+ * beacon adds to it. A change is added to the baked value and only the
+ * pixels it touches are re-quantised (same palette, same ordered dither),
+ * whole pixels only. Nothing is allocated per update.
  *
- *   mist       two layers (low in the streets, higher between the towers)
- *              thicken and thin as their noise drifts across by whole pixels,
- *              the nearer layer faster (parallax)
- *   haze       the lit haze over the far city swells and fades, slower still
- *   shimmer    wet roofs and streets: the reflected light ripples very slightly
- *   beacons    the warning lights blink slowly, each on its own clock
- *   windows    now and then one window somewhere is switched on or off
- *   cars       occasionally a car's lights turn into the avenue far below,
- *              travel a few blocks and turn off it again
- *
- * Effects fade in over the first few seconds, so the switch from the still
- * frame is never visible. Timing: everything happens on discrete steps, and
- * nextDue() says when the next one is, so the caller can sleep until then
- * (never more often than `minFrameMs`, i.e. 12 fps).
+ * lights() lists where the moving lights are, for the atmosphere's halos.
  */
 
 export const ANIM = {
   minFrameMs: Math.ceil(1000 / 12),
-  onsetMs: 4000, // effects ease in over this long, in 4 steps
-  // [low street mist, mist between the towers]: noise cell (px), strength, ms per 1 px of drift
-  mist: [
-    { cell: 28, amp: 0.9, stepMs: 2600, dir: 1, seed: 11 },
-    { cell: 40, amp: 0.7, stepMs: 1700, dir: 1, seed: 12 },
-  ],
-  // the lit haze over the far city: at most a quarter brighter or dimmer than its baked glow
-  haze: { cell: 72, amp: 0.5, stepMs: 6200, seed: 13, min: 0.004 },
-  // ripples on the wet surfaces, only where they hold a bright reflection (min: per channel):
-  // broad, low cells drifting down the screen, so each step changes a glint only a little
-  shimmer: { cellX: 12, cellY: 5, amp: 0.22, stepMs: 1100, seed: 14, min: 0.06 },
+  onsetMs: 4000, // beacons ease into blinking over this long
   beacon: { periodMs: [3300, 4600], onShare: 0.5, fadeMs: 250, low: 0.1 },
-  windows: { everyMs: [5000, 15000], max: 900, minVisible: 0.03 },
-  // brightness of a car turning in or off comes up / goes down in `levels` steps over fadeM metres
-  cars: { everyMs: [7000, 18000], max: 2, speed: [9, 14], blocks: [2, 5], fadeM: 30, levels: 8, stepM: 2, zMax: 2600 },
+  windows: { everyMs: [2200, 6500], max: 1200, minVisible: 0.03 },
+  // a quiet night avenue: a few cars at a time, now and then a lull
+  traffic: {
+    max: 7, // on the avenue at once (so never more than 7 in view); a trip takes 2-3 minutes
+    gapMs: [12000, 28000], // between one car joining and the next, usually...
+    quietMs: [45000, 90000], // ...but about one time in three a longer lull
+    quietShare: 0.35,
+    start: [2, 3], // already on the avenue when City mode opens (their lights ease in with the rest)
+    speed: [12, 17], // m/s, one per lane
+    gap: 70, // m, at least, between cars in a lane
+    zFar: 2200, // m: oncoming cars come out of the haze here, receding ones go into it
+    fadeM: 90, // their lights come up / go down over this distance at the far end
+    stepM: 2,
+    length: 4.4, // m
+    streak: [
+      [6, 0.32],
+      [11, 0.18],
+      [17, 0.09],
+    ], // light on the wet road: metres from the bright end toward the viewer, strength
+    head: [1.0, 0.88, 0.66],
+    tail: [1.0, 0.14, 0.08],
+    bright: 0.95,
+    dim: 0.3,
+  },
 };
-
-const MIST0 = 1;
-const MIST1 = 2;
-const HAZE = 4;
-const SHIMMER = 8;
 
 /* Small seeded generator (mulberry32). */
 function rng(seed) {
@@ -64,45 +66,6 @@ function rng(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-const fadeCurve = (t) => t * t * (3 - 2 * t);
-
-/*
- * Tileable value noise in 0..1, two octaves, at least tw x th pixels. Lookups
- * wrap, so a drifting offset never runs off the end.
- */
-function tileNoise(minW, minH, cellX, cellY, seed) {
-  const gx = Math.max(2, Math.ceil(minW / cellX));
-  const gy = Math.max(2, Math.ceil(minH / cellY));
-  const tw = gx * cellX;
-  const th = gy * cellY;
-  const tex = new Float32Array(tw * th);
-  const octave = (x, y, cx, cy, nx, ny, s) => {
-    const fx = x / cx;
-    const fy = y / cy;
-    const i = Math.floor(fx);
-    const j = Math.floor(fy);
-    const u = fadeCurve(fx - i);
-    const v = fadeCurve(fy - j);
-    const i0 = ((i % nx) + nx) % nx;
-    const j0 = ((j % ny) + ny) % ny;
-    const i1 = (i0 + 1) % nx;
-    const j1 = (j0 + 1) % ny;
-    const a = hash3(i0, j0, s);
-    const b = hash3(i1, j0, s);
-    const c = hash3(i0, j1, s);
-    const d = hash3(i1, j1, s);
-    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-  };
-  for (let y = 0; y < th; y++) {
-    for (let x = 0; x < tw; x++) {
-      const n1 = octave(x, y, cellX, cellY, gx, gy, seed);
-      const n2 = octave(x, y, cellX / 2, cellY / 2, gx * 2, gy * 2, seed + 1);
-      tex[y * tw + x] = (n1 * 2 + n2) / 3;
-    }
-  }
-  return { tex, tw, th };
 }
 
 /*
@@ -117,10 +80,10 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
   const rows = h - dyn.parapetRows; // the viewer's ledge never changes
   const random = rng(seed);
   const between = ([lo, hi]) => lo + (hi - lo) * random();
+  const cfg = ANIM;
 
   const out = new Uint8ClampedArray(rgba); // what is on screen
-  const F = dyn.F; // the baked values (the only full capture array kept)
-  const A = new Float32Array(w * h * 3); // current change from mist, haze and shimmer
+  const F = dyn.F; // the baked values
   const X = new Float32Array(w * h * 3); // current change from beacons, windows and cars
   const cur = new Uint8Array(w * h); // palette index on screen
   for (let p = 0; p < w * rows; p++) {
@@ -142,7 +105,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     const k = p * 3;
     const x = p % w;
     const y = (p / w) | 0;
-    const i = quantize(x, y, F[k] + A[k] + X[k], F[k + 1] + A[k + 1] + X[k + 1], F[k + 2] + A[k + 2] + X[k + 2]);
+    const i = quantize(x, y, F[k] + X[k], F[k + 1] + X[k + 1], F[k + 2] + X[k + 2]);
     if (i === cur[p]) return;
     cur[p] = i;
     const c = CITY_PALETTE[i];
@@ -157,124 +120,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     box.changed++;
   }
 
-  /* ---------------------------------------------------------------- */
-  /* Mist, haze and shimmer: the pixels they can touch, packed          */
-  /* ---------------------------------------------------------------- */
-
-  const cfg = ANIM;
   const lum3 = (arr, k) => Math.abs(arr[k]) + Math.abs(arr[k + 1]) + Math.abs(arr[k + 2]);
-  let count = 0;
-  const maskOf = new Uint8Array(w * h);
-  for (let p = 0; p < w * rows; p++) {
-    const k = p * 3;
-    let m = 0;
-    if (dyn.cap0[p] * dyn.fade[p] > 0.01) m |= MIST0;
-    if (dyn.cap1[p] * dyn.fade[p] > 0.01) m |= MIST1;
-    if (lum3(dyn.H, k) > cfg.haze.min) m |= HAZE;
-    if (Math.max(dyn.S[k], dyn.S[k + 1], dyn.S[k + 2]) > cfg.shimmer.min) m |= SHIMMER;
-    maskOf[p] = m;
-    if (m) count++;
-  }
-  const dIdx = new Int32Array(count);
-  const dX = new Uint16Array(count);
-  const dY = new Uint16Array(count);
-  const dMask = new Uint8Array(count);
-  const dTau0 = new Float32Array(count);
-  const dCap0 = new Float32Array(count);
-  const dTau1 = new Float32Array(count);
-  const dCap1 = new Float32Array(count);
-  const dFade = new Float32Array(count);
-  const dM0 = new Float32Array(count);
-  const dG = new Float32Array(count * 3);
-  const dS = new Float32Array(count * 3);
-  const dH = new Float32Array(count * 3);
-  for (let p = 0, q = 0; p < w * rows; p++) {
-    if (!maskOf[p]) continue;
-    dIdx[q] = p;
-    dX[q] = p % w;
-    dY[q] = (p / w) | 0;
-    dMask[q] = maskOf[p];
-    dTau0[q] = dyn.tau0[p];
-    dCap0[q] = dyn.cap0[p];
-    dTau1[q] = dyn.tau1[p];
-    dCap1[q] = dyn.cap1[p];
-    dFade[q] = dyn.fade[p];
-    dM0[q] = (1 - Math.exp(-(dyn.tau0[p] + dyn.tau1[p]))) * dyn.fade[p];
-    for (let c = 0; c < 3; c++) {
-      dG[q * 3 + c] = dyn.G[p * 3 + c];
-      dS[q * 3 + c] = dyn.S[p * 3 + c];
-      dH[q * 3 + c] = dyn.H[p * 3 + c];
-    }
-    q++;
-  }
-
-  const n0 = tileNoise(w + cfg.mist[0].cell, h, cfg.mist[0].cell, cfg.mist[0].cell, seed + cfg.mist[0].seed);
-  const n1 = tileNoise(w + cfg.mist[1].cell, h, cfg.mist[1].cell, cfg.mist[1].cell, seed + cfg.mist[1].seed);
-  const nh = tileNoise(w + cfg.haze.cell, h, cfg.haze.cell, cfg.haze.cell, seed + cfg.haze.seed);
-  const ns = tileNoise(w + cfg.shimmer.cellX, h + cfg.shimmer.cellY, cfg.shimmer.cellX, cfg.shimmer.cellY, seed + cfg.shimmer.seed);
-  // where each texture is sampled: x + ox, y + oy, wrapped (start anywhere)
-  const off = { m0: Math.floor(random() * n0.tw), m1: Math.floor(random() * n1.tw), hz: Math.floor(random() * nh.tw), sy: 0 };
-  const sample = (n, x, y) => n.tex[(y % n.th) * n.tw + (x % n.tw)];
-
-  let amp = 0; // effects' strength, 0 .. 1 over the onset
-  const atm = { m0: -1, m1: -1, hz: -1, sh: -1, stage: -1 };
-
-  function updateAtmos(t) {
-    const stage = Math.min(4, Math.floor(t / (cfg.onsetMs / 4)));
-    const s0 = Math.floor(t / cfg.mist[0].stepMs);
-    const s1 = Math.floor(t / cfg.mist[1].stepMs);
-    const sh = Math.floor(t / cfg.haze.stepMs);
-    const ss = Math.floor(t / cfg.shimmer.stepMs);
-    let changed = 0;
-    if (stage !== atm.stage) changed = MIST0 | MIST1 | HAZE | SHIMMER;
-    if (s0 !== atm.m0) changed |= MIST0;
-    if (s1 !== atm.m1) changed |= MIST1;
-    if (sh !== atm.hz) changed |= HAZE;
-    if (ss !== atm.sh) changed |= SHIMMER;
-    if (!changed) return;
-    atm.stage = stage;
-    atm.m0 = s0;
-    atm.m1 = s1;
-    atm.hz = sh;
-    atm.sh = ss;
-    amp = stage / 4;
-    // drift: texture x for a pixel is x + off - steps (the field moves right), wrapped positive
-    const x0 = off.m0 + n0.tw * 64 - s0 * cfg.mist[0].dir;
-    const x1 = off.m1 + n1.tw * 64 - s1 * cfg.mist[1].dir;
-    const xh = off.hz + nh.tw * 64 - sh;
-    const ys = ns.th * 64 - ss; // ripples run down the screen, toward the viewer
-    const a0 = amp * cfg.mist[0].amp;
-    const a1 = amp * cfg.mist[1].amp;
-    const ah = amp * cfg.haze.amp;
-    const as = amp * cfg.shimmer.amp;
-    for (let q = 0; q < count; q++) {
-      const m = dMask[q];
-      if (!(m & changed)) continue;
-      const x = dX[q];
-      const y = dY[q];
-      let t0 = dTau0[q];
-      let t1 = dTau1[q];
-      if (m & MIST0) t0 = Math.max(0, t0 + a0 * dCap0[q] * (sample(n0, x + x0, y) - 0.5));
-      if (m & MIST1) t1 = Math.max(0, t1 + a1 * dCap1[q] * (sample(n1, x + x1, y) - 0.5));
-      const dm = (1 - Math.exp(-(t0 + t1))) * dFade[q] - dM0[q];
-      const hz = m & HAZE ? ah * (sample(nh, x + xh, y) - 0.5) : 0;
-      const sm = m & SHIMMER ? as * (sample(ns, x, y + ys) - 0.5) : 0;
-      const p = dIdx[q];
-      const k = p * 3;
-      const kq = q * 3;
-      A[k] = dG[kq] * dm + dS[kq] * sm + dH[kq] * hz;
-      A[k + 1] = dG[kq + 1] * dm + dS[kq + 1] * sm + dH[kq + 1] * hz;
-      A[k + 2] = dG[kq + 2] * dm + dS[kq + 2] * sm + dH[kq + 2] * hz;
-      requant(p);
-    }
-  }
-
-  function atmosDue(t) {
-    const next = (stepMs) => (Math.floor(t / stepMs) + 1) * stepMs;
-    let due = Math.min(next(cfg.mist[0].stepMs), next(cfg.mist[1].stepMs), next(cfg.haze.stepMs), next(cfg.shimmer.stepMs));
-    if (t < cfg.onsetMs) due = Math.min(due, next(cfg.onsetMs / 4));
-    return due;
-  }
 
   /* ---------------------------------------------------------------- */
   /* Beacons                                                          */
@@ -299,6 +145,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     else if (u < P - f) lit = 0;
     else lit = (u - (P - f)) / f;
     const level = bcfg.low + (1 - bcfg.low) * lit;
+    const amp = Math.min(1, Math.floor(t / (cfg.onsetMs / 4)) / 4);
     return 1 + (level - 1) * amp;
   }
 
@@ -323,23 +170,8 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     }
   }
 
-  function beaconsDue(t) {
-    let due = Infinity;
-    for (const b of beacons) {
-      const P = b.period;
-      const on = P * bcfg.onShare;
-      const f = bcfg.fadeMs;
-      const u = (t + b.phase) % P;
-      // fading: every frame; otherwise when the next fade starts
-      if ((u >= on && u < on + f) || u >= P - f) return t;
-      const until = u < on ? on - u : P - f - u;
-      due = Math.min(due, t + until);
-    }
-    return due;
-  }
-
   /* ---------------------------------------------------------------- */
-  /* Windows                                                          */
+  /* Windows (rooms)                                                  */
   /* ---------------------------------------------------------------- */
 
   const wcfg = cfg.windows;
@@ -355,7 +187,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     g.pixels.push(p);
     g.weight += lum3(dyn.winD, p * 3);
   }
-  // the windows that could change: visible enough to matter, a fixed random share of them
+  // the rooms that could change: visible enough to matter, a fixed random share of them
   let pool = [...groups.values()].filter((g) => g.weight > wcfg.minVisible);
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -369,7 +201,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     pixels.forEach((p, i) => D.set(dyn.winD.subarray(p * 3, p * 3 + 3), i * 3));
     return { pixels, D, on: g.lit };
   });
-  let litDelta = 0; // windows lit now minus lit in the baked frame
+  let litDelta = 0; // rooms lit now minus lit in the baked frame
   let nextWindowAt = between(wcfg.everyMs);
   let windowEvents = 0;
 
@@ -391,7 +223,7 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
   function updateWindows(t) {
     if (t < nextWindowAt || !windows.length) return;
     nextWindowAt = t + between(wcfg.everyMs);
-    // drift back toward the baked frame's share of lit windows
+    // drift back toward the baked frame's share of lit rooms
     const wantOn = random() < Math.min(0.8, Math.max(0.2, 0.5 - litDelta * 0.08));
     for (let tries = 0; tries < 24; tries++) {
       const win = windows[Math.floor(random() * windows.length)];
@@ -402,163 +234,179 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Cars on the avenue far below                                     */
+  /* Traffic on the avenue far below                                  */
   /* ---------------------------------------------------------------- */
 
-  const ccfg = cfg.cars;
+  const tc = cfg.traffic;
   const g = GRID;
   const aveI = Math.floor(cam.pos[0] / g.px);
   const laneW = (g.avenue - 2 * g.sidewalk) / 4;
-  const steps = Math.floor(ccfg.zMax / ccfg.stepM);
-  // per lane, per 2 m of road: the pixel the car's lights are on (-1: not visible) and how bright they come through
+  const steps = Math.floor(tc.zFar / tc.stepM) + 1;
+  // per lane, per 2 m of road: the pixel there (-1: out of view or behind a tower) and how much light gets through
   const lanes = [0, 1, 2, 3].map((l) => {
     const x = aveI * g.px + g.sidewalk + laneW * (l + 0.5);
     const pix = new Int32Array(steps).fill(-1);
     const through = new Float32Array(steps);
     for (let s = 0; s < steps; s++) {
-      const z = s * ccfg.stepM;
+      const z = s * tc.stepM;
       const pr = project(cam, x, 0.7, z);
       if (!pr) continue;
       const sx = Math.floor(pr.x);
       const sy = Math.floor(pr.y);
-      if (sx < 1 || sy < 1 || sx >= w - 1 || sy >= rows - 1) continue;
+      if (sx < 0 || sy < 0 || sx >= w || sy >= rows) continue;
       const p = sy * w + sx;
       if (dyn.depth[p] < pr.depth - 8) continue; // behind a tower
-      const mist = (1 - Math.exp(-(dyn.tau0[p] + dyn.tau1[p]))) * dyn.fade[p];
       pix[s] = p;
-      through[s] = lightThrough(cam, pr.depth, 0.7) * (1 - 0.6 * mist);
+      through[s] = lightThrough(cam, pr.depth, 0.7);
     }
-    return { dir: l < 2 ? -1 : 1, pix, through };
+    // oncoming lanes nearest the left kerb (as the baked lanes ran), receding ones on the right
+    return { dir: l < 2 ? -1 : 1, pix, through, speed: between(tc.speed), lastSpawnZ: null };
   });
-  // corners where a car can turn in or off: the middle of each cross street
-  const corners = [];
-  for (let j = 1; j * g.pz < ccfg.zMax - g.pz; j++) corners.push(j * g.pz + g.street / 2);
-  const HEAD = [1.0, 0.86, 0.6];
-  const TAIL = [1.0, 0.16, 0.1];
-  const cars = Array.from({ length: ccfg.max }, () => ({
+
+  const SPRITE = 2 + tc.streak.length; // pixels a car can light: its two ends and its streak
+  const cars = Array.from({ length: tc.max }, () => ({
     active: false,
-    z: 0,
-    zFrom: 0,
-    zTo: 0,
-    speed: 0,
     lane: null,
-    color: HEAD,
-    gain: 0,
-    p: -1, // pixel lit now
-    v: new Float32Array(3), // value added there now
-    nextAt: 0,
+    z: 0,
+    n: 0, // pixels lit now
+    p: new Int32Array(SPRITE),
+    v: new Float32Array(SPRITE * 3),
+    // for the atmosphere: where its bright end is, and its light
+    light: { on: false, kind: 'car', x: 0, y: 0, level: 0, r: 0, g: 0, b: 0 },
   }));
-  let nextCarAt = between(ccfg.everyMs) * 0.5;
+  const nextGap = () => (random() < tc.quietShare ? between(tc.quietMs) : between(tc.gapMs));
+  let nextCarAt = nextGap();
   let carsSeen = 0;
+  // the new sprite is built here before it replaces the old one
+  const np = new Int32Array(SPRITE);
+  const nv = new Float32Array(SPRITE * 3);
 
-  const HALO = 0.1;
-  const AROUND = [0, -1, 1, -w, w]; // the light and its faint halo
-  function applyCar(car, sign) {
-    if (car.p < 0) return;
-    for (let i = 0; i < 5; i++) {
-      const q = car.p + AROUND[i];
-      const f = (i ? HALO : 1) * sign;
-      X[q * 3] += car.v[0] * f;
-      X[q * 3 + 1] += car.v[1] * f;
-      X[q * 3 + 2] += car.v[2] * f;
-      requant(q);
-    }
-  }
+  const at = (lane, z) => {
+    const s = Math.round(z / tc.stepM);
+    return s < 0 || s >= steps ? -1 : s;
+  };
 
-  function spawnCar(t) {
+  /* A car joins: at the start of its lane (out of the far haze, or from under the ledge), or, with `midway`, somewhere along it. */
+  function spawn(midway = false) {
     let car = null;
     for (const c of cars) if (!c.active) car = c;
     if (!car) return;
-    for (let tries = 0; tries < 12; tries++) {
+    for (let tries = 0; tries < 6; tries++) {
       const lane = lanes[Math.floor(random() * 4)];
-      const c0 = Math.floor(random() * corners.length);
-      const blocks = Math.round(between(ccfg.blocks));
-      const c1 = c0 + lane.dir * blocks;
-      if (c1 < 0 || c1 >= corners.length) continue;
-      const from = corners[c0];
-      const to = corners[c1];
-      // it has to be seen somewhere along the way
-      let seen = 0;
-      for (let z = Math.min(from, to); z < Math.max(from, to); z += 8) if (lane.pix[Math.floor(z / ccfg.stepM)] >= 0) seen++;
-      if (seen < 6) continue;
+      const z0 = midway ? 150 + random() * (tc.zFar - 400) : lane.dir < 0 ? tc.zFar : 0;
+      // keep its distance from the cars in this lane (one speed per lane: it never catches up)
+      let clear = true;
+      for (const c of cars) if (c.active && c.lane === lane && Math.abs(c.z - z0) < tc.gap) clear = false;
+      if (!clear) continue;
       car.active = true;
       car.lane = lane;
-      car.z = from;
-      car.zFrom = from;
-      car.zTo = to;
-      car.speed = between(ccfg.speed);
-      car.color = lane.dir < 0 ? HEAD : TAIL;
-      car.p = -1;
-      car.gain = 0;
-      car.nextAt = t;
+      car.z = z0;
+      car.n = 0;
+      car.light.on = false;
       carsSeen++;
       return;
     }
   }
 
-  // where a car's light is and how bright, at road position z (gain stepped, so it changes rarely)
-  function carAt(car, z) {
-    const s = Math.floor(z / ccfg.stepM);
-    if (s < 0 || s >= steps) return -1;
-    return car.lane.pix[s];
-  }
-  function carRamp(car, z) {
-    const along = Math.min(Math.abs(z - car.zFrom), Math.abs(car.zTo - z));
-    return Math.min(ccfg.levels, Math.floor((along / ccfg.fadeM) * ccfg.levels)) / ccfg.levels;
-  }
-
-  /* When this car next needs drawing: its light moves to another pixel, its brightness steps, or it is gone. */
-  function carNext(car, t) {
-    const dir = car.lane.dir;
-    const p = car.p;
-    const r = carRamp(car, car.z);
-    let dz = Math.abs(car.zTo - car.z);
-    for (let d = ccfg.stepM; d < dz; d += ccfg.stepM) {
-      const z = car.z + dir * d;
-      if (carAt(car, z) !== p || carRamp(car, z) !== r) {
-        dz = d;
-        break;
+  function setPixel(n, p, k, col) {
+    // the same pixel twice (the sprite folds into fewer pixels far away): add up
+    for (let i = 0; i < n; i++) {
+      if (np[i] === p) {
+        nv[i * 3] += col[0] * k;
+        nv[i * 3 + 1] += col[1] * k;
+        nv[i * 3 + 2] += col[2] * k;
+        return n;
       }
     }
-    return t + (dz / car.speed) * 1000;
+    np[n] = p;
+    nv[n * 3] = col[0] * k;
+    nv[n * 3 + 1] = col[1] * k;
+    nv[n * 3 + 2] = col[2] * k;
+    return n + 1;
   }
 
-  function updateCars(t, dt) {
+  function moveCar(car, dt, ease) {
+    const lane = car.lane;
+    car.z += lane.dir * lane.speed * (dt / 1000);
+    const gone = lane.dir < 0 ? car.z < -20 : car.z > tc.zFar;
+    // its lights come up out of the far haze and go down into it
+    const farness = lane.dir < 0 ? tc.zFar - car.z : tc.zFar - car.z;
+    const fade = gone ? 0 : Math.min(1, Math.max(0, farness / tc.fadeM)) * ease;
+    // the end facing the viewer (toward -z) is the bright one: the front of an oncoming car, the back of a receding one
+    const near = car.z - tc.length / 2;
+    const far = car.z + tc.length / 2;
+    const bright = lane.dir < 0 ? tc.head : tc.tail;
+    const dim = lane.dir < 0 ? tc.tail : tc.head;
+    let n = 0;
+    const sb = at(lane, near);
+    if (!gone && sb >= 0 && lane.pix[sb] >= 0) {
+      const th = lane.through[sb] * fade;
+      n = setPixel(n, lane.pix[sb], tc.bright * th, bright);
+      for (let i = 0; i < tc.streak.length; i++) {
+        const s = at(lane, near - tc.streak[i][0]);
+        if (s >= 0 && lane.pix[s] >= 0) n = setPixel(n, lane.pix[s], tc.streak[i][1] * th, bright);
+      }
+      car.light.on = true;
+      car.light.x = (lane.pix[sb] % w) + 0.5;
+      car.light.y = ((lane.pix[sb] / w) | 0) + 0.5;
+      car.light.level = th;
+      car.light.r = bright[0];
+      car.light.g = bright[1];
+      car.light.b = bright[2];
+    } else car.light.on = false;
+    const sf = at(lane, far);
+    if (!gone && sf >= 0 && lane.pix[sf] >= 0) n = setPixel(n, lane.pix[sf], tc.dim * lane.through[sf] * fade, dim);
+
+    // unchanged: nothing to draw
+    let same = n === car.n;
+    for (let i = 0; same && i < n; i++) {
+      if (np[i] !== car.p[i] || Math.abs(nv[i * 3] - car.v[i * 3]) + Math.abs(nv[i * 3 + 1] - car.v[i * 3 + 1]) > 0.004) same = false;
+    }
+    if (!same) {
+      for (let i = 0; i < car.n; i++) {
+        const k = car.p[i] * 3;
+        X[k] -= car.v[i * 3];
+        X[k + 1] -= car.v[i * 3 + 1];
+        X[k + 2] -= car.v[i * 3 + 2];
+        requant(car.p[i]);
+      }
+      for (let i = 0; i < n; i++) {
+        car.p[i] = np[i];
+        car.v[i * 3] = nv[i * 3];
+        car.v[i * 3 + 1] = nv[i * 3 + 1];
+        car.v[i * 3 + 2] = nv[i * 3 + 2];
+        const k = np[i] * 3;
+        X[k] += nv[i * 3];
+        X[k + 1] += nv[i * 3 + 1];
+        X[k + 2] += nv[i * 3 + 2];
+        requant(np[i]);
+      }
+      car.n = n;
+    }
+    if (gone) {
+      car.active = false;
+      car.light.on = false;
+    }
+  }
+
+  function updateTraffic(t, dt) {
     if (t >= nextCarAt) {
-      nextCarAt = t + between(ccfg.everyMs);
-      spawnCar(t);
+      nextCarAt = t + nextGap();
+      spawn();
     }
-    for (const car of cars) {
-      if (!car.active) continue;
-      car.z += car.lane.dir * car.speed * (dt / 1000);
-      if (t < car.nextAt && car.p >= 0) continue;
-      const done = car.lane.dir > 0 ? car.z >= car.zTo : car.z <= car.zTo;
-      const p = done ? -1 : carAt(car, car.z);
-      const s = Math.floor(car.z / ccfg.stepM);
-      const gain = p < 0 ? 0 : carRamp(car, car.z) * car.lane.through[s];
-      const strength = car.color === HEAD ? 0.95 : 0.8;
-      if (p !== car.p || Math.abs(gain - car.gain) > 1e-4) {
-        applyCar(car, -1);
-        car.p = p;
-        car.gain = gain;
-        for (let c = 0; c < 3; c++) car.v[c] = car.color[c] * strength * gain;
-        applyCar(car, 1);
-      }
-      if (done) {
-        applyCar(car, -1);
-        car.active = false;
-        car.p = -1;
-        continue;
-      }
-      car.nextAt = carNext(car, t);
-    }
+    // lights ease in over the onset, in the same steps as the beacons (nothing changes in the first second)
+    const ease = Math.min(1, Math.floor(t / (cfg.onsetMs / 4)) / 4);
+    for (let i = 0; i < cars.length; i++) if (cars[i].active) moveCar(cars[i], dt, ease);
   }
 
-  const carsDue = () => {
-    let due = Infinity;
-    for (const c of cars) if (c.active && c.nextAt < due) due = c.nextAt;
-    return due;
-  };
+  // the avenue is not empty when City mode opens
+  for (let i = Math.round(between(tc.start)); i > 0; i--) spawn(true);
+
+  // the lights the atmosphere puts halos round: beacons, then cars (entries reused)
+  const lightList = [
+    ...beacons.map((b) => ({ on: true, kind: 'beacon', x: b.sx + 0.5, y: b.sy + 0.5, level: 1, r: 1, g: 0.16, b: 0.1, src: b })),
+    ...cars.map((c) => c.light),
+  ];
 
   /* ---------------------------------------------------------------- */
 
@@ -573,25 +421,28 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
       const dt = Math.max(0, Math.min(1000, t - last));
       last = t;
       resetBox();
-      updateAtmos(t);
       updateBeacons(t);
       updateWindows(t);
-      updateCars(t, dt);
+      updateTraffic(t, dt);
       return box.changed ? box : null;
     },
-    /* The next time (animation ms) anything will change; never sooner than minFrameMs after t. */
-    nextDue(t) {
-      const due = Math.min(atmosDue(t), beaconsDue(t), nextWindowAt, nextCarAt, carsDue());
-      return Math.max(due, t + cfg.minFrameMs);
+    /* The moving lights, for the atmosphere's halos (the same objects every time). */
+    lights() {
+      for (let i = 0; i < lightList.length; i++) if (lightList[i].src) lightList[i].level = lightList[i].src.k;
+      return lightList;
     },
-    /* counts for tests and tools; carPixels: where each car's light is now */
+    /* counts for tests and tools; carPixels: where each car's bright end is now (-1 hidden, -2 none) */
     stats: () => ({
-      dynamicPixels: count,
       windows: windows.length,
       windowEvents,
       carsSeen,
       litDelta,
-      carPixels: cars.map((c) => (c.active ? c.p : -2)), // per car: -1 hidden behind something, -2 none
+      carsActive: cars.filter((c) => c.active).length,
+      carPixels: cars.map((c) => (!c.active ? -2 : c.light.on ? Math.floor(c.light.y) * w + Math.floor(c.light.x) : -1)),
+      carDirs: cars.map((c) => (c.active ? c.lane.dir : 0)), // -1 oncoming, 1 receding
+      carLevels: cars.map((c) => (c.active && c.light.on ? c.light.level : 0)), // how bright its light reaches the eye
+      carLanes: cars.map((c) => (c.active ? lanes.indexOf(c.lane) : -1)),
+      carZ: cars.map((c) => (c.active ? c.z : null)), // metres along the avenue
       beaconLevels: beacons.map((b) => b.k),
     }),
   };
