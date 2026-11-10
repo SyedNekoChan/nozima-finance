@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { tabVariants } from './lib/motion.js';
 import useFinanceStore from './hooks/useFinanceStore.js';
 import useExchangeRates from './hooks/useExchangeRates.js';
+import useVisualMode from './hooks/useVisualMode.js';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import Snow from './components/Snow.jsx';
@@ -25,12 +26,19 @@ export default function App() {
   const activeTab = useFinanceStore((s) => s.activeTab);
   const isLoaded = useFinanceStore((s) => s.isLoaded);
   const loadInitialData = useFinanceStore((s) => s.loadInitialData);
+  const hydrateVisualMode = useVisualMode((s) => s.hydrate);
+  // the snow belongs to Pet mode; nothing is shown until the stored mode is known
+  const showSnow = useVisualMode((s) => s.hydrated && s.mode !== 'city');
 
   useExchangeRates();
 
   useEffect(() => {
     loadInitialData();
   }, [loadInitialData]);
+
+  useEffect(() => {
+    hydrateVisualMode();
+  }, [hydrateVisualMode]);
 
   const ActiveTabComponent = TAB_COMPONENTS[activeTab] || Dashboard;
 
@@ -46,7 +54,7 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
     <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
-      <Snow />
+      {showSnow && <Snow />}
       <Header />
       <main className="relative flex-1 min-h-0 overflow-hidden">
         <Anomaly />

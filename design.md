@@ -19,7 +19,7 @@ All tiers collapse to 0ms under `prefers-reduced-motion`.
 
 | Layer                                   | z-index |
 | --------------------------------------- | ------- |
-| Pet backdrop layer (NOMOZ.EXE)          | 0       |
+| Backdrop layer (NOMOZ.EXE or the city)  | 0       |
 | Active tab content                      | 10      |
 | `[ ! OVER BUDGET ! ]` readout           | 20      |
 | Header                                  | 30      |
@@ -34,6 +34,127 @@ footer. Nothing in it can intercept input, scroll the page, or sit above
 foreground UI. Its perspective belongs to the layer itself; no foreground
 element is a transformed descendant of it, so it cannot create clipping or
 stacking problems for dropdowns and modals.
+
+The city backdrop (City mode, below) follows the same contract: the same
+z-0 layer box inside the main area, `pointer-events-none`, `aria-hidden`.
+
+## Visual modes
+
+The header carries a text-only toggle, `[ MODE: PET ]` / `[ MODE: CITY ]`
+(desktop: left of the clock; phones: the free top-right cell of the header
+grid, same type and padding as its neighbours, so the header does not change
+size; its touch area extends invisibly down over the clock cell). The choice
+is stored in the Dexie `settings` table under `visualMode` and defaults to
+`pet`; any unknown stored value reads as `pet` (`lib/visualMode.js`,
+`hooks/useVisualMode.js`). Nothing mode-specific is shown until the stored
+value has been read, so a City choice never flashes the snow first.
+
+- **Pet mode** is the app as it always was: NOMOZ.EXE in the backdrop and
+  the snow over everything.
+- **City mode** shows the night city in the backdrop and no snow. The pet is
+  not unmounted: it keeps living (position, behavior, scheduler, seed) but is
+  not painted (`visibility: hidden` on a `display: contents` wrapper, so its
+  layer measures exactly as in Pet mode). Switching back shows it wherever it
+  has got to.
+
+### City mode
+
+A pixel-art view straight down from the top of a supertall tower into the
+downtown after a rainy night: the avenue below runs away as a deep canyon
+between towers whose roofs are all well beneath the viewer, the wet streets
+glow with sodium lamps and the odd car, mist lies in the low streets and
+between the towers, and the city fades into a lit haze (on tall screens, a
+sliver of overcast sky at the horizon). It is dark on purpose: white UI text
+sits on it with no scrim, so its mean brightness stays under ~0.1 and only
+windows, lamps and beacons reach the bright end of the palette.
+
+The still frame is baked once; a quiet ambient animation runs on top of it
+(see "City animation" below).
+
+- **Pixels.** One city pixel is `round(3 x devicePixelRatio)` device pixels
+  on every screen (`city/layout.js`). The scene buffer is as many city pixels
+  as fit the layer; the composition adapts to its shape rather than being
+  scaled. The canvas is sized in device pixels and the buffer is drawn onto
+  it at that whole-number scale (overshoot under one city pixel is cropped).
+- **Composition** (`city/scene.js`). The camera stands 640 m up at the end of
+  an avenue. Its lens is set from the screen's diagonal and its tilt from the
+  shape: the bottom edge looks steeply down at the street below (80-86
+  degrees on tall screens; on wide ones the top keeps the distant lights and
+  the bottom looks at least 62 degrees down, and a phone on its side gives up
+  the distant lights for that), never past straight down, and the towers
+  converge downward in three-point perspective. The towers flanking the avenue are placed by hand; the rest of
+  the city is generated from a fixed seed, so it is the same city every time.
+- **Rendering** (`city/render.js`). One ray per city pixel through the block
+  grid; facades with generated window grids (sparse, mostly warm light, some
+  crown lighting), wet roofs and streets that reflect the overcast and the
+  facades, height fog thickening toward the streets, two thin mist layers,
+  bloom on lights, then an ordered dither into the fixed palette
+  (`city/palette.js`), so every pixel is a palette colour.
+- **Calm.** The scene sits behind the dashboard, so scattered points of light
+  are kept down. Past ~170 m the upper floors' lit windows thin out (to about
+  three in four by ~320 m: only windows that would be lit anyway, none
+  appear), while the deep canyon below ~60 m keeps every light, since its glow
+  through the mist is what makes the streets read as far below. Two lamp heads
+  in three show as points (every lamp still pools light on the wet street).
+  Crown lighting is kept a fine unbroken line at any distance instead of
+  breaking into dots. Aircraft warning lights go on only the two or three
+  tallest towers in view (two on narrow frames), spread apart and away from
+  the frame's edges.
+- **Authored art** (`city/art.js`, hand-drawn character grids): the viewer's
+  wet parapet along the bottom edge, a helipad and rooftop plant mapped onto
+  roofs in perspective, a vertical neon sign (НОЗИМА) on one canyon wall, and
+  the glow of the aircraft warning lights.
+- **Cost.** A frame is rendered once per size, in ~10 ms slices so the page
+  never stalls (roughly 0.2-0.4 s of work in all). A resize re-renders after
+  a short pause, keeping the last frame up meanwhile. Any error leaves the
+  layer black (or, in the animation, the still frame); the app carries on.
+
+### City animation
+
+Quiet on purpose: the city should feel alive without any one movement
+catching the eye. No rain, no flashes, nothing that runs across the screen.
+
+- **Mist** in two layers, low in the streets and higher between the towers,
+  thickens and thins as its pattern drifts across by whole pixels, the higher
+  (nearer) layer a little faster than the low one: parallax, very slow (a
+  pixel every 1.7 s and 2.6 s).
+- **Haze** over the far city swells and fades by at most a quarter of its
+  glow, slower still (a pixel every 6 s).
+- **Wet reflections** shimmer very slightly: only where they hold a bright
+  reflection, a broad ripple pattern drifts down the screen, changing each
+  glint a little every 1.1 s.
+- **Warning lights** blink slowly (on half of a 3.3-4.6 s cycle, a short ramp
+  each way), each on its own clock.
+- **Windows**: about every 5-15 s one window somewhere is switched on or
+  off; the share of lit windows stays where the still frame has it.
+- **Cars**: now and then (every 7-18 s, at most two at once) a car's
+  headlights or tail lights turn into the avenue far below, travel a few
+  blocks a pixel at a time and turn off it again, fading in and out.
+
+How: the still frame is baked with, for every pixel, its value before
+quantisation and how that value responds to each moving thing (all of them
+enter linearly): the mist's optical depth per layer, the reflection and haze
+terms, its window switched on minus off, each beacon's light and bloom
+(`render.js`, `capture`). Each effect adds an exact change to the baked
+value; on a step only the pixels it touches are re-quantised with the same
+palette and ordered dither, only those that change colour are rewritten, and
+only that rectangle is uploaded and drawn, at the same whole-number scale
+(`animate.js`). Nothing is traced again, nothing moves by a fraction of a
+pixel, and nothing is allocated per step. Effects ease in over the first 4 s,
+so the switch from the still frame is never visible.
+
+- **Timing.** Everything happens on discrete steps; the animation says when
+  the next one is due and sleeps until then, never waking more than 12
+  times a second (in practice 5-8 times, about 1 % of the frame changing per
+  second, a few ms of work per second).
+- **Paused** while the page is hidden; its clock stops too, so nothing jumps
+  on return. Leaving City mode stops it entirely.
+- **Reduced motion.** Under `prefers-reduced-motion` nothing runs and the
+  still frame is shown exactly; the setting is followed live (turning it on
+  puts the still frame back at once; turning it off starts the animation).
+- **Memory.** The animation keeps the baked values and packed per-effect
+  data (about 10 MB on a desktop-sized frame, 2-3 MB on a phone); the rest of
+  the bake is released.
 
 ## Persistent budget readout
 
