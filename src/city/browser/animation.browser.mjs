@@ -109,6 +109,9 @@ for (const [name, viewport, mobile] of [
     try {
       await cityMode(page);
       await page.waitForFunction(() => document.querySelector('[data-city] canvas').dataset.cityAnim === 'running');
+      // measure the steady state: the first seconds also hold the one-off ease-in from the still frame,
+      // which on a small canvas can by itself come close to the limit below
+      await page.waitForTimeout(5000);
       await snap(page, 'a');
       const s0 = await state(page);
       const t0 = Date.now();
