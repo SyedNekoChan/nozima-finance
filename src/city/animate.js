@@ -10,12 +10,13 @@ import { GRID, project } from './scene.js';
  *
  *   windows   now and then a room somewhere switches its light on or off
  *   beacons   the warning lights blink slowly, each on its own clock
- *   traffic   cars drive the length of the avenue far below: oncoming ones show
- *             their headlights (white), receding ones their tail lights (red),
- *             each with a dim light at its other end and its light streaked
- *             on the wet road toward the viewer; one speed per lane, spaced
- *             like traffic, appearing out of the far haze or from under the
- *             viewer's ledge and leaving the same way
+ *   traffic   a few cars drive the length of the avenue far below: oncoming
+ *             ones show their headlights (white), receding ones their tail
+ *             lights (red), each with a dim light at its other end and its
+ *             light streaked on the wet road toward the viewer; one speed per
+ *             lane, spaced like traffic, appearing out of the far haze or
+ *             from under the viewer's ledge and leaving the same way; a quiet
+ *             night: gaps between them and now and then a lull
  *
  * It works on the baked frame (createCityFrame with `capture`): every pixel's
  * value before quantisation is known, and so is exactly what a window or a
@@ -31,9 +32,13 @@ export const ANIM = {
   onsetMs: 4000, // beacons ease into blinking over this long
   beacon: { periodMs: [3300, 4600], onShare: 0.5, fadeMs: 250, low: 0.1 },
   windows: { everyMs: [2200, 6500], max: 1200, minVisible: 0.03 },
+  // a quiet night avenue: a few cars at a time, now and then a lull
   traffic: {
-    everyMs: [2600, 6200], // between cars joining
-    max: 14, // on the avenue at once (a trip takes 2-3 minutes)
+    max: 7, // on the avenue at once (so never more than 7 in view); a trip takes 2-3 minutes
+    gapMs: [12000, 28000], // between one car joining and the next, usually...
+    quietMs: [45000, 90000], // ...but about one time in three a longer lull
+    quietShare: 0.35,
+    start: [2, 3], // already on the avenue when City mode opens (their lights ease in with the rest)
     speed: [12, 17], // m/s, one per lane
     gap: 70, // m, at least, between cars in a lane
     zFar: 2200, // m: oncoming cars come out of the haze here, receding ones go into it
@@ -269,7 +274,8 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     // for the atmosphere: where its bright end is, and its light
     light: { on: false, kind: 'car', x: 0, y: 0, level: 0, r: 0, g: 0, b: 0 },
   }));
-  let nextCarAt = between(tc.everyMs) * 0.4;
+  const nextGap = () => (random() < tc.quietShare ? between(tc.quietMs) : between(tc.gapMs));
+  let nextCarAt = nextGap();
   let carsSeen = 0;
   // the new sprite is built here before it replaces the old one
   const np = new Int32Array(SPRITE);
@@ -280,14 +286,15 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     return s < 0 || s >= steps ? -1 : s;
   };
 
-  function spawn() {
+  /* A car joins: at the start of its lane (out of the far haze, or from under the ledge), or, with `midway`, somewhere along it. */
+  function spawn(midway = false) {
     let car = null;
     for (const c of cars) if (!c.active) car = c;
     if (!car) return;
     for (let tries = 0; tries < 6; tries++) {
       const lane = lanes[Math.floor(random() * 4)];
-      const z0 = lane.dir < 0 ? tc.zFar : 0;
-      // keep its distance from the last car to join this lane (one speed per lane: it never catches up)
+      const z0 = midway ? 150 + random() * (tc.zFar - 400) : lane.dir < 0 ? tc.zFar : 0;
+      // keep its distance from the cars in this lane (one speed per lane: it never catches up)
       let clear = true;
       for (const c of cars) if (c.active && c.lane === lane && Math.abs(c.z - z0) < tc.gap) clear = false;
       if (!clear) continue;
@@ -318,13 +325,13 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
     return n + 1;
   }
 
-  function moveCar(car, dt) {
+  function moveCar(car, dt, ease) {
     const lane = car.lane;
     car.z += lane.dir * lane.speed * (dt / 1000);
     const gone = lane.dir < 0 ? car.z < -20 : car.z > tc.zFar;
     // its lights come up out of the far haze and go down into it
     const farness = lane.dir < 0 ? tc.zFar - car.z : tc.zFar - car.z;
-    const fade = gone ? 0 : Math.min(1, Math.max(0, farness / tc.fadeM));
+    const fade = gone ? 0 : Math.min(1, Math.max(0, farness / tc.fadeM)) * ease;
     // the end facing the viewer (toward -z) is the bright one: the front of an oncoming car, the back of a receding one
     const near = car.z - tc.length / 2;
     const far = car.z + tc.length / 2;
@@ -384,11 +391,16 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
 
   function updateTraffic(t, dt) {
     if (t >= nextCarAt) {
-      nextCarAt = t + between(tc.everyMs);
+      nextCarAt = t + nextGap();
       spawn();
     }
-    for (let i = 0; i < cars.length; i++) if (cars[i].active) moveCar(cars[i], dt);
+    // lights ease in over the onset, in the same steps as the beacons (nothing changes in the first second)
+    const ease = Math.min(1, Math.floor(t / (cfg.onsetMs / 4)) / 4);
+    for (let i = 0; i < cars.length; i++) if (cars[i].active) moveCar(cars[i], dt, ease);
   }
+
+  // the avenue is not empty when City mode opens
+  for (let i = Math.round(between(tc.start)); i > 0; i--) spawn(true);
 
   // the lights the atmosphere puts halos round: beacons, then cars (entries reused)
   const lightList = [
@@ -428,6 +440,9 @@ export function createCityAnimation(frame, rgba, { seed = 1 } = {}) {
       carsActive: cars.filter((c) => c.active).length,
       carPixels: cars.map((c) => (!c.active ? -2 : c.light.on ? Math.floor(c.light.y) * w + Math.floor(c.light.x) : -1)),
       carDirs: cars.map((c) => (c.active ? c.lane.dir : 0)), // -1 oncoming, 1 receding
+      carLevels: cars.map((c) => (c.active && c.light.on ? c.light.level : 0)), // how bright its light reaches the eye
+      carLanes: cars.map((c) => (c.active ? lanes.indexOf(c.lane) : -1)),
+      carZ: cars.map((c) => (c.active ? c.z : null)), // metres along the avenue
       beaconLevels: beacons.map((b) => b.k),
     }),
   };

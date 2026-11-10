@@ -95,12 +95,13 @@ test('beacons blink slowly, each on its own clock', () => {
   assert.ok(series.some((s) => s.some((v) => v !== s[0])), 'beacons in step');
 });
 
-test('rooms switch now and then, traffic is steady, the lit share holds', () => {
+test('rooms switch now and then, traffic is light, the lit share holds', () => {
   const a = createCityAnimation(frame, baked, { seed: 4 });
   drive(a, 300000);
   const { windowEvents, carsSeen, litDelta } = a.stats();
   assert.ok(windowEvents >= 40 && windowEvents <= 140, `${windowEvents} room changes in 5 min`);
-  assert.ok(carsSeen >= 25 && carsSeen <= 110, `${carsSeen} cars in 5 min`);
+  // two or three on the avenue at the start, then one every half minute or so
+  assert.ok(carsSeen >= 5 && carsSeen <= 20, `${carsSeen} cars in 5 min`);
   assert.ok(Math.abs(litDelta) <= 10, `lit rooms drifted by ${litDelta}`);
 });
 
@@ -112,7 +113,7 @@ test('cars drive the avenue a pixel at a time, one way each, for a long way', ()
   let moves = 0;
   const seen = new Map(); // car slot -> visible updates in its current trip
   const trips = [];
-  drive(a, 300000, () => {
+  drive(a, 900000, () => {
     const { carPixels: now, carDirs } = a.stats();
     now.forEach((p, i) => {
       const q = prev[i];
@@ -135,4 +136,35 @@ test('cars drive the avenue a pixel at a time, one way each, for a long way', ()
   trips.sort((x, y) => x - y);
   const median = trips[Math.floor(trips.length / 2)] * (ANIM.minFrameMs / 1000);
   assert.ok(trips.length >= 10 && median >= 25, `${trips.length} trips, median ${median.toFixed(1)} s in view`);
+});
+
+test('a quiet night avenue: never more than 7 cars in view, a few at a time, with gaps between them', () => {
+  const { f, rgba } = bake(130, 249); // a phone: the screen that shows most of the avenue
+  for (const seed of [8, 9]) {
+    const a = createCityAnimation(f, rgba, { seed });
+    let ticks = 0;
+    let sum = 0;
+    let max = 0;
+    let lulls = 0;
+    drive(a, 20 * 60000, (t) => {
+      if (t < 60000) return;
+      const st = a.stats();
+      const visible = st.carLevels.filter((l) => l >= 0.12).length;
+      ticks++;
+      sum += visible;
+      max = Math.max(max, visible);
+      if (visible <= 2) lulls++;
+      // lanes keep their spacing: no two cars in one lane ever close up (one speed per lane)
+      for (let i = 0; i < st.carLanes.length; i++) {
+        for (let j = i + 1; j < st.carLanes.length; j++) {
+          if (st.carLanes[i] < 0 || st.carLanes[i] !== st.carLanes[j]) continue;
+          assert.ok(Math.abs(st.carZ[i] - st.carZ[j]) >= ANIM.traffic.gap - 1, 'two cars too close in a lane');
+        }
+      }
+    });
+    const mean = sum / ticks;
+    assert.ok(max <= 7, `${max} cars in view at once`);
+    assert.ok(mean >= 2 && mean <= 5.5, `${mean.toFixed(1)} cars in view on average`);
+    assert.ok(lulls / ticks > 0.03, `quiet spells only ${((100 * lulls) / ticks).toFixed(1)}% of the time`);
+  }
 });

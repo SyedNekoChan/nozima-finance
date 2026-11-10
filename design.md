@@ -123,15 +123,19 @@ It is two layers:
     somewhere); the share of lit rooms stays where the bake has it.
   - **Warning lights** blink slowly (on half of a 3.3-4.6 s cycle, a short
     ramp each way), each on its own clock.
-  - **Traffic.** Cars drive the full length of the avenue: oncoming ones show
-    their headlights (white), receding ones their tail lights (red), each with
-    a dim light at its other end and its light streaked on the wet road
-    toward the viewer. One speed per lane (12-17 m/s) and at least 70 m
-    between cars in a lane, so they never bunch or pass through each other;
-    oncoming cars come out of the far haze and leave under the viewer's ledge,
-    receding ones the other way round, two to three minutes in view. A car
-    joins every 2.6-6.2 s, up to 14 on the avenue at once. They move a pixel
-    at a time.
+  - **Traffic.** A quiet night avenue: a few cars drive its full length.
+    Oncoming ones show their headlights (white), receding ones their tail
+    lights (red), each with a dim light at its other end and its light
+    streaked on the wet road toward the viewer. One speed per lane (12-17
+    m/s) and at least 70 m between cars in a lane, so they never bunch or
+    pass through each other; oncoming cars come out of the far haze and leave
+    under the viewer's ledge, receding ones the other way round, two to three
+    minutes in view. At most 7 on the avenue at once; a car joins 12-28 s
+    after the last, or about one time in three after a lull of 45-90 s; two
+    or three are already on their way when City mode opens. That keeps about
+    3-4 in view (at most 7, fewer on a phone held sideways, which shows less
+    of the avenue), with gaps and now and then a quiet spell. They move a
+    pixel at a time.
 
 #### The atmosphere (light and air)
 
