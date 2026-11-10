@@ -1,5 +1,6 @@
 import { Component, useLayoutEffect, useRef, useState } from 'react';
-import { createCityAnimation } from './animate.js';
+import { ANIM, createCityAnimation } from './animate.js';
+import { createAtmosphere } from './atmos.js';
 import { cityLayout } from './layout.js';
 import { createCityFrame } from './render.js';
 
@@ -9,19 +10,24 @@ import { createCityFrame } from './render.js';
  * contract: absolute inset-0 inside the main area, z-0 beneath the tab
  * content, pointer-events: none, aria-hidden, nothing that can scroll.
  *
- * The scene is rendered once per size into a small buffer of city pixels, in
- * short slices so the UI never stalls, then drawn onto a canvas the size of
- * the layer in DEVICE pixels at a whole-number scale, so every city pixel is
- * the same crisp square on every screen. A resize re-renders after a short
- * pause; until then the last frame stays up.
+ * Two canvases:
  *
- * Then the ambient animation (animate.js) runs on top of that baked frame:
- * it wakes only when something is due (never more than 12 times a second),
- * re-quantises only the pixels that move, and only the rectangle that changed
- * is uploaded and drawn, at the same whole-number scale. It stops while the
- * page is hidden (its clock stops too, so nothing jumps on return) and never
- * runs under prefers-reduced-motion, where the still frame is shown exactly;
- * that setting is followed live.
+ *   city        the pixel art. Rendered once per size into a small buffer of
+ *               city pixels (in short slices, so the UI never stalls) and drawn
+ *               at a whole-number scale with no smoothing, so every city pixel
+ *               is the same crisp square on every screen. Only its light
+ *               sources ever change (animate.js): windows, beacons, traffic.
+ *   atmosphere  the air and light over it (atmos.js): mist, haze, light shafts,
+ *               glow. Computed on a coarse grid; the canvas IS that grid, laid
+ *               exactly over the city and stretched smoothly by the browser
+ *               (on the GPU, no redraw), screen-blended, so it only adds light
+ *               and never shifts, blurs or re-dithers a pixel of the art.
+ *
+ * While the page is visible both are updated about 12 times a second (only the
+ * city's changed rectangle is redrawn). The animation stops while the page is
+ * hidden (its clock stops too, so nothing jumps on return) and never runs under
+ * prefers-reduced-motion, where the still city and a still atmosphere are shown;
+ * that setting is followed live. A resize re-renders after a short pause.
  */
 
 const SLICE_MS = 10; // work per slice before yielding to the page
@@ -43,12 +49,14 @@ function sameLayout(a, b) {
 function CityScene() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
+  const airRef = useRef(null);
   const [ready, setReady] = useState(false);
 
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
-    if (!wrap || !canvas) return undefined;
+    const airCanvas = airRef.current;
+    if (!wrap || !canvas || !airCanvas) return undefined;
 
     let job = null; // { timer, cancelled }
     let shown = null; // layout of the frame on screen
@@ -57,12 +65,15 @@ function CityScene() {
     let failed = false;
     let reduced = prefersReduced();
 
-    // the baked frame on screen: its layout, bytes, and (if captured) the frame for the animation
-    let baked = null; // { layout, rgba, frame }
+    // the baked frame on screen: its layout and bytes
+    let baked = null; // { layout, rgba }
     const off = document.createElement('canvas'); // the city pixels, one per canvas pixel
     let offCtx = null;
+    let airCtx = null;
+    let airImage = null;
     // animation
     let anim = null;
+    let air = null;
     let image = null; // ImageData over anim.rgba
     let timer = 0;
     let running = false;
@@ -74,20 +85,33 @@ function CityScene() {
       canvas.dataset.cityAnim = state;
     };
 
-    const cancel = () => {
-      if (job) {
-        job.cancelled = true;
-        clearTimeout(job.timer);
-        job = null;
-      }
-    };
-
     /* Draw city pixels [x, y, w, h] of the low-resolution canvas onto the screen canvas. */
     const blit = (layout, x, y, bw, bh) => {
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingEnabled = false;
       const s = layout.scale;
       ctx.drawImage(off, x, y, bw, bh, layout.offsetX + x * s, layout.offsetY + y * s, bw * s, bh * s);
+    };
+
+    /* The atmosphere at time t: one cell per canvas pixel; the browser stretches it smoothly. */
+    const drawAir = (t) => {
+      if (!air || !baked) return;
+      air.update(t, anim ? anim.lights() : []);
+      airCtx.putImageData(airImage, 0, 0);
+    };
+
+    /* Lay the atmosphere's grid exactly over the city pixels it was computed for. */
+    const placeAir = (layout) => {
+      const dpr = layout.devW / Math.max(1, wrap.getBoundingClientRect().width);
+      const span = (air.cell * layout.scale) / dpr; // CSS px per cell
+      airCanvas.width = air.w;
+      airCanvas.height = air.h;
+      airCanvas.style.left = `${layout.offsetX / dpr}px`;
+      airCanvas.style.top = `${layout.offsetY / dpr}px`;
+      airCanvas.style.width = `${air.w * span}px`;
+      airCanvas.style.height = `${air.h * span}px`;
+      airCtx = airCanvas.getContext('2d');
+      airImage = new ImageData(air.rgba, air.w, air.h);
     };
 
     const paint = (layout, rgba, frame) => {
@@ -104,9 +128,42 @@ function CityScene() {
       canvas.dataset.cityW = String(layout.w);
       canvas.dataset.cityH = String(layout.h);
       shown = layout;
-      baked = { layout, rgba: new Uint8ClampedArray(rgba), frame };
+      baked = { layout, rgba: new Uint8ClampedArray(rgba) };
+      air = null;
+      clock = 0;
       setReady(true);
-      startAnim();
+      setState('static');
+      // the atmosphere, then the animation, each in its own slice so the page never stalls
+      const me = { timer: 0, cancelled: false };
+      job = me;
+      me.timer = setTimeout(() => {
+        if (me.cancelled) return;
+        try {
+          air = createAtmosphere(frame, { seed: (Math.random() * 2 ** 31) | 0 });
+          placeAir(layout);
+          drawAir(0);
+        } catch (err) {
+          console.warn('[city] atmosphere could not be set up:', err);
+          air = null;
+        }
+        if (reduced) {
+          if (job === me) job = null;
+          return;
+        }
+        me.timer = setTimeout(() => {
+          if (me.cancelled) return;
+          if (job === me) job = null;
+          try {
+            anim = createCityAnimation(frame, rgba, { seed: (Math.random() * 2 ** 31) | 0 });
+            image = new ImageData(anim.rgba, layout.w, layout.h);
+          } catch (err) {
+            console.warn('[city] animation could not be set up:', err);
+            anim = null;
+            return;
+          }
+          runAnim();
+        }, 0);
+      }, 0);
     };
 
     /* ------------------------------------------------------------ */
@@ -119,9 +176,16 @@ function CityScene() {
       const now = performance.now();
       clock += Math.min(now - wall, 2000);
       wall = now;
-      let box = null;
       try {
-        box = anim.update(clock);
+        const box = anim.update(clock);
+        if (box) {
+          const { layout } = baked;
+          const bw = box.x1 - box.x0 + 1;
+          const bh = box.y1 - box.y0 + 1;
+          offCtx.putImageData(image, 0, 0, box.x0, box.y0, bw, bh);
+          blit(layout, box.x0, box.y0, bw, bh);
+        }
+        drawAir(clock);
       } catch (err) {
         console.warn('[city] animation stopped:', err);
         stopAnim();
@@ -129,21 +193,9 @@ function CityScene() {
         setState('static');
         return;
       }
-      if (box) {
-        const { layout } = baked;
-        const bw = box.x1 - box.x0 + 1;
-        const bh = box.y1 - box.y0 + 1;
-        offCtx.putImageData(image, 0, 0, box.x0, box.y0, bw, bh);
-        blit(layout, box.x0, box.y0, bw, bh);
-        frames++;
-        canvas.dataset.cityFrames = String(frames);
-      }
-      schedule();
-    };
-
-    const schedule = () => {
-      const due = anim.nextDue(clock);
-      timer = setTimeout(tick, Math.max(0, due - clock));
+      frames++;
+      canvas.dataset.cityFrames = String(frames);
+      timer = setTimeout(tick, Math.max(0, ANIM.minFrameMs - (performance.now() - now)));
     };
 
     function stopAnim() {
@@ -160,44 +212,17 @@ function CityScene() {
       running = true;
       wall = performance.now();
       setState('running');
-      schedule();
+      timer = setTimeout(tick, ANIM.minFrameMs);
     }
 
-    function startAnim() {
-      if (reduced || !baked) {
-        setState('static');
-        return;
-      }
-      if (!baked.frame) {
-        // baked for reduced motion: bake again with what the animation needs
-        const { layout } = baked;
-        shown = null;
-        start(layout);
-        return;
-      }
-      if (!anim) {
-        try {
-          anim = createCityAnimation(baked.frame, baked.rgba, { seed: (Math.random() * 2 ** 31) | 0 });
-          image = new ImageData(anim.rgba, baked.layout.w, baked.layout.h);
-          clock = 0;
-          // the animation keeps what it needs; the rest of the bake can go (re-baked if ever needed again)
-          baked.frame = null;
-        } catch (err) {
-          console.warn('[city] animation could not be set up:', err);
-          setState('static');
-          return;
-        }
-      }
-      runAnim();
-    }
-
-    /* Back to the baked frame exactly (reduced motion). */
+    /* Reduced motion: back to the still city and a still atmosphere, exactly. */
     const showStill = () => {
       stopAnim();
       anim = null;
       if (!baked) return;
       offCtx.putImageData(new ImageData(new Uint8ClampedArray(baked.rgba), baked.layout.w, baked.layout.h), 0, 0);
       blit(baked.layout, 0, 0, baked.layout.w, baked.layout.h);
+      drawAir(0);
       setState('static');
     };
 
@@ -215,7 +240,12 @@ function CityScene() {
     const onMotion = () => {
       reduced = mq.matches;
       if (reduced) showStill();
-      else startAnim();
+      else if (baked) {
+        // the animation's state was let go: bake again with it
+        const { layout } = baked;
+        shown = null;
+        start(layout);
+      }
     };
     try {
       mq = matchMedia(REDUCED);
@@ -225,6 +255,18 @@ function CityScene() {
       mq = null;
     }
 
+    /* ------------------------------------------------------------ */
+    /* Baking                                                       */
+    /* ------------------------------------------------------------ */
+
+    const cancel = () => {
+      if (job) {
+        job.cancelled = true;
+        clearTimeout(job.timer);
+        job = null;
+      }
+    };
+
     const start = (layout) => {
       if (failed || sameLayout(layout, shown)) return;
       cancel();
@@ -232,8 +274,7 @@ function CityScene() {
       job = me;
       let frame;
       try {
-        // what the animation needs is kept only when it will run
-        frame = createCityFrame(layout.w, layout.h, { capture: !reduced });
+        frame = createCityFrame(layout.w, layout.h, { capture: true });
       } catch (err) {
         failed = true;
         console.warn('[city] scene could not be set up:', err);
@@ -253,12 +294,13 @@ function CityScene() {
             return;
           }
           const rgba = frame.finish();
-          if (!me.cancelled) paint(layout, rgba, frame.dynamic ? frame : null);
+          if (job === me) job = null;
+          if (!me.cancelled) paint(layout, rgba, frame);
         } catch (err) {
           failed = true;
           console.warn('[city] scene drawing stopped:', err);
+          if (job === me) job = null;
         }
-        if (job === me) job = null;
       };
       step();
     };
@@ -304,6 +346,7 @@ function CityScene() {
       cancel();
       stopAnim();
       anim = null;
+      air = null;
       baked = null;
       document.removeEventListener('visibilitychange', onVisibility);
       if (mq) {
@@ -321,11 +364,8 @@ function CityScene() {
       data-city-ready={ready ? '' : undefined}
       className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none bg-black"
     >
-      <canvas
-        ref={canvasRef}
-        className="city-canvas"
-        style={{ opacity: ready ? 1 : 0 }}
-      />
+      <canvas ref={canvasRef} className="city-canvas" style={{ opacity: ready ? 1 : 0 }} />
+      <canvas ref={airRef} className="city-air" data-city-air="" style={{ opacity: ready ? 1 : 0 }} />
     </div>
   );
 }
