@@ -16,7 +16,16 @@
  * minute or so, its light a little stronger. One at a time, and never while
  * the city has a rare event of its own (update's `quiet`).
  *
- * It starts clear and still damp: the approved "just after the rain" city.
+ * Where it starts is up to chance (`initial: 'random'`, what City mode uses):
+ * usually clear, but opening the app to rain, even a downpour, is a real
+ * possibility; it then picks up from partway through that spell, with the
+ * streets already wet. Left to itself (the default, for tests and tools) it
+ * starts clear and still damp: the approved "just after the rain" city.
+ *
+ * sharedWeather() is the one weather of the page: City mode takes it up again
+ * wherever it left off when it is shown again, so switching to Pet mode and
+ * back (or in and out of observation) never resets it; a fresh load of the
+ * app rolls a new one.
  */
 
 export const WEATHER = {
@@ -43,6 +52,10 @@ export const WEATHER = {
   },
   spellMs: 18 * 60000, // a wet spell this long only ever turns drier from here on
   firstMs: [150000, 330000], // the first clear spell
+  // the weather a fresh load opens on, and how wet the streets are by then
+  initial: { clear: 0.55, drizzle: 0.2, rain: 0.17, heavy: 0.08 },
+  initialWet: { drizzle: 0.8, rain: 0.95, heavy: 1 },
+  joinMs: [0.35, 1], // a spell already under way: this share of a usual stay is left
   easeMs: 45000, // rain eases from nothing to its heaviest over this long
   wet: { start: 0.55, soakMs: 45000, dryMs: 300000 },
   // lightning: only when it rains at least this hard; between flashes, at the heaviest and at that threshold
@@ -58,6 +71,24 @@ export const SKY = {
   moonFallMs: 12000,
 };
 
+/* A name from { name: weight }, by the dice. */
+export function pickWeighted(random, weights) {
+  const names = Object.keys(weights);
+  let r = random() * names.reduce((s, n) => s + weights[n], 0);
+  for (const n of names) {
+    r -= weights[n];
+    if (r < 0) return n;
+  }
+  return names[names.length - 1];
+}
+
+let shared = null;
+/* The page's one weather and its clock (ms of City mode shown and running), made on first use. */
+export function sharedWeather() {
+  if (!shared) shared = { weather: createEnvironment({ seed: (Math.random() * 2 ** 31) | 0, initial: 'random' }), clock: 0 };
+  return shared;
+}
+
 function rng(seed) {
   let a = seed >>> 0;
   return () => {
@@ -68,7 +99,7 @@ function rng(seed) {
   };
 }
 
-export function createEnvironment({ seed = 1 } = {}) {
+export function createEnvironment({ seed = 1, initial = 'clear' } = {}) {
   const random = rng(seed);
   const between = ([lo, hi]) => lo + (hi - lo) * random();
   const W = WEATHER;
@@ -85,16 +116,25 @@ export function createEnvironment({ seed = 1 } = {}) {
     star: null, // a shooting star in flight: { id, t0, life, seed }
   };
 
+  // where it starts: clear by default; 'random' rolls it (weighted), or a state by name
+  const start = initial === 'random' ? pickWeighted(random, W.initial) : initial;
+  if (!Object.prototype.hasOwnProperty.call(W.level, start)) throw new Error(`no weather state ${start}`);
   let nextWeatherAt = between(W.firstMs);
+  if (start !== 'clear') {
+    env.weather = start;
+    env.rain = W.level[start]; // it is already raining, not starting to
+    env.wet = W.initialWet[start];
+    nextWeatherAt = between(W.stayMs[start]) * between(W.joinMs);
+  }
   let nextFlashAt = Infinity;
   let pulses = []; // [start ms, strength] of the current flash
   let nextStarAt = between(SKY.starMs);
   let nextMoonAt = between(SKY.moonMs);
   let moon = null; // { t0, hold }
-  let wetSince = null; // when the current wet spell began
+  let wetSince = start === 'clear' ? null : 0; // when the current wet spell began
   let starId = 0;
   let last = 0;
-  const log = [];
+  const log = [{ t: 0, kind: 'weather', state: start, initial: true }];
 
   function step(to, t) {
     env.weather = to;
@@ -140,6 +180,7 @@ export function createEnvironment({ seed = 1 } = {}) {
 
   return {
     env,
+    initial: start,
     /* Advance to animation time t (ms). quiet: something else is happening (a city event), so no sky moment starts now. */
     update(t, quiet = false) {
       const dt = Math.max(0, Math.min(2000, t - last));

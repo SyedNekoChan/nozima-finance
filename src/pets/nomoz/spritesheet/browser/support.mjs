@@ -76,9 +76,10 @@ export function emotionProbePlugin({ fast = false } = {}) {
 }
 
 /*
- * Test-server only: hands the page City mode's weather (window.__cityWeather), its animation
- * (window.__cityAnim) and rain layer (window.__cityRain), so a test can force the weather or start a
- * rare event instead of waiting minutes for the dice; window.__cityEnvSpeed (default 1) runs the
+ * Test-server only: hands the page City mode's weather (window.__cityWeather) and its clock
+ * (window.__cityShared), its animation (window.__cityAnim) and rain layer (window.__cityRain), so a
+ * test can force the weather or start a rare event instead of waiting minutes for the dice;
+ * window.__cityEnvSpeed (default 1) runs the
  * weather's clock faster. Sources are not edited; this rewrites CityBackdrop.jsx in memory.
  */
 export function cityProbePlugin() {
@@ -89,7 +90,7 @@ export function cityProbePlugin() {
       if (!id.split('?')[0].endsWith('/src/city/CityBackdrop.jsx')) return null;
       const needles = [
         // (the React plugin may already have reprinted the source: match loosely)
-        [/const weather = createEnvironment\([^;]*\);/, ' window.__cityWeather = weather;'],
+        [/const weather = shared\.weather;/, ' window.__cityWeather = weather; window.__cityShared = shared;'],
         [/image = new ImageData\(anim\.rgba, layout\.w, layout\.h\);/, ' window.__cityAnim = anim;'],
         [/placeRain\(layout\);/, ' window.__cityRain = rain;'],
       ];
@@ -97,9 +98,9 @@ export function cityProbePlugin() {
         if (!re.test(code)) throw new Error(`city probe: CityBackdrop.jsx changed (${re})`);
         code = code.replace(re, (m) => m + add);
       }
-      const clock = 'envClock += step;';
+      const clock = 'shared.clock += step;';
       if (!code.includes(clock)) throw new Error('city probe: CityBackdrop.jsx weather clock changed');
-      return code.replace(clock, 'envClock += step * (window.__cityEnvSpeed || 1);');
+      return code.replace(clock, 'shared.clock += step * (window.__cityEnvSpeed || 1);');
     },
   };
 }

@@ -108,7 +108,10 @@ for (const [name, viewport, mobile] of [
     const { ctx, page, log } = await openAt(browser, dev.url, { viewport, mobile });
     try {
       await city(page);
-      // it starts clear: nothing in the rain layer, and it is not even shown
+      // the opening weather is rolled on load: bring it to clear first; then nothing is in the rain layer,
+      // and it is not even shown
+      await weather(page, ['clear']);
+      await page.waitForTimeout(800);
       let r = await rainState(page);
       assert.ok(!r.shown && r.lit === 0, JSON.stringify(r));
       assert.deepEqual(r.size, r.city);
@@ -207,6 +210,41 @@ guard('the rare events show on the city, one at a time', async () => {
         while (a.stats().event && t < 1e9 + 900000) a.update((t += 84));
       });
     }
+    assert.deepEqual(log.errors, []);
+  } finally {
+    await ctx.close();
+  }
+});
+
+guard('the weather belongs to the page: switching Pet / City and observing never resets it', async () => {
+  const { ctx, page, log } = await openAt(browser, dev.url, { viewport: { width: 390, height: 844 }, mobile: true });
+  try {
+    await city(page);
+    const opening = await page.evaluate(() => window.__cityWeather.initial);
+    assert.ok(['clear', 'drizzle', 'rain', 'heavy'].includes(opening), opening);
+    // move the weather on, so a reset would show
+    await weather(page, opening === 'drizzle' ? ['rain'] : ['drizzle']);
+    await page.waitForTimeout(1500);
+    const before = await page.evaluate(() => ({ state: window.__cityWeather.env.weather, rain: window.__cityWeather.env.rain, clock: window.__cityShared.clock }));
+    await page.evaluate(() => {
+      window.__weatherMark = window.__cityWeather;
+    });
+    // to Pet mode and back
+    await page.click('[data-mode-toggle]:visible');
+    await page.waitForFunction(() => !document.querySelector('[data-city]'));
+    await city(page);
+    let now = await page.evaluate(() => ({ same: window.__cityWeather === window.__weatherMark, state: window.__cityWeather.env.weather, rain: window.__cityWeather.env.rain, clock: window.__cityShared.clock }));
+    assert.ok(now.same, 'a new weather after coming back to City mode');
+    assert.equal(now.state, before.state);
+    assert.ok(now.clock >= before.clock, 'the weather clock went back');
+    assert.ok(Math.abs(now.rain - before.rain) < 0.1, `rain ${before.rain} -> ${now.rain}`);
+    // in and out of observation
+    await page.click('[data-observe-toggle]:visible');
+    await page.waitForSelector('[data-observe-controls]');
+    await page.waitForTimeout(800);
+    await page.tap('[data-observe-exit]');
+    now = await page.evaluate(() => ({ same: window.__cityWeather === window.__weatherMark, state: window.__cityWeather.env.weather }));
+    assert.ok(now.same && now.state === before.state, 'observation reset the weather');
     assert.deepEqual(log.errors, []);
   } finally {
     await ctx.close();

@@ -33,29 +33,43 @@ import { CAMERA_HEIGHT, FOCAL, GRID, SEED, createCity, makeCamera, project, rayD
 /* Light and colour                                                    */
 /* ------------------------------------------------------------------ */
 
+/*
+ * A New York night after rain: a cool blue-grey overcast with a little violet
+ * in it, lit from below by a city of mostly white light (LED street lighting,
+ * warm-white and cool-white windows); amber and red only as accents (the odd
+ * sodium-lit street, some shopfronts and crowns, the warning lights, tail
+ * lights), never as a cast over the whole scene.
+ */
 const C = {
-  zenith: [0.03, 0.03, 0.055],
-  cloud: [0.2, 0.135, 0.16], // the overcast, lit from below by the city
-  horizon: [0.17, 0.11, 0.13],
-  fogHigh: [0.06, 0.072, 0.095],
-  fogLow: [0.16, 0.112, 0.092],
-  hazeFar: [0.12, 0.085, 0.11],
-  sodium: [1.0, 0.6, 0.24],
-  warm: [1.0, 0.68, 0.34],
-  soft: [1.0, 0.84, 0.56],
-  cool: [0.62, 0.86, 0.95],
+  zenith: [0.024, 0.028, 0.048],
+  cloud: [0.112, 0.116, 0.158], // the overcast, lit from below by the city
+  horizon: [0.118, 0.12, 0.156],
+  fogHigh: [0.054, 0.062, 0.084],
+  fogLow: [0.122, 0.117, 0.126], // street-level air, lit by the white street lights below
+  hazeFar: [0.088, 0.092, 0.124],
+  glowFar: [0.136, 0.135, 0.172], // the light-polluted air low over the horizon, kilometres off
+  lamp: [0.86, 0.82, 0.72], // LED street lighting: warm white
+  sodium: [1.0, 0.6, 0.24], // the odd street still lit by sodium lamps (an accent)
+  warm: [1.0, 0.86, 0.66], // warm-white windows
+  soft: [1.0, 0.93, 0.7], // pale yellow
+  cool: [0.84, 0.91, 1.0], // cool white (fluorescent, LED)
+  cyan: [0.46, 0.76, 0.82], // the odd muted cyan (screens, aquarium-lit lobbies)
+  amber: [1.0, 0.68, 0.34], // some shopfronts
   white: [0.9, 0.93, 0.97],
-  tv: [0.36, 0.5, 1.0],
-  roof: [0.05, 0.052, 0.06],
-  rim: [0.085, 0.09, 0.1],
-  road: [0.028, 0.03, 0.036],
-  walk: [0.06, 0.06, 0.066],
-  yard: [0.032, 0.036, 0.034],
-  marking: [0.16, 0.16, 0.15],
-  metal: [0.1, 0.105, 0.115],
+  roof: [0.046, 0.048, 0.056],
+  rim: [0.08, 0.085, 0.096],
+  road: [0.02, 0.021, 0.024], // dark, neutral asphalt
+  walk: [0.056, 0.057, 0.062],
+  yard: [0.03, 0.033, 0.034],
+  marking: [0.15, 0.15, 0.148],
+  metal: [0.1, 0.105, 0.118],
   red: [1.0, 0.16, 0.1],
   neon: [0.93, 0.3, 0.55],
 };
+// how much a wet road and a puddle mirror (restrained: the streets read wet, not glassy)
+const WET = { road: 0.42, puddle: 0.6, walk: 0.26, other: 0.2 };
+// share of cross streets still lit by sodium lamps (amber accents in a white-lit grid)
+const SODIUM_STREETS = 0.22;
 
 const CROWN = { cool: [0.5, 0.8, 0.9], amber: [0.95, 0.62, 0.3] };
 
@@ -73,7 +87,11 @@ export const ATMOS_SLABS = [
   [150, 250],
   [560, 615],
 ];
-const MAX_T = 7500;
+// how far a ray looks before it gives up and shows the sky (metres): far enough for the distant skyline
+export const MAX_T = 12000;
+// beyond these distances the air takes on the horizon's glow and lights carry a little better through it, so
+// the distant skyline reads as layers, each farther one paler (only a screen that sees the horizon gets here)
+const HORIZON = { glow: [4500, 11000], lightCarry: 0.15 };
 /*
  * Lit windows thin out with distance: past the nearest facades only part of
  * them stay lit (a window that is dark close up stays dark; some lit ones
@@ -216,6 +234,9 @@ const sky = (dx, dy, dz, out) => {
     const cov = 0.55 + 0.45 * smoothstep(0.3, 0.7, n);
     for (let c = 0; c < 3; c++) out[c] += (C.cloud[c] - out[c]) * cov * (0.5 + 0.5 * up);
   }
+  // the light-polluted band just above the horizon, into which the distant skyline fades
+  const band = 1 - smoothstep(-0.02, 0.09, dy);
+  if (band > 0) for (let c = 0; c < 3; c++) out[c] += (C.glowFar[c] - out[c]) * band;
   return out;
 };
 
@@ -284,7 +305,7 @@ function windowTone(b, face, floor, col, out) {
   const id = b.id * 4 + face;
   const room = roomOf(id, floor, col);
   const r = hash3(id, floor * 131 + room, SEED + 7);
-  const tone = r < b.warm * 0.55 ? C.warm : r < Math.max(b.warm, 0.55) ? C.soft : r < 0.97 ? C.cool : C.tv;
+  const tone = r < b.warm * 0.55 ? C.warm : r < Math.max(b.warm, 0.55) ? C.soft : r < 0.95 ? C.cool : C.cyan;
   const k = 0.5 + 0.3 * hash3(id, floor * 53 + col, SEED + 8);
   out[0] = tone[0] * k;
   out[1] = tone[1] * k;
@@ -346,13 +367,20 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
   if (box.part === 'mech') {
     // louvred plant room
     const louvre = (y * 1.2) % 1 < 0.5 ? 0.8 : 1.15;
-    for (let c = 0; c < 3; c++) base[c] = style.wall[c] * lit * louvre * 0.9;
+    for (let c = 0; c < 3; c++) base[c] = b.wall[c] * lit * louvre * 0.9;
     return;
   }
 
-  for (let c = 0; c < 3; c++) base[c] = style.wall[c] * lit;
-  // corners and the roof line pick up a hard 1-pixel edge
-  const edgeW = Math.max(0.5, pf * 0.95);
+  for (let c = 0; c < 3; c++) base[c] = b.wall[c] * lit;
+  // kilometres off, where a pixel is many floors tall, a crowned tower's top pixel is its crown
+  if (b.far && b.crown && box.part === 'shaft' && box.y1 >= b.h - 0.01 && pf > b.floor * 2 && b.h - y < pf * 1.2) {
+    add3(emit, CROWN[b.crown], 0.24);
+    return;
+  }
+  // corners and the roof line pick up a hard 1-pixel edge (but a far tower only a pixel or two wide is
+  // not all edge: there, its windows show)
+  let edgeW = Math.max(0.5, pf * 0.95);
+  if (b.far) edgeW = Math.min(edgeW, len * 0.2, (box.y1 - box.y0) * 0.2);
   const atCorner = u < edgeW || len - u < edgeW;
   const atTop = box.y1 - y < edgeW && box.part !== 'podium';
   if (atCorner || atTop) {
@@ -364,7 +392,8 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
   if (y < 5.5 && b.shops) {
     const bay = Math.floor(u / 6);
     if (hash3(b.id, bay, SEED + 9) < 0.6) {
-      const tone = hash3(b.id, bay, SEED + 10) < 0.7 ? C.warm : C.white;
+      const r = hash3(b.id, bay, SEED + 10);
+      const tone = r < 0.45 ? C.warm : r < 0.7 ? C.amber : C.white;
       add3(emit, tone, 0.75);
       return;
     }
@@ -405,14 +434,14 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
       // capture: lit, a window's pane is its light and nothing else; dark, it is glass
       win.key = windowKey(b, face, fi, ci);
       windowTone(b, face, fi, ci, win.on);
-      for (let c = 0; c < 3; c++) win.dBase[c] = -(style.glass[c] * lit + C.cloud[c] * 0.18 * g);
+      for (let c = 0; c < 3; c++) win.dBase[c] = -(b.glass[c] * lit + C.cloud[c] * 0.18 * g);
     }
     if (windowLight(b, face, fi, ci, keep, tmp)) {
       set3(emit, tmp);
       for (let c = 0; c < 3; c++) base[c] = 0;
       if (base === BASE) win.lit = 1;
     } else {
-      for (let c = 0; c < 3; c++) base[c] = style.glass[c] * lit + C.cloud[c] * 0.18 * g;
+      for (let c = 0; c < 3; c++) base[c] = b.glass[c] * lit + C.cloud[c] * 0.18 * g;
       if (base === BASE) win.lit = 0;
     }
     return;
@@ -432,7 +461,7 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
     add3(emit, tmp, FAR_BAY * cover);
     if (base === BASE) win.lit = 1;
   }
-  for (let c = 0; c < 3; c++) base[c] = base[c] * (1 - cover) + style.glass[c] * cover;
+  for (let c = 0; c < 3; c++) base[c] = base[c] * (1 - cover) + b.glass[c] * cover;
 }
 
 /* Decal character at (u, v) in 0..1 across an authored grid, or '.' */
@@ -536,7 +565,7 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
   const lz = z - j * g.pz;
   const inAve = lx < g.avenue;
   const inStr = lz < g.street;
-  let r0 = 0.22;
+  let r0 = WET.other;
 
   if (!inAve && !inStr) {
     set3(base, C.yard);
@@ -545,7 +574,7 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
     const strRoad = inStr && lz >= g.sidewalk && lz < g.street - g.sidewalk;
     if (aveRoad || strRoad) {
       set3(base, C.road);
-      r0 = 0.5;
+      r0 = WET.road;
       // crossings at the corners
       const zebra =
         (aveRoad && !inStr && (lz < g.street + 3.5 || lz > g.pz - 3.5) && Math.floor(lx / 1.4) % 2 === 0) ||
@@ -560,8 +589,10 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
       }
     } else {
       set3(base, C.walk);
-      r0 = 0.3;
+      r0 = WET.walk;
     }
+    // the avenues and most streets are lit white; a few cross streets keep their sodium lamps
+    const lampC = inStr && !inAve && hash3(j, 7, SEED + 50) < SODIUM_STREETS ? C.sodium : C.lamp;
     // sodium lamps along the kerbs, seen from far above as a continuous glow along each kerb, a
     // little brighter under each lamp: lit lines, not points (the only points of light on the roads
     // are the moving cars of the animation)
@@ -579,14 +610,14 @@ function shadeGround(city, x, z, dx, dy, dz, pf) {
     if (Math.abs(across) < 9) {
       const band = Math.exp(-(across * across) / 14);
       const rhythm = 0.78 + 0.22 * Math.cos((along / 26) * Math.PI * 2);
-      add3(base, C.sodium, band * rhythm * 0.26);
+      add3(base, lampC, band * rhythm * 0.26);
     }
-    // from far off the streets themselves are threads of sodium light
-    if (pf > 6) add3(emit, C.sodium, 0.12 * smoothstep(6, 14, pf));
+    // from far off the streets themselves are threads of light
+    if (pf > 6) add3(emit, lampC, 0.1 * smoothstep(6, 14, pf));
   }
   // standing water everywhere after the rain
   const wet = fbm(x / 11, z / 11, SEED + 3);
-  if (wet > 0.52) r0 = Math.max(r0, 0.72);
+  if (wet > 0.52) r0 = Math.max(r0, WET.puddle);
   const R = fresnel(r0, -dy);
   reflection(city, x, 0, z, dx, dy, dz, refl);
   for (let c = 0; c < 3; c++) {
@@ -705,14 +736,16 @@ export function createCityFrame(w, h, { capture = false, view = null } = {}) {
     const tr = dist >= MAX_T && t < 0 && dy >= 0 ? 1 : Math.exp(-opticalDepth(oy, dy, dist));
     const low = Math.exp(-Math.max(0, yEnd) / 90);
     const far = smoothstep(1200, 6500, dist);
+    const glow = smoothstep(HORIZON.glow[0], HORIZON.glow[1], dist);
     // lights carry through the haze better than the surfaces around them
-    const trL = Math.sqrt(tr);
+    const trL = glow > 0 ? Math.pow(tr, 0.5 - HORIZON.lightCarry * glow) : Math.sqrt(tr);
     const n = py * w + px;
     const k = n * 3;
     const vig = cap ? vignette(px, py - vy0, w, vh) : 0;
     for (let c = 0; c < 3; c++) {
       let fogC = C.fogHigh[c] + (C.fogLow[c] - C.fogHigh[c]) * low;
       fogC += (C.hazeFar[c] - fogC) * far;
+      fogC += (C.glowFar[c] - fogC) * glow;
       color[k + c] = base[c] * tr + fogC * (1 - tr);
       light[k + c] = emit[c] * trL;
       if (cap) {

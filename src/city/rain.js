@@ -1,4 +1,5 @@
 import { hash3 } from './noise.js';
+import { MAX_T as VIEW_T } from './render.js';
 import { project, rayDir } from './scene.js';
 
 /*
@@ -32,7 +33,7 @@ export const RAIN = {
   bolt: [0.82, 0.88, 1],
 };
 
-const MAX_T = 7499; // a ray that met nothing (render.js MAX_T)
+const MAX_T = VIEW_T - 1; // a ray that met nothing
 
 export function createRain(frame, { seed = 1 } = {}) {
   let dyn = frame.dynamic;

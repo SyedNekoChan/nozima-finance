@@ -5,19 +5,28 @@
  *
  * It is weighted heavily toward darks: the scene sits behind white text, so
  * nearly all of it lives in the bottom fifth of the brightness range and only
- * windows, lamps and beacons reach the bright entries.
+ * windows, lamps and beacons reach the bright entries. Its colours are a New
+ * York night after rain: cool blue-greys and slates, steel blue, muted violet
+ * and neutral concrete, windows of warm white, pale yellow and cool white;
+ * amber and red are accents, not a cast.
  */
 export const CITY_PALETTE_HEX = [
   // near-black blue-violet ramp (sky, deep shadow, glass)
   '#030407', '#06080d', '#0a0d15', '#0e121d', '#131826', '#191f30', '#20283b', '#293248', '#333d56', '#404b66',
-  // violet haze (light-polluted cloud, far air)
-  '#110c18', '#191323', '#231a31', '#2f2240', '#3d2c51',
+  // blue-grey haze with a violet undertone (light-polluted cloud, far air)
+  '#100f18', '#181724', '#231a31', '#2f2240', '#23233a', '#2e2e48', '#3b3b56',
   // slate / teal mist
   '#141c20', '#1c272c', '#26343a', '#32454c', '#43585f', '#5a7178',
-  // warm darks (sodium haze, street glow, brick)
-  '#1a120d', '#271a12', '#382416', '#4d311a', '#69421e',
-  // warm lights (windows, lamps)
-  '#93562a', '#c27c34', '#e6a54e', '#f9cf7c', '#fff0c8',
+  // building materials: charcoal, steel blue, muted violet, brownstone
+  '#141518', '#1e2024', '#18202b', '#222c3a', '#2e3a4b', '#1c1826', '#282233', '#1d1714', '#2a221d',
+  // warm darks (the odd sodium street, amber shopfronts)
+  '#382416', '#4d311a', '#69421e',
+  // amber accents (sodium, crowns, the parapet lamps)
+  '#93562a', '#c27c34', '#e6a54e',
+  // warm white and pale yellow (most windows)
+  '#4d473f', '#7a6f5d', '#ab9c7f', '#d8c9a3', '#f1e6c4', '#fff8e6', '#e8dc9c',
+  // cool white (offices) and muted cyan (the odd screen-lit room)
+  '#4a515c', '#7d8794', '#b4bec9', '#e3e9f0', '#3c6f78', '#78b0b6',
   // cool lights (fluorescent windows, crown lighting)
   '#3d6d84', '#6fa9bf', '#addbe6', '#e6f6f9',
   // accents (signage, aircraft beacons)

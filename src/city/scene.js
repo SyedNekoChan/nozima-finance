@@ -1,4 +1,4 @@
-import { hash3 } from './noise.js';
+import { hash3, smoothstep } from './noise.js';
 
 /*
  * The city model: a street grid of blocks, each holding a few procedurally
@@ -41,6 +41,51 @@ export const STYLES = [
   { name: 'brick', wall: [0.085, 0.058, 0.05], glass: [0.02, 0.02, 0.026], floor: 'residential', col: 3.2, winU: [0.2, 0.7], winV: [0.3, 0.82], lit: [0.07, 0.16], warm: 0.9 },
 ];
 
+/*
+ * Facade materials. A style sets how bright a wall is and how its windows
+ * are laid out; each building then takes one of a few believable night-time
+ * colours of that brightness (cast after rain under a cool overcast), so a
+ * street of one style is not one colour: charcoal, slate, steel blue, muted
+ * violet, neutral concrete and, for the brick, brownstone. Weights per style.
+ */
+export const MATERIALS = {
+  charcoal: [1.0, 1.0, 1.05],
+  slate: [0.92, 1.0, 1.12],
+  steel: [0.8, 0.98, 1.28],
+  violet: [1.05, 0.9, 1.15],
+  concrete: [1.05, 1.02, 0.95],
+  brownstone: [1.16, 0.96, 0.86],
+};
+const MATERIAL_MIX = {
+  glass: [['steel', 0.45], ['slate', 0.35], ['charcoal', 0.2]],
+  concrete: [['concrete', 0.5], ['charcoal', 0.3], ['slate', 0.2]],
+  stone: [['violet', 0.35], ['concrete', 0.35], ['slate', 0.3]],
+  brick: [['brownstone', 0.55], ['charcoal', 0.25], ['violet', 0.2]],
+};
+
+/* The wall and glass colour of a building of `style`, from a 0..1 pick: the style's brightness, a material's hue. */
+function material(style, r) {
+  let name = MATERIAL_MIX[style.name][0][0];
+  for (const [m, w] of MATERIAL_MIX[style.name]) {
+    if (r < w) {
+      name = m;
+      break;
+    }
+    r -= w;
+  }
+  const tint = MATERIALS[name];
+  const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const tl = lum(tint);
+  const wl = lum(style.wall);
+  const gl = lum(style.glass);
+  return {
+    material: name,
+    wall: tint.map((t) => (t / tl) * wl),
+    // glass keeps a cool cast whatever the frame; a little of the material shows in it
+    glass: style.glass.map((g, c) => g * 0.75 + (tint[c] / tl) * gl * 0.25),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Height field: a downtown core around the viewer, low-rise beyond    */
 /* ------------------------------------------------------------------ */
@@ -49,10 +94,53 @@ const CORE = { x: 150, z: 520, radius: 760 };
 // a second, smaller cluster far off: city lights that are not just a flat carpet
 const FAR_CLUSTER = { x: -1900, z: 3800, radius: 900 };
 
+/*
+ * The skyline kilometres off: overlapping midtown-like clusters at several
+ * depths, so where a screen sees the horizon (a phone held upright, a tall
+ * tablet) it shows layer upon layer of towers fading into the haze instead
+ * of a flat carpet of lights. They start only beyond `from` (metres ahead):
+ * a desktop screen's view meets the ground nearer than that, so nothing it
+ * shows changes.
+ */
+export const DISTANT = {
+  from: [3300, 3900],
+  base: 38, // the low-rise between them rises a little too
+  clusters: [
+    { x: 2600, z: 3950, r: 560, h: 210 },
+    { x: 520, z: 4350, r: 640, h: 330 },
+    { x: -1150, z: 4950, r: 720, h: 290 },
+    { x: 1750, z: 5250, r: 780, h: 270 },
+    { x: -150, z: 6250, r: 900, h: 370 },
+    { x: -2700, z: 6550, r: 900, h: 230 },
+    { x: 2950, z: 6850, r: 1000, h: 250 },
+    // and the farthest layer, 8-12 km off: the towers that rise into the band just below the horizon
+    { x: -600, z: 8600, r: 1100, h: 420 },
+    { x: 2400, z: 9400, r: 1200, h: 380 },
+    { x: -3400, z: 9800, r: 1300, h: 340 },
+    { x: 700, z: 11000, r: 1400, h: 450 },
+    { x: 4800, z: 10500, r: 1300, h: 300 },
+    { x: -5500, z: 11200, r: 1400, h: 300 },
+  ],
+  crown: 0.2, // a few of the far towers have lit tops (what reads from kilometres off; mostly white, some amber)
+  amber: 0.3,
+  lit: 1.3, // and a few more lit floors: a busy midtown seen from afar
+};
+
+function distant(x, z) {
+  const k = smoothstep(DISTANT.from[0], DISTANT.from[1], z);
+  if (k <= 0) return 0;
+  let h = DISTANT.base;
+  for (const c of DISTANT.clusters) {
+    const d = Math.hypot(x - c.x, z - c.z) / c.r;
+    h += c.h * Math.exp(-d * d);
+  }
+  return k * h;
+}
+
 function envelope(x, z) {
   const d0 = Math.hypot(x - CORE.x, z - CORE.z) / CORE.radius;
   const d1 = Math.hypot(x - FAR_CLUSTER.x, z - FAR_CLUSTER.z) / FAR_CLUSTER.radius;
-  return 34 + 470 * Math.exp(-d0 * d0) + 230 * Math.exp(-d1 * d1);
+  return 34 + 470 * Math.exp(-d0 * d0) + 230 * Math.exp(-d1 * d1) + distant(x, z);
 }
 
 /*
@@ -137,6 +225,7 @@ function buildBlock(i, j) {
 
     const style = STYLES[Math.floor(hash3(i, j, s + 14) * STYLES.length)];
     const floor = FLOOR[style.floor];
+    const far = cz > DISTANT.from[0];
     const litLo = style.lit[0];
     const litHi = style.lit[1];
     const b = {
@@ -144,13 +233,15 @@ function buildBlock(i, j) {
       key: `${i},${j},${k}`,
       style,
       floor,
-      lit: litLo + (litHi - litLo) * hash3(i, j, s + 15),
+      lit: (litLo + (litHi - litLo) * hash3(i, j, s + 15)) * (far ? DISTANT.lit : 1),
+      far,
       warm: style.warm,
       h,
       // architectural crown lighting on some tall towers
-      crown: h > 200 && hash3(i, j, s + 16) < 0.3 ? (hash3(i, j, s + 17) < 0.5 ? 'cool' : 'amber') : null,
+      crown: h > 200 && hash3(i, j, s + 16) < (far ? DISTANT.crown : 0.3) ? (hash3(i, j, s + 17) < (far ? 1 - DISTANT.amber : 0.5) ? 'cool' : 'amber') : null,
       shops: hash3(i, j, s + 18) < 0.55,
       seed: Math.floor(hash3(i, j, s + 19) * 1e6),
+      ...material(style, hash3(i, j, s + 40)),
     };
 
     const w = x1 - x0;

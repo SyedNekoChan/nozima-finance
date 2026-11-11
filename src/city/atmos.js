@@ -1,5 +1,5 @@
 import { hash3 } from './noise.js';
-import { ATMOS_SLABS } from './render.js';
+import { ATMOS_SLABS, MAX_T } from './render.js';
 import { project, rayDir } from './scene.js';
 import { WEATHER } from './env.js';
 
@@ -49,7 +49,7 @@ export const ATMOS = {
     { k: 0.014, scale: 380, wind: [8.5, -1.6], churn: 0.3, lo: 0.45, hi: 0.72, color: [0.085, 0.095, 0.115], under: 1.4, max: 0.5, seed: 22 },
     { k: 0.006, scale: 70, wind: [1.1, 0.35], churn: 0.4, lo: 0.52, hi: 0.9, color: [0.07, 0.08, 0.1], under: 0.25, max: 0.35, seed: 23 },
   ],
-  haze: { color: [0.2, 0.125, 0.15], amp: 0.22, periodMs: 47000 },
+  haze: { color: [0.13, 0.13, 0.172], amp: 0.22, periodMs: 47000 }, // cool blue-grey, a little violet
   shafts: {
     color: [0.5, 0.58, 0.72],
     strength: 0.15,
@@ -132,7 +132,7 @@ function sample(tex, u, v) {
   return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
 }
 
-const SKY_T = 7499; // a ray that met nothing (render.js MAX_T)
+const SKY_T = MAX_T - 1; // a ray that met nothing
 
 const smooth = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
