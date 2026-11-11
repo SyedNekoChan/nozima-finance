@@ -95,10 +95,19 @@ A view straight down from the top of a supertall tower into the downtown
 after a rainy night, in an HD-2D manner: crisp pixel-art architecture under
 soft, modern light and air. The avenue below runs away as a deep canyon
 between towers whose roofs are all well beneath the viewer; its kerbs glow
-with sodium light and traffic moves along it; mist lies in the streets and
-between the towers, faint moonlight falls into the canyon, and the city fades
-into a lit haze (on tall screens, a sliver of overcast sky at the horizon).
-It is dark on purpose: white UI text sits on it with no scrim.
+with white street light and traffic moves along it; mist lies in the streets
+and between the towers, faint moonlight falls into the canyon, and the city
+fades into a lit haze (on tall screens, layer upon layer of distant towers
+rising into the light-polluted glow over the horizon, and a strip of overcast
+sky). It is dark on purpose: white UI text sits on it with no scrim.
+
+The colour is a New York night after rain: a cool blue-grey overcast with a
+violet undertone; buildings of charcoal, slate, steel blue, muted violet,
+neutral concrete and some brownstone; windows of warm white, pale yellow and
+cool white with the odd muted cyan; dark, neutral asphalt with restrained
+reflections. Amber and red are accents only (a few sodium-lit cross streets,
+some shopfronts and crowns, the warning lights, tail lights), never a cast
+over the scene.
 
 It is three layers:
 
@@ -134,11 +143,48 @@ The weather and the sky (`city/env.js`) drive the last two.
   converge downward in three-point perspective. The towers flanking the
   avenue are placed by hand; the rest of the city is generated from a fixed
   seed, so it is the same city every time.
+- **The middle distance** (`MIDDLE` in `city/scene.js`), 2.7-4.6 km ahead,
+  between the downtown and the distant skyline: where a phone held upright
+  used to look across a low-rise carpet and mist, the city keeps rising.
+  Medium and tall towers (mostly 150-400 m) stand in loose clusters at
+  several depths, nearer ones partly hiding farther ones, with a line of
+  them along both sides of the avenue so the canyon carries on toward the
+  horizon (the avenue itself is never built on and stays in view). The layer
+  grows in over 2.68-2.8 km and hands over to the distant skyline over
+  4.3-4.9 km; lots there are rarely low (a low lot keeps 60 % of its height,
+  not 35 %), towers get a few more lit floors than downtown (x1.2) and show
+  their windows rather than all-edge pixels, and the street and
+  between-tower mist over surfaces past 2.7 km is thinned to 40 % so they
+  are not buried in a fog bank; the far haze still softens them. A raised
+  building is built around what stood there before (a low block becomes the
+  base its tower rises from; a tower's setback starts above its old roof).
+  Reflections see the city as it was without this layer, and a ray that
+  reaches the middle distance first walks that older city (and any
+  reflection its old surface cast), so blocks are generated and buildings
+  numbered exactly as before: every building keeps its lit windows, and a
+  desktop's or a phone-on-its-side's view is unchanged (desktop's view meets
+  the ground before 2.65 km; only its strip above the view, shown in
+  observation, gains the new towers' tops).
+- **The distant skyline** (`DISTANT` in `city/scene.js`). Beyond the
+  downtown, midtown-like clusters stand 4-12 km off at several depths, so
+  where a screen sees the horizon (a phone held upright, a tall tablet) it
+  shows overlapping silhouettes of varied heights, each layer paler with
+  distance, a field of small lit windows, the odd tiered top or spire, and a
+  few lit crowns (mostly white, some amber), instead of a flat haze. Rays now
+  look 12 km before giving up, and beyond 4.5 km the air takes on the
+  horizon's light-polluted glow. They start only beyond 3.3 km: a desktop
+  screen's view, and a phone on its side, meet the ground nearer than that,
+  so nothing they show changes.
 - **Rendering.** One ray per city pixel through the block grid; facades with
   generated window grids, wet roofs and streets that reflect the overcast and
   the facades, height fog thickening toward the streets and the distance (the
   depth of the art itself), bloom on lights, then an ordered dither into the
   fixed palette (`city/palette.js`), so every pixel is a palette colour.
+- **Materials.** Each style (glass, concrete, stone, brick) sets a wall's
+  brightness and its window grid; each building then takes one of a few
+  materials of that brightness, weighted by style (glass mostly steel blue and
+  slate; concrete neutral, charcoal or slate; stone muted violet, concrete or
+  slate; brick mostly brownstone), so no street is one colour.
 - **Windows** are lit in rooms: two to four windows side by side share one
   light and one colour of light, so facades show clusters, not a scatter; some
   office floors are lit end to end. Far off, where a pixel stands for a window
@@ -146,8 +192,10 @@ The weather and the sky (`city/env.js`) drive the last two.
   towers (most of what a phone shows) are lit too. Past ~170 m the upper
   floors' rooms thin a little (to about 85 %); the deep canyon keeps every
   light.
-- **Streets** glow along their kerbs with sodium light, continuous lines a
-  little brighter under each lamp. There are no fixed points of light on the
+- **Streets** glow along their kerbs with warm-white LED light, continuous
+  lines a little brighter under each lamp; about one cross street in five
+  still has sodium lamps (amber). The asphalt is dark and neutral, and wet
+  surfaces mirror restrainedly. There are no fixed points of light on the
   roads: the only ones are the moving cars.
 - **Authored art** (`city/art.js`, hand-drawn character grids): the viewer's
   wet parapet along the bottom edge, a helipad and rooftop plant mapped onto
@@ -207,7 +255,7 @@ but never over the roofs that rise above it.
 - **Distant layer.** The lit haze over the far city, slowly breathing; mist
   banks far off are capped so they veil the distant lights rather than wall
   them off.
-- **Mid layer.** Mist in the streets (15-110 m, lit warm by the sodium light
+- **Mid layer.** Mist in the streets (15-110 m, lit by the street light
   below) and between the towers (150-250 m, lit by the windows), each anchored
   in the world and drifting with its own wind, slowly churning: distant mist
   moves slower on screen than near mist (parallax).
@@ -235,8 +283,15 @@ but never over the roofs that rise above it.
   (clear never jumps to a storm). Clear spells last 5-12 minutes, drizzle
   1-2.5, rain 1-3, heavy rain 0.75-2; a wet spell that has gone on for 18
   minutes only clears from then on. So it is dry about half the time, with a
-  dry spell every quarter hour or so, and it never rains for long. It opens
-  clear (the approved "just after the rain" city) for 2.5-5.5 minutes.
+  dry spell every quarter hour or so, and it never rains for long.
+- **Opening weather.** A fresh load of the app rolls it: clear 55 %, light
+  drizzle 20 %, rain 17 %, heavy rain 8 %. A clear opening is the approved
+  "just after the rain" city for 2.5-5.5 minutes; a wet one is already
+  raining at that strength, the streets already wet, and picks up partway
+  through that spell (35-100 % of a usual stay left), so even a downpour soon
+  eases. The weather belongs to the page (`sharedWeather()`): leaving City
+  mode for Pet mode and coming back, or going in and out of observation,
+  carries on where it was; it only runs while City mode is shown.
 - **Transitions.** The rain eases toward each state's strength over most of a
   minute; surfaces soak while it rains (fully wet in under a minute of rain)
   and dry over about five minutes once it stops.

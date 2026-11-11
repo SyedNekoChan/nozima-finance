@@ -153,3 +153,55 @@ test('the same seed gives the same weather', () => {
   run(4, 3, (t, env) => b.push(env.rain, env.wet, env.flash));
   assert.deepEqual(a, b);
 });
+
+test('a fresh load rolls its opening weather: mostly clear, but rain and even a downpour are real chances', () => {
+  const N = 20000;
+  const seen = { clear: 0, drizzle: 0, rain: 0, heavy: 0 };
+  for (let seed = 1; seed <= N; seed++) seen[createEnvironment({ seed, initial: 'random' }).initial]++;
+  const total = Object.values(WEATHER.initial).reduce((a, b) => a + b, 0);
+  for (const [state, w] of Object.entries(WEATHER.initial)) {
+    const share = seen[state] / N;
+    assert.ok(Math.abs(share - w / total) < 0.015, `${state}: ${(share * 100).toFixed(1)}% vs ${((100 * w) / total).toFixed(0)}%`);
+  }
+  // dry is the most common opening; wet ones together are a genuine possibility
+  assert.ok(seen.clear / N > 0.5 && seen.clear / N < 0.6);
+  assert.ok((seen.rain + seen.heavy) / N > 0.2);
+});
+
+test('opening in the rain: already raining, streets already wet, and the storm does not drag on', () => {
+  for (const state of ['drizzle', 'rain', 'heavy']) {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const e = createEnvironment({ seed, initial: state });
+      const env = e.update(0);
+      assert.equal(env.weather, state);
+      assert.equal(env.rain, WEATHER.level[state], 'it started dry and eased in');
+      assert.equal(env.wet, WEATHER.initialWet[state]);
+      // it moves on within one usual stay, and it is dry again well within the spell limit
+      let firstChange = null;
+      let dryAt = null;
+      let prev = env.rain;
+      for (let t = STEP; t < 3 * 3600000 && dryAt === null; t += STEP) {
+        const v = e.update(t);
+        if (firstChange === null && v.weather !== state) firstChange = t;
+        if (v.rain === 0) dryAt = t;
+        assert.ok(Math.abs(v.rain - prev) <= STEP / WEATHER.easeMs + 1e-9, 'the rain jumped');
+        prev = v.rain;
+      }
+      assert.ok(firstChange !== null && firstChange <= WEATHER.stayMs[state][1] + 1, `${state}: stayed ${firstChange} ms`);
+      assert.ok(dryAt !== null && dryAt < WEATHER.spellMs + 8 * 60000, `${state} seed ${seed}: dry only after ${dryAt} ms`);
+    }
+  }
+  // a clear opening is the approved one, as before
+  const clear = createEnvironment({ seed: 3, initial: 'clear' }).update(0);
+  assert.deepEqual([clear.weather, clear.rain, clear.wet], ['clear', 0, WEATHER.wet.start]);
+});
+
+test('the page has one weather, kept across City mode coming and going', async () => {
+  const { sharedWeather } = await import('./env.js');
+  const a = sharedWeather();
+  a.clock = 12345;
+  const b = sharedWeather();
+  assert.equal(a, b);
+  assert.equal(b.clock, 12345);
+  assert.ok(Object.keys(WEATHER.initial).includes(b.weather.initial));
+});

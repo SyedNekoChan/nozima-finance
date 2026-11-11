@@ -1,7 +1,7 @@
 import { Component, useLayoutEffect, useRef, useState } from 'react';
 import { ANIM, createCityAnimation } from './animate.js';
 import { createAtmosphere } from './atmos.js';
-import { createEnvironment } from './env.js';
+import { sharedWeather } from './env.js';
 import { cityLayout } from './layout.js';
 import { createRain } from './rain.js';
 import { createCityFrame } from './render.js';
@@ -32,7 +32,10 @@ import { createCityFrame } from './render.js';
  *               (rain.js): pixel art at the city's scale, screen-blended over
  *               it, empty (and hidden) in dry weather.
  *
- * The weather and the sky's moments (env.js) carry on across re-renders. The
+ * The weather and the sky's moments (env.js) belong to the page, not to this
+ * component: they carry on across re-renders and across leaving City mode and
+ * coming back, and only a fresh load rolls new weather (often clear, sometimes
+ * already raining). The
  * rare city events (animate.js) and the sky's own moments never overlap.
  *
  * While the page is visible both are updated about 12 times a second (only the
@@ -96,9 +99,10 @@ function CityScene() {
     let clock = 0; // animation time, ms (stands still while paused)
     let wall = 0;
     let frames = 0;
-    // the weather: one for as long as the city is open, on its own clock (it carries on across re-renders)
-    const weather = createEnvironment({ seed: (Math.random() * 2 ** 31) | 0 });
-    let envClock = 0;
+    // the weather: the page's own (env.js), on its own clock, so it carries on across re-renders and
+    // across leaving City mode and coming back; it only rolls anew on a fresh load
+    const shared = sharedWeather();
+    const weather = shared.weather;
     let rain = null;
     let rainCtx = null;
     let rainImage = null;
@@ -131,7 +135,7 @@ function CityScene() {
     };
     const drawRain = (dt) => {
       if (!rain) return;
-      if (rain.update(envClock, dt, weather.env)) {
+      if (rain.update(shared.clock, dt, weather.env)) {
         rainCtx.putImageData(rainImage, 0, 0);
         showRain(true);
       } else showRain(false);
@@ -237,11 +241,11 @@ function CityScene() {
       const now = performance.now();
       const step = Math.min(now - wall, 2000);
       clock += step;
-      envClock += step;
+      shared.clock += step;
       wall = now;
       try {
         // the weather and the sky, then the city's lights; a rare event and a moment in the sky never overlap
-        const env = weather.update(envClock, anim.busy());
+        const env = weather.update(shared.clock, anim.busy());
         const box = anim.update(clock, !!env.star || env.moon > 0);
         if (box) {
           const { layout } = baked;

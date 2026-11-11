@@ -227,3 +227,93 @@ test('the extended frame shows the same scene in the view, the sky above it and 
   rayDir(cam, w / 2, 1, dir);
   assert.ok(dir[1] > 0, 'no sky above the view on a phone');
 });
+
+test('the middle distance: towers where a portrait screen looked across a gap, the avenue still running through', async () => {
+  const { MIDDLE } = await import('./scene.js');
+  const portrait = cityLayout(390, 844, 2, null, null, { top: 49, bottom: 800 });
+  const f = createCityFrame(portrait.w, portrait.h, { capture: true, view: portrait.view });
+  f.renderRows(0, portrait.h);
+  f.finish();
+  const cam = f.camera;
+  const dyn = f.dynamic;
+  const dir = [0, 0, 0];
+  // the rows that look 2.8-4.5 km ahead: most of them now meet a building, not the ground
+  let rows = 0;
+  let built = 0;
+  for (let y = portrait.view.y0; y < portrait.h; y++) {
+    rayDir(cam, portrait.w / 2, y + 0.5, dir);
+    const ground = dir[1] < 0 ? cam.pos[1] / -dir[1] : Infinity;
+    if (!(ground * Math.abs(dir[2]) > 2800 && ground * Math.abs(dir[2]) < 4500)) continue;
+    rows++;
+    for (let x = 0; x < portrait.w; x++) {
+      rayDir(cam, x + 0.5, y + 0.5, dir);
+      const g = cam.pos[1] / -dir[1];
+      if (dyn.depth[y * portrait.w + x] < g - 5) built++;
+    }
+  }
+  assert.ok(rows >= 8, `${rows} rows in the middle distance`);
+  assert.ok(built / (rows * portrait.w) > 0.6, `only ${((100 * built) / (rows * portrait.w)).toFixed(0)}% of the middle distance is built`);
+  // the avenue is never built on, and it stays in view as it recedes through the middle distance
+  const ax = MIDDLE.avenue.x;
+  let seen = 0;
+  let points = 0;
+  for (let z = MIDDLE.from[1]; z <= MIDDLE.to[0]; z += 100) {
+    const p = project(cam, ax, 0, z);
+    if (!p || p.x < 0 || p.x >= portrait.w || p.y < portrait.view.y0 || p.y >= dyn.ledgeTop) continue;
+    points++;
+    if (dyn.depth[Math.floor(p.y) * portrait.w + Math.floor(p.x)] > p.depth - 40) seen++;
+  }
+  for (const blk of f.city.blocks()) for (const bx of blk.boxes) assert.ok(bx.x1 <= ax - GRID_HALF || bx.x0 >= ax + GRID_HALF, 'a building on the avenue');
+  assert.ok(points >= 10 && seen / points > 0.8, `the avenue is in view at ${seen} of ${points} points`);
+});
+
+const GRID_HALF = 18; // half the avenue's width
+
+test('the middle distance changes nothing a desktop or a phone on its side shows, and every building keeps its windows', async () => {
+  const scene = await import('./scene.js');
+  const { MIDDLE } = scene;
+  const frames = () =>
+    [
+      [1440, 900, 1, 42, 840],
+      [1280, 720, 1, 0, 720],
+      [844, 390, 2, 41, 350],
+      [390, 844, 2, 49, 800],
+    ].map(([w, h, dpr, top, bottom]) => {
+      const l = cityLayout(w, h, dpr, null, null, { top, bottom });
+      const f = createCityFrame(l.w, l.h, { capture: true, view: l.view });
+      f.renderRows(0, l.h);
+      f.finish();
+      return { l, dyn: f.dynamic, ids: new Map(f.city.blocks().flatMap((blk) => blk.boxes.map((bx) => [bx.b.key, bx.b.id]))) };
+    });
+  const withLayer = frames();
+  // the same city without it
+  const saved = { base: MIDDLE.base, h: MIDDLE.avenue.h, clusters: MIDDLE.clusters };
+  MIDDLE.base = 0;
+  MIDDLE.avenue.h = 0;
+  MIDDLE.clusters = [];
+  let without;
+  try {
+    without = frames();
+  } finally {
+    MIDDLE.base = saved.base;
+    MIDDLE.avenue.h = saved.h;
+    MIDDLE.clusters = saved.clusters;
+  }
+  withLayer.forEach((a, n) => {
+    const b = without[n];
+    const { w } = a.l;
+    const portrait = n === 3;
+    for (let p = a.l.view.y0 * w; p < a.dyn.ledgeTop * w; p++) {
+      if (portrait && a.dyn.depth[p] > 2600) continue; // the portrait's middle distance itself changed, on purpose
+      assert.equal(a.dyn.depth[p], b.dyn.depth[p], `frame ${n}: what pixel ${p} sees changed`);
+      assert.equal(a.dyn.winKey[p], b.dyn.winKey[p], `frame ${n}: window at ${p} changed`);
+      assert.equal(a.dyn.winLit[p], b.dyn.winLit[p], `frame ${n}: lit window at ${p} changed`);
+    }
+    assert.deepEqual(
+      a.dyn.beacons.map((bc) => [bc.sx, bc.sy]),
+      b.dyn.beacons.map((bc) => [bc.sx, bc.sy])
+    );
+    // every building is numbered as before, so it keeps its pattern of lit windows
+    for (const [key, id] of b.ids) if (a.ids.has(key)) assert.equal(a.ids.get(key), id, `${key} renumbered`);
+  });
+});
