@@ -59,7 +59,8 @@ const state = (page) =>
       // every element inside it that would be painted
       painted: [...p.querySelectorAll('*')].filter((el) => painted(el)).length,
     }));
-    const actor = document.querySelector('.nomoz-actor');
+    // the cat itself: environment props (coins and the like) share its class, marked data-prop
+    const actor = document.querySelector('.nomoz-actor:not([data-prop])');
     const city = document.querySelector('[data-city]');
     const canvas = city && city.querySelector('canvas.city-canvas');
     const controls = document.querySelector('[data-observe-controls]');
@@ -103,6 +104,23 @@ const petPixels = (page) =>
 
 const enter = (page) => page.click('[data-observe-toggle]:visible');
 
+// Nomoz's sprite is painted: its canvas is briefly absent while one pose fades out before the next
+// (AnimatePresence mode="wait"), so give it a moment rather than sampling one instant
+const petShown = (page) =>
+  page
+    .waitForFunction(
+      () => {
+        const c = document.querySelector('canvas.nomoz-canvas[data-mood]');
+        return !!c && getComputedStyle(c).visibility !== 'hidden' && c.getClientRects().length > 0;
+      },
+      null,
+      { timeout: 5000 }
+    )
+    .then(
+      () => true,
+      () => false
+    );
+
 function assertObserving(s) {
   assert.ok(s.observing, 'no observation controls');
   for (const p of s.parts) {
@@ -131,10 +149,10 @@ for (const [name, viewport, mobile] of [
   guard(`${name}: observing hides the interface, keeps both environments as they are, and survives switching Pet / City`, async () => {
     const { ctx, page, log } = await openAt(browser, dev.url, { viewport, mobile });
     try {
-      await page.waitForFunction(() => window.__nomozScheduler && document.querySelector('.nomoz-actor'), null, { timeout: 20000 });
+      await page.waitForFunction(() => window.__nomozScheduler && document.querySelector('.nomoz-actor:not([data-prop])'), null, { timeout: 20000 });
       await page.waitForTimeout(1500);
       await page.evaluate(() => {
-        window.__petActor = document.querySelector('.nomoz-actor');
+        window.__petActor = document.querySelector('.nomoz-actor:not([data-prop])');
         window.__petScheduler = window.__nomozScheduler;
       });
       let s = await state(page);
@@ -150,7 +168,8 @@ for (const [name, viewport, mobile] of [
       assertObserving(s);
       assert.equal(s.focus, 'exit', 'focus did not move to the way out');
       assert.deepEqual(s.main, main, 'the pet world was resized');
-      assert.ok(s.sameActor && s.sameScheduler && s.petPainted, 'the pet was hidden or recreated');
+      assert.ok(s.sameActor && s.sameScheduler, 'the pet was recreated');
+      assert.ok(await petShown(page), 'the pet is not shown');
       // still where it was a moment ago (it may have taken a step since, but nothing put it back to the start)
       if (before && s.petTransform) assert.ok(s.petTransform === before || !/translate3d\(0px, 0px, 0px\)/.test(s.petTransform));
       // and still alive
@@ -200,7 +219,8 @@ for (const [name, viewport, mobile] of [
       await page.waitForFunction(() => !document.querySelector('[data-city]'));
       s = await state(page);
       assertObserving(s);
-      assert.ok(s.sameActor && s.sameScheduler && s.petPainted, 'the pet was recreated or is not shown');
+      assert.ok(s.sameActor && s.sameScheduler, 'the pet was recreated');
+      assert.ok(await petShown(page), 'the pet is not shown');
       assert.deepEqual(s.main, main);
 
       // and out: focus returns to the interface

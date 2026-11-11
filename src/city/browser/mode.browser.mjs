@@ -50,7 +50,7 @@ const state = (page) =>
     const toggles = [...document.querySelectorAll('[data-mode-toggle]')];
     const shown = toggles.find((b) => b.offsetParent !== null);
     const header = document.querySelector('header').getBoundingClientRect();
-    const actor = document.querySelector('.nomoz-actor');
+    const actor = document.querySelector('.nomoz-actor:not([data-prop])');
     const city = document.querySelector('[data-city]');
     const canvas = city && city.querySelector('canvas');
     return {
@@ -118,7 +118,7 @@ for (const [name, viewport, mobile] of [
 
       // remember the pet's DOM node: it must be the very same one after a round trip
       await page.evaluate(() => {
-        window.__petActor = document.querySelector('.nomoz-actor');
+        window.__petActor = document.querySelector('.nomoz-actor:not([data-prop])');
       });
 
       await page.click('[data-mode-toggle]:visible');
@@ -155,7 +155,7 @@ for (const [name, viewport, mobile] of [
 
       // and back to pet mode, with the pet where it is now
       await page.evaluate(() => {
-        window.__petActor = document.querySelector('.nomoz-actor');
+        window.__petActor = document.querySelector('.nomoz-actor:not([data-prop])');
       });
       await page.click('[data-mode-toggle]:visible');
       await page.waitForFunction(() => document.querySelector('canvas.fixed.inset-0'), null, { timeout: 15000 });
