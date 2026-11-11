@@ -8,6 +8,7 @@ import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import Snow from './components/Snow.jsx';
 import Anomaly from './components/Anomaly.jsx';
+import { Hideable, ObservationControls } from './components/Observation.jsx';
 import Dashboard from './features/dashboard/Dashboard.jsx';
 import Ledger from './features/ledger/Ledger.jsx';
 import Calendar from './features/calendar/Calendar.jsx';
@@ -55,9 +56,12 @@ export default function App() {
     <MotionConfig reducedMotion="user">
     <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
       {showSnow && <Snow />}
-      <Header />
+      <Hideable name="header">
+        <Header />
+      </Hideable>
       <main className="relative flex-1 min-h-0 overflow-hidden">
         <Anomaly />
+        <Hideable name="content">
         <AnimatePresence custom={direction.current}>
           {isLoaded && (
             <motion.div
@@ -73,8 +77,12 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </Hideable>
       </main>
-      <Footer />
+      <Hideable name="footer">
+        <Footer />
+      </Hideable>
+      <ObservationControls />
     </div>
     </MotionConfig>
   );

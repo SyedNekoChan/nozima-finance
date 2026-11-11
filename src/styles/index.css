@@ -176,6 +176,15 @@ html, body, #root {
     transition: opacity var(--motion-ambient) var(--motion-ease);
   }
 
+  .city-rain {
+    position: absolute; /* placed and sized over the city by CityBackdrop */
+    display: block;
+    image-rendering: pixelated; /* pixel art at the city's whole-number scale */
+    mix-blend-mode: screen;
+    pointer-events: none;
+    visibility: hidden; /* until there is something in it */
+  }
+
   /* touch devices have no hover: give a short pressed dim instead */
   @media (hover: none) {
     .motion-btn:active {

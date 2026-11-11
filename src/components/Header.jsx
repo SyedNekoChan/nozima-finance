@@ -15,7 +15,7 @@ import Modal from './Modal.jsx';
  * focus ring is for keyboard focus only: after a tap or click a ring around
  * the cell would read as the header changing.
  */
-function ModeToggle({ className = '', mobile = false }) {
+export function ModeToggle({ className = '', mobile = false }) {
   const mode = useVisualMode((s) => s.mode);
   const toggle = useVisualMode((s) => s.toggle);
   const label = visualModeLabel(mode);
@@ -31,6 +31,37 @@ function ModeToggle({ className = '', mobile = false }) {
       } ${className}`}
     >
       [ MODE: {label} ]
+    </button>
+  );
+}
+
+/*
+ * Observation mode: puts the finance interface away and leaves only the
+ * environment. Text on wide screens ([ OBSERVE ]); on phones a small eye
+ * beside the mode toggle, sized to the header's 10px type so the row keeps
+ * its height, with the same invisible hit-area extension.
+ */
+function ObserveToggle({ className = '', mobile = false }) {
+  const setObserving = useVisualMode((s) => s.setObserving);
+  return (
+    <button
+      type="button"
+      onClick={() => setObserving(true)}
+      data-observe-toggle=""
+      aria-label="Observation mode: hide the interface and watch the scene"
+      title="Observation mode"
+      className={`font-mono uppercase whitespace-nowrap cursor-pointer select-none motion-btn hover:text-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2 ${
+        mobile ? "relative after:content-[''] after:absolute after:inset-x-0 after:top-0 after:h-[200%]" : ''
+      } ${className}`}
+    >
+      {mobile ? (
+        <svg viewBox="0 0 14 10" width="14" height="10" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true" className="block">
+          <path d="M1 5 C3.5 1, 10.5 1, 13 5 C10.5 9, 3.5 9, 1 5 Z" />
+          <circle cx="7" cy="5" r="1.6" />
+        </svg>
+      ) : (
+        '[ OBSERVE ]'
+      )}
     </button>
   );
 }
@@ -58,10 +89,13 @@ export default function Header() {
             SYSTEM: ONLINE
           </span>
 
-          <ModeToggle
-            mobile
-            className="col-start-2 row-start-1 min-w-0 px-3 pt-2 pb-1.5 text-right text-gray-400 tracking-wider leading-none"
-          />
+          <div className="col-start-2 row-start-1 min-w-0 flex justify-end">
+            <ObserveToggle mobile className="flex-shrink-0 pl-2 pr-1 pt-2 pb-1.5 text-gray-400 leading-none" />
+            <ModeToggle
+              mobile
+              className="min-w-0 px-3 pt-2 pb-1.5 text-right text-gray-400 tracking-wider leading-none"
+            />
+          </div>
 
           <span className="col-start-1 row-start-2 min-w-0 truncate px-3 pt-1.5 pb-2 text-gray-500 whitespace-nowrap">
             [ DISTANCE: {distance} ]
@@ -92,6 +126,7 @@ export default function Header() {
           </div>
 
           <span className="flex items-center gap-4 lg:gap-6">
+            <ObserveToggle className="text-gray-400 tracking-widest" />
             <ModeToggle className="text-gray-400 tracking-widest" />
             <span className="text-white whitespace-nowrap">
               [ {formatTime(now)} _ ]

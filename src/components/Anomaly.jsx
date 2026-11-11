@@ -4,6 +4,7 @@ import useFinanceStore from '../hooks/useFinanceStore.js';
 import useCurrentMonth from '../hooks/useCurrentMonth.js';
 import useVisualMode from '../hooks/useVisualMode.js';
 import CityBackdrop from '../city/CityBackdrop.jsx';
+import { Hideable } from './Observation.jsx';
 import usePet from '../pets/usePet.js';
 import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
@@ -392,7 +393,9 @@ export default function Anomaly() {
         stacking order at z-0, hiding it behind every tab's z-10
         content on Dashboard/Ledger/Calendar/Accounts alike.
       */}
-      <OverBudgetIndicator isOverBudget={isOverBudget} />
+      <Hideable name="readout">
+        <OverBudgetIndicator isOverBudget={isOverBudget} />
+      </Hideable>
     </>
   );
 }

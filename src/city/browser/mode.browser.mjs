@@ -66,6 +66,9 @@ const state = (page) =>
       cityReady: !!city && city.hasAttribute('data-city-ready'),
       cityPx: canvas ? Number(canvas.dataset.cityPx) : null,
       cityCanvas: canvas ? { w: canvas.width, h: canvas.height } : null,
+      cityView: canvas && canvas.dataset.cityView ? canvas.dataset.cityView.split(' ').map(Number) : null,
+      vw: innerWidth,
+      vh: innerHeight,
       dpr: window.devicePixelRatio,
       layer: city ? city.getBoundingClientRect().toJSON() : null,
       main: document.querySelector('main').getBoundingClientRect().toJSON(),
@@ -86,7 +89,7 @@ const sampleCity = (page) =>
     }
     // inside one city pixel every device pixel has the same colour: compare each pixel with
     // the first pixel of its cell, along a row in the middle (cells align with the bottom edge)
-    const offY = c.height - Number(c.dataset.cityH) * s;
+    const offY = Number(c.dataset.cityView.split(' ')[2]);
     const offX = -Math.floor((Number(c.dataset.cityW) * s - c.width) / 2);
     const y = offY + Math.floor(c.height / 2 / s) * s;
     let broken = 0;
@@ -126,12 +129,17 @@ for (const [name, viewport, mobile] of [
       assert.ok(s.petMounted && s.sameActor, 'pet was remounted');
       assert.ok(!s.petVisible && !s.petCanvasVisible, 'pet still painted in city mode');
       assert.ok(!s.snow, 'snow still shown in city mode');
-      // the city fills the main area exactly, at a whole-number device-pixel scale
+      // the city layer covers the screen (the bars hide what is outside the main area), at a whole-number
+      // device-pixel scale, and the scene proper is composed for the main area exactly
       assert.ok(Number.isInteger(s.cityPx) && s.cityPx === Math.round(3 * s.dpr), JSON.stringify(s));
-      assert.deepEqual(
-        [s.layer.x, s.layer.y, s.layer.width, s.layer.height],
-        [s.main.x, s.main.y, s.main.width, s.main.height]
-      );
+      assert.deepEqual([s.layer.x, s.layer.y, s.layer.width, s.layer.height], [0, 0, s.vw, s.vh]);
+      {
+        const [y0, vh, offY] = s.cityView;
+        const top = offY + y0 * s.cityPx;
+        const bottom = top + vh * s.cityPx;
+        assert.ok(Math.abs(bottom - s.main.bottom * s.dpr) < 1, `view bottom ${bottom} vs main ${s.main.bottom * s.dpr}`);
+        assert.ok(top <= s.main.top * s.dpr && top > s.main.top * s.dpr - s.cityPx, `view top ${top} vs main ${s.main.top * s.dpr}`);
+      }
       assert.ok(Math.abs(s.cityCanvas.w - s.layer.width * s.dpr) <= 1 && Math.abs(s.cityCanvas.h - s.layer.height * s.dpr) <= 1);
       const px = await sampleCity(page);
       assert.ok(px.colours > 12, `only ${px.colours} colours`);
