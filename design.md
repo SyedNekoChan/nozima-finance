@@ -143,6 +143,28 @@ The weather and the sky (`city/env.js`) drive the last two.
   converge downward in three-point perspective. The towers flanking the
   avenue are placed by hand; the rest of the city is generated from a fixed
   seed, so it is the same city every time.
+- **The middle distance** (`MIDDLE` in `city/scene.js`), 2.7-4.6 km ahead,
+  between the downtown and the distant skyline: where a phone held upright
+  used to look across a low-rise carpet and mist, the city keeps rising.
+  Medium and tall towers (mostly 150-400 m) stand in loose clusters at
+  several depths, nearer ones partly hiding farther ones, with a line of
+  them along both sides of the avenue so the canyon carries on toward the
+  horizon (the avenue itself is never built on and stays in view). The layer
+  grows in over 2.68-2.8 km and hands over to the distant skyline over
+  4.3-4.9 km; lots there are rarely low (a low lot keeps 60 % of its height,
+  not 35 %), towers get a few more lit floors than downtown (x1.2) and show
+  their windows rather than all-edge pixels, and the street and
+  between-tower mist over surfaces past 2.7 km is thinned to 40 % so they
+  are not buried in a fog bank; the far haze still softens them. A raised
+  building is built around what stood there before (a low block becomes the
+  base its tower rises from; a tower's setback starts above its old roof).
+  Reflections see the city as it was without this layer, and a ray that
+  reaches the middle distance first walks that older city (and any
+  reflection its old surface cast), so blocks are generated and buildings
+  numbered exactly as before: every building keeps its lit windows, and a
+  desktop's or a phone-on-its-side's view is unchanged (desktop's view meets
+  the ground before 2.65 km; only its strip above the view, shown in
+  observation, gains the new towers' tops).
 - **The distant skyline** (`DISTANT` in `city/scene.js`). Beyond the
   downtown, midtown-like clusters stand 4-12 km off at several depths, so
   where a screen sees the horizon (a phone held upright, a tall tablet) it

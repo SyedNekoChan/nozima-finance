@@ -137,6 +137,50 @@ function distant(x, z) {
   return k * h;
 }
 
+/*
+ * The middle distance, 2.7-4.6 km ahead: where a phone held upright looked
+ * across a low-rise carpet and mist between the downtown towers and the
+ * distant skyline. Here the city keeps rising: medium and tall towers in
+ * loose clusters at several depths, some in front of others, and a line of
+ * them along both sides of the avenue, so the canyon carries on toward the
+ * horizon (they line it; the avenue itself is never built on). A desktop
+ * screen's view meets the ground before 2.65 km, so this whole layer is
+ * beyond what it shows (and reflections see the city without it, see
+ * buildBlock), and a phone on its side looks steeper still.
+ */
+export const MIDDLE = {
+  from: [2680, 2800], // grows in over this (metres ahead)...
+  to: [4300, 4900], // ...and hands over to the distant skyline over this
+  base: 85, // mid-rise between the towers
+  gap: 0.6, // where a lot is the odd low one, not quite as low as nearer in
+  lit: 1.2, // a few more lit floors than downtown (restrained: they read as a calm field of lights)
+  avenue: { h: 190, width: 330, x: GRID.px + GRID.avenue / 2 }, // the towers lining the avenue
+  clusters: [
+    { x: -150, z: 2880, r: 380, h: 240 }, // right at the near edge, left of the avenue: the first towers past the downtown
+    { x: 760, z: 2950, r: 430, h: 300 },
+    { x: -560, z: 3250, r: 470, h: 260 },
+    { x: 1450, z: 3500, r: 520, h: 230 },
+    { x: 260, z: 3800, r: 480, h: 250 },
+    { x: -1350, z: 3700, r: 560, h: 210 },
+    { x: -250, z: 4250, r: 520, h: 230 },
+    { x: 2300, z: 3200, r: 520, h: 190 },
+  ],
+};
+
+function middle(x, z) {
+  const k = smoothstep(MIDDLE.from[0], MIDDLE.from[1], z) * (1 - smoothstep(MIDDLE.to[0], MIDDLE.to[1], z));
+  if (k <= 0) return 0;
+  let h = MIDDLE.base;
+  const a = MIDDLE.avenue;
+  const ax = (x - a.x) / a.width;
+  h += a.h * Math.exp(-ax * ax);
+  for (const c of MIDDLE.clusters) {
+    const d = Math.hypot(x - c.x, z - c.z) / c.r;
+    h += c.h * Math.exp(-d * d);
+  }
+  return k * h;
+}
+
 function envelope(x, z) {
   const d0 = Math.hypot(x - CORE.x, z - CORE.z) / CORE.radius;
   const d1 = Math.hypot(x - FAR_CLUSTER.x, z - FAR_CLUSTER.z) / FAR_CLUSTER.radius;
@@ -204,93 +248,128 @@ function lots(i, j) {
 
 let nextId = 1;
 
-/* The boxes of one block, generated on first use. */
+/*
+ * The boxes of one tower of height h on lot (x0, x1, z0, z1) into `out`: a
+ * podium on the full lot, the shaft set back from it (with a setback tier on
+ * some tall ones), a mechanical penthouse, now and then a spire. Fills in the
+ * building's roof and spire top.
+ *
+ * keep: for a building the middle-distance layer raised, the height it had
+ * before. The raised one is built around the old one (a low block becomes the
+ * base the new tower rises from; a tower's setback starts above its old
+ * roof), so it holds everything the old one did: a ray never passes through
+ * the new where it would have met the old (see render.js trace).
+ */
+function shape(i, j, s, x0, x1, z0, z1, h, b, out, keep = 0) {
+  const w = x1 - x0;
+  const d = z1 - z0;
+  const add = (ax0, ax1, ay0, ay1, az0, az1, part) => {
+    if (ax1 - ax0 < 1 || az1 - az0 < 1 || ay1 - ay0 < 0.5) return;
+    out.push({ x0: ax0, x1: ax1, y0: ay0, y1: ay1, z0: az0, z1: az1, b, part });
+  };
+  if (h < 70) {
+    add(x0 + 1, x1 - 1, 0, h, z0 + 1, z1 - 1, 'shaft');
+  } else {
+    const podium = Math.max(10 + 12 * hash3(i, j, s + 20), keep < 70 ? keep : 0);
+    add(x0 + 1, x1 - 1, 0, podium, z0 + 1, z1 - 1, 'podium');
+    const inset = Math.min(w, d) * (0.08 + 0.12 * hash3(i, j, s + 21));
+    let sx0 = x0 + inset;
+    let sx1 = x1 - inset;
+    let sz0 = z0 + inset;
+    let sz1 = z1 - inset;
+    const tier = h > 220 && hash3(i, j, s + 22) < 0.6;
+    const tierAt = tier ? Math.min(h, Math.max(h * (0.62 + 0.18 * hash3(i, j, s + 23)), keep >= 70 ? keep + 12 : 0)) : h;
+    add(sx0, sx1, podium, tierAt, sz0, sz1, 'shaft');
+    if (tier) {
+      const t2 = Math.min(sx1 - sx0, sz1 - sz0) * (0.1 + 0.1 * hash3(i, j, s + 24));
+      sx0 += t2;
+      sx1 -= t2;
+      sz0 += t2;
+      sz1 -= t2;
+      add(sx0, sx1, tierAt, h, sz0, sz1, 'shaft');
+    }
+    // mechanical penthouse
+    const mw = (sx1 - sx0) * (0.3 + 0.2 * hash3(i, j, s + 25));
+    const md = (sz1 - sz0) * (0.3 + 0.2 * hash3(i, j, s + 26));
+    const mx = sx0 + (sx1 - sx0 - mw) * hash3(i, j, s + 27);
+    const mz = sz0 + (sz1 - sz0 - md) * hash3(i, j, s + 28);
+    const mh = 5 + 6 * hash3(i, j, s + 29);
+    add(mx, mx + mw, h, h + mh, mz, mz + md, 'mech');
+    b.roof = { x0: sx0, x1: sx1, z0: sz0, z1: sz1 };
+    if (h > 360 && h + mh < CAMERA_HEIGHT - 50 && hash3(i, j, s + 30) < 0.5) {
+      const sc = [(sx0 + sx1) / 2, (sz0 + sz1) / 2];
+      const sh = Math.min(25 + 35 * hash3(i, j, s + 31), CAMERA_HEIGHT - 25 - (h + mh));
+      add(sc[0] - 1, sc[0] + 1, h + mh, h + mh + sh, sc[1] - 1, sc[1] + 1, 'spire');
+      b.spireTop = [sc[0], h + mh + sh, sc[1]];
+    }
+  }
+  if (!b.roof) b.roof = { x0: x0 + 1, x1: x1 - 1, z0: z0 + 1, z1: z1 - 1 };
+}
+
+/*
+ * The boxes of one block, generated on first use: `boxes`, what the view sees, and `mirror`, what wet
+ * surfaces reflect. They differ only where the middle-distance layer raised a tower (see MIDDLE): a
+ * reflection sees that lot as it was without it. The middle distance is kilometres off and only ever
+ * shows in a puddle as a speck of haze, and it keeps every screen that does not look that far (a
+ * desktop, a phone on its side) exactly as it was, down to which of its windows are lit.
+ */
 function buildBlock(i, j) {
   const boxes = [];
+  const mirror = [];
   // the viewer's own tower and everything behind it is out of view
-  if (j < 0) return boxes;
+  if (j < 0) return { boxes, mirror };
   const ls = lots(i, j);
   ls.forEach(([x0, x1, z0, z1], k) => {
     const s = SEED + 97 * k;
     const cx = (x0 + x1) / 2;
     const cz = (z0 + z1) / 2;
+    const mid = middle(cx, cz);
+    const height = (env, inMiddle) => {
+      const r = hash3(i, j, s + 11);
+      let h = env * (0.3 + 0.7 * Math.pow(r, 0.8));
+      if (hash3(i, j, s + 12) < 0.07) h *= 1.5; // the odd supertall
+      if (hash3(i, j, s + 13) < 0.12) h *= inMiddle ? MIDDLE.gap : 0.35; // and the odd gap (shallower in the middle distance)
+      const hero = HERO[`${i},${j},${k}`];
+      if (hero) h = hero;
+      return Math.max(14, Math.min(MAX_BUILDING, h));
+    };
     const env = envelope(cx, cz);
-    const r = hash3(i, j, s + 11);
-    let h = env * (0.3 + 0.7 * Math.pow(r, 0.8));
-    if (hash3(i, j, s + 12) < 0.07) h *= 1.5; // the odd supertall
-    if (hash3(i, j, s + 13) < 0.12) h *= 0.35; // and the odd gap
-    const hero = HERO[`${i},${j},${k}`];
-    if (hero) h = hero;
-    h = Math.max(14, Math.min(MAX_BUILDING, h));
+    const h0 = height(env, false); // without the middle-distance layer
+    const h = mid > 0 ? height(env + mid, true) : h0;
 
     const style = STYLES[Math.floor(hash3(i, j, s + 14) * STYLES.length)];
     const floor = FLOOR[style.floor];
     const far = cz > DISTANT.from[0];
     const litLo = style.lit[0];
     const litHi = style.lit[1];
+    const crownOf = (hh) => (hh > 200 && hash3(i, j, s + 16) < (far ? DISTANT.crown : 0.3) ? (hash3(i, j, s + 17) < (far ? 1 - DISTANT.amber : 0.5) ? 'cool' : 'amber') : null);
     const b = {
       id: nextId++,
       key: `${i},${j},${k}`,
       style,
       floor,
-      lit: (litLo + (litHi - litLo) * hash3(i, j, s + 15)) * (far ? DISTANT.lit : 1),
+      lit: (litLo + (litHi - litLo) * hash3(i, j, s + 15)) * (far ? DISTANT.lit : mid > 0 ? MIDDLE.lit : 1),
       far,
+      mid: mid > 0,
       warm: style.warm,
       h,
       // architectural crown lighting on some tall towers
-      crown: h > 200 && hash3(i, j, s + 16) < (far ? DISTANT.crown : 0.3) ? (hash3(i, j, s + 17) < (far ? 1 - DISTANT.amber : 0.5) ? 'cool' : 'amber') : null,
+      crown: crownOf(h),
       shops: hash3(i, j, s + 18) < 0.55,
       seed: Math.floor(hash3(i, j, s + 19) * 1e6),
       ...material(style, hash3(i, j, s + 40)),
     };
-
-    const w = x1 - x0;
-    const d = z1 - z0;
-    const add = (ax0, ax1, ay0, ay1, az0, az1, part) => {
-      if (ax1 - ax0 < 1 || az1 - az0 < 1 || ay1 - ay0 < 0.5) return;
-      boxes.push({ x0: ax0, x1: ax1, y0: ay0, y1: ay1, z0: az0, z1: az1, b, part });
-    };
-
-    if (h < 70) {
-      add(x0 + 1, x1 - 1, 0, h, z0 + 1, z1 - 1, 'shaft');
+    const first = boxes.length;
+    shape(i, j, s, x0, x1, z0, z1, h, b, boxes, h === h0 ? 0 : h0);
+    if (h === h0) {
+      for (let n = first; n < boxes.length; n++) mirror.push(boxes[n]);
     } else {
-      // a podium on the full lot, the shaft set back from it
-      const podium = 10 + 12 * hash3(i, j, s + 20);
-      add(x0 + 1, x1 - 1, 0, podium, z0 + 1, z1 - 1, 'podium');
-      const inset = Math.min(w, d) * (0.08 + 0.12 * hash3(i, j, s + 21));
-      let sx0 = x0 + inset;
-      let sx1 = x1 - inset;
-      let sz0 = z0 + inset;
-      let sz1 = z1 - inset;
-      const tier = h > 220 && hash3(i, j, s + 22) < 0.6;
-      const tierAt = tier ? h * (0.62 + 0.18 * hash3(i, j, s + 23)) : h;
-      add(sx0, sx1, podium, tierAt, sz0, sz1, 'shaft');
-      if (tier) {
-        const t2 = Math.min(sx1 - sx0, sz1 - sz0) * (0.1 + 0.1 * hash3(i, j, s + 24));
-        sx0 += t2;
-        sx1 -= t2;
-        sz0 += t2;
-        sz1 -= t2;
-        add(sx0, sx1, tierAt, h, sz0, sz1, 'shaft');
-      }
-      // mechanical penthouse
-      const mw = (sx1 - sx0) * (0.3 + 0.2 * hash3(i, j, s + 25));
-      const md = (sz1 - sz0) * (0.3 + 0.2 * hash3(i, j, s + 26));
-      const mx = sx0 + (sx1 - sx0 - mw) * hash3(i, j, s + 27);
-      const mz = sz0 + (sz1 - sz0 - md) * hash3(i, j, s + 28);
-      const mh = 5 + 6 * hash3(i, j, s + 29);
-      add(mx, mx + mw, h, h + mh, mz, mz + md, 'mech');
-      b.roof = { x0: sx0, x1: sx1, z0: sz0, z1: sz1 };
-      if (h > 360 && h + mh < CAMERA_HEIGHT - 50 && hash3(i, j, s + 30) < 0.5) {
-        const sc = [(sx0 + sx1) / 2, (sz0 + sz1) / 2];
-        const sh = Math.min(25 + 35 * hash3(i, j, s + 31), CAMERA_HEIGHT - 25 - (h + mh));
-        add(sc[0] - 1, sc[0] + 1, h + mh, h + mh + sh, sc[1] - 1, sc[1] + 1, 'spire');
-        b.spireTop = [sc[0], h + mh + sh, sc[1]];
-      }
+      // the same building as it stood before, for reflections (same id: same windows)
+      const b0 = { ...b, h: h0, crown: crownOf(h0), roof: undefined, spireTop: undefined };
+      shape(i, j, s, x0, x1, z0, z1, h0, b0, mirror);
     }
-    if (!b.roof) b.roof = { x0: x0 + 1, x1: x1 - 1, z0: z0 + 1, z1: z1 - 1 };
   });
-  return boxes;
+  return { boxes, mirror };
 }
 
 /*
@@ -303,6 +382,8 @@ export const FOCAL = {
   sign: { key: '1,0,0', face: '-x', height: 0.55 },
 };
 
+const EMPTY_BLOCK = Object.freeze({ boxes: [], top: 0, mirror: [], mirrorTop: 0 });
+
 /* A city: block contents on demand, with each block's highest point. */
 export function createCity() {
   nextId = 1;
@@ -312,13 +393,19 @@ export function createCity() {
       const key = i * 65536 + j;
       let e = cache.get(key);
       if (!e) {
-        const boxes = buildBlock(i, j);
+        const { boxes, mirror } = buildBlock(i, j);
         let top = 0;
         for (const bx of boxes) top = Math.max(top, bx.y1);
-        e = { boxes, top };
+        let mirrorTop = 0;
+        for (const bx of mirror) mirrorTop = Math.max(mirrorTop, bx.y1);
+        e = { boxes, top, mirror, mirrorTop };
         cache.set(key, e);
       }
       return e;
+    },
+    /* The block if it has been generated, else an empty one (generating nothing). */
+    peek(i, j) {
+      return cache.get(i * 65536 + j) || EMPTY_BLOCK;
     },
     blocks: () => [...cache.values()],
     blocksBuilt: () => cache.size,

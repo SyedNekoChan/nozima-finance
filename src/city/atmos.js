@@ -79,6 +79,11 @@ export const WEATHER_AIR = {
   moon: { color: [0.55, 0.62, 0.8], sky: 0.05, haze: 0.06, shafts: 1.4 },
 };
 
+// the street and between-tower mist over the middle distance (surfaces beyond `from` metres): a ray
+// that skims the city that far runs through kilometres of it, which would bury those towers in a fog
+// bank; there it is thinned (the far haze still gives them their atmospheric perspective)
+export const MIDDLE_MIST = { from: [2700, 3300], keep: 0.4 };
+
 const NOISE = 128; // tileable noise texture, NOISE x NOISE
 const FEATURE = 16; // texels per noise feature
 
@@ -164,6 +169,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
   const under = new Float32Array(cells * 3); // the city's light around the cell, lighting the mist
   const glint = new Float32Array(cells * 3); // the wet reflection
   const air = new Float32Array(cells); // how much air there is to catch light (shafts)
+  const depthSum = new Float32Array(cells); // how far off the cell's surfaces are (summed, then averaged)
   const angle = new Float32Array(cells); // angle round the downward vanishing point
   const signMap = new Float32Array(cells);
   const open = new Uint8Array(cells); // 0: the ledge
@@ -182,6 +188,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
           n++;
           for (let l = 0; l < L; l++) run[l][c] += dyn.slabs[l][p];
           haze[c] += dyn.haze[p];
+          depthSum[c] += dyn.depth[p];
           signMap[c] += dyn.sign[p];
           if (dyn.depth[p] >= SKY_T) sky[c] += 1;
           for (let k = 0; k < 3; k++) {
@@ -194,6 +201,10 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
       open[c] = 1;
       for (let l = 0; l < L; l++) run[l][c] /= n;
       haze[c] /= n;
+      // thinner mist over the middle distance (the two low layers)
+      const thin = 1 - (1 - MIDDLE_MIST.keep) * smooth(MIDDLE_MIST.from[0], MIDDLE_MIST.from[1], depthSum[c] / n);
+      run[0][c] *= thin;
+      run[1][c] *= thin;
       signMap[c] /= n;
       sky[c] /= n;
       for (let k = 0; k < 3; k++) {

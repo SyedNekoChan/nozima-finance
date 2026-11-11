@@ -1,7 +1,7 @@
 import { BEACON, HELIPAD, HELIPAD_SIZE, PARAPET_KEY, PARAPET_TILES, PLANT, PLANT_SIZE, SIGN, SIGN_PIXEL } from './art.js';
 import { clamp01, fbm, hash3, smoothstep } from './noise.js';
 import { CITY_PALETTE, paletteIndex } from './palette.js';
-import { CAMERA_HEIGHT, FOCAL, GRID, SEED, createCity, makeCamera, project, rayDir } from './scene.js';
+import { CAMERA_HEIGHT, FOCAL, GRID, MIDDLE, SEED, createCity, makeCamera, project, rayDir } from './scene.js';
 
 /*
  * The static city frame, rendered into a w x h buffer of city pixels: the
@@ -144,11 +144,14 @@ function rayBox(b, ox, oy, oz, ix, iy, iz) {
 
 const nz = (v) => (Math.abs(v) < 1e-9 ? (v < 0 ? -1e-9 : 1e-9) : v);
 
+// while set, traces only look at blocks already generated (see shadePixel: the middle distance)
+let peekOnly = false;
+
 /*
  * First box along the ray within tEnd. Returns its distance (and fills `hit`),
  * or -1. Rays climbing above the tallest roof give up early.
  */
-function trace(city, ox, oy, oz, dx, dy, dz, tEnd) {
+function trace(city, ox, oy, oz, dx, dy, dz, tEnd, mirrored = false) {
   dx = nz(dx);
   dz = nz(dz);
   const ix = 1 / dx;
@@ -166,14 +169,16 @@ function trace(city, ox, oy, oz, dx, dy, dz, tEnd) {
   let t0 = 0;
   for (let guard = 0; guard < 400; guard++) {
     const t1 = Math.min(tx, tz, tEnd);
-    const blk = city.block(i, j);
-    if (blk.boxes.length) {
+    const blk = peekOnly ? city.peek(i, j) : city.block(i, j);
+    // a reflection sees the city without the middle-distance layer (see scene.js buildBlock)
+    const list = mirrored ? blk.mirror : blk.boxes;
+    if (list.length) {
       const yLow = oy + dy * (dy < 0 ? t1 : t0);
-      if (yLow <= blk.top) {
+      if (yLow <= (mirrored ? blk.mirrorTop : blk.top)) {
         let best = Infinity;
         let bestBox = null;
         let bestAxis = 0;
-        for (const b of blk.boxes) {
+        for (const b of list) {
           const t = rayBox(b, ox, oy, oz, ix, iy, iz);
           if (t >= 0 && t < best) {
             best = t;
@@ -380,7 +385,7 @@ function shadeFacade(b, box, axis, sign, x, y, z, pf, dist, base = BASE, emit = 
   // corners and the roof line pick up a hard 1-pixel edge (but a far tower only a pixel or two wide is
   // not all edge: there, its windows show)
   let edgeW = Math.max(0.5, pf * 0.95);
-  if (b.far) edgeW = Math.min(edgeW, len * 0.2, (box.y1 - box.y0) * 0.2);
+  if (b.far || b.mid) edgeW = Math.min(edgeW, len * 0.2, (box.y1 - box.y0) * 0.2);
   const atCorner = u < edgeW || len - u < edgeW;
   const atTop = box.y1 - y < edgeW && box.part !== 'podium';
   if (atCorner || atTop) {
@@ -479,7 +484,7 @@ const fresnel = (r0, cosI) => r0 + (1 - r0) * Math.pow(1 - cosI, 5);
 /* Light reflected by a wet horizontal surface at (x, y, z). */
 function reflection(city, x, y, z, dx, dy, dz, out) {
   const rdy = -dy;
-  const t = trace(city, x, y + 0.05, z, dx, rdy, dz, 2500);
+  const t = trace(city, x, y + 0.05, z, dx, rdy, dz, 2500, true);
   if (t < 0) return sky(dx, rdy, dz, out);
   const h = hit;
   const px = x + dx * t;
@@ -711,6 +716,23 @@ export function createCityFrame(w, h, { capture = false, view = null } = {}) {
     signLit = 0;
     const tGround = dy < 0 ? -oy / dy : Infinity;
     const tEnd = Math.min(tGround, MAX_T);
+    // a ray that reaches the middle distance first walks the city as it stood without that layer: blocks are
+    // generated (and their buildings numbered, which decides their lit windows) in the order they always were,
+    // so every building keeps its windows; the layer only ever stops a ray sooner (scene.js shape)
+    const middle = oz + dz * tEnd > MIDDLE.from[0];
+    if (middle) {
+      // (including the reflection a wet roof or street it met would have cast: only what it walks matters,
+      // and the shading is thrown away)
+      const t0 = trace(city, ox, oy, oz, dx, dy, dz, tEnd, true);
+      if (t0 >= 0 && hit.axis === 1) shadeRoof(city, hit.box.b, hit.box, ox + dx * t0, oy + dy * t0, oz + dz * t0, dx, dy, dz, t0 / cam.f);
+      else if (t0 < 0 && tGround <= MAX_T) shadeGround(city, ox + dx * tGround, oz + dz * tGround, dx, dy, dz, tGround / cam.f);
+      reflR[0] = reflR[1] = reflR[2] = 0;
+      win.key = 0;
+      signLit = 0;
+      // and from here on this pixel generates nothing new (a reflection off one of the new towers' roofs
+      // only sees blocks already there: kilometres off, the rest would be a speck of haze in a puddle)
+      peekOnly = true;
+    }
     const t = trace(city, ox, oy, oz, dx, dy, dz, tEnd);
     let dist;
     if (t >= 0) {
@@ -730,6 +752,7 @@ export function createCityFrame(w, h, { capture = false, view = null } = {}) {
       sky(dx, dy, dz, base);
       emit[0] = emit[1] = emit[2] = 0;
     }
+    peekOnly = false;
 
     // air between the eye and the surface
     const yEnd = oy + dy * dist;
