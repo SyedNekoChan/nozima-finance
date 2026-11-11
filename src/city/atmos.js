@@ -1,6 +1,7 @@
 import { hash3 } from './noise.js';
 import { ATMOS_SLABS } from './render.js';
 import { project, rayDir } from './scene.js';
+import { WEATHER } from './env.js';
 
 /*
  * City mode's atmosphere: the light-and-air layer over the pixel art
@@ -28,6 +29,14 @@ import { project, rayDir } from './scene.js';
  *            closing over a minute or two
  *   glints   soft light drifting over the bright wet reflections
  *   glow     soft halos round the warning lights, the neon sign and the cars
+ *
+ * The weather (env.js) changes the air: in rain the mist thickens and the
+ * haze closes in, the moonlight shafts fade out, and water runs over the wet
+ * streets in slow streaks; the glints follow how wet the surfaces are, so
+ * they fade as the city dries. A storm's lightning lifts the sky and the
+ * distant haze for a moment, brightest round where it struck; the moon
+ * breaking through brightens the shafts and the sky a little. With the still
+ * weather (STILL_ENV, also the default) the air is exactly the approved one.
  */
 
 export const ATMOS = {
@@ -56,6 +65,18 @@ export const ATMOS = {
   glints: { amp: 1.1, speed: 0.0011 },
   glow: { beacon: 0.3, beaconRadius: 3.2, sign: 0.55, signRadius: 2, car: 0.32, carRadius: 1.6 },
   max: 0.34, // no cell adds more light than this
+};
+
+// the weather the approved atmosphere was made for: clear, just after the rain
+export const STILL_ENV = Object.freeze({ rain: 0, wet: WEATHER.wet.start, flash: 0, flashX: 0.5, moon: 0 });
+
+export const WEATHER_AIR = {
+  mist: 0.8, // mist density gains this much in the heaviest rain
+  mistMax: 0.3, // and may cover this much more
+  haze: 0.6, // the distant haze, likewise
+  runoff: { amp: 0.5, speed: 0.0035 }, // water running over the wet streets
+  flash: { color: [0.62, 0.68, 0.86], sky: 0.42, haze: 1.2, lift: 0.08, spread: 0.22, max: 0.3 },
+  moon: { color: [0.55, 0.62, 0.8], sky: 0.05, haze: 0.06, shafts: 1.4 },
 };
 
 const NOISE = 128; // tileable noise texture, NOISE x NOISE
@@ -111,6 +132,8 @@ function sample(tex, u, v) {
   return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
 }
 
+const SKY_T = 7499; // a ray that met nothing (render.js MAX_T)
+
 const smooth = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -130,7 +153,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
   const gw = Math.ceil(w / C);
   const gh = Math.ceil(h / C);
   const cells = gw * gh;
-  const rows = h - dyn.parapetRows; // the viewer's ledge stays clear: nothing is in front of it
+  const rows = dyn.ledgeTop; // the viewer's ledge (and below) stays clear: nothing is in front of it
   const L = ATMOS_SLABS.length;
 
   // per cell, averaged over its city pixels
@@ -144,6 +167,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
   const angle = new Float32Array(cells); // angle round the downward vanishing point
   const signMap = new Float32Array(cells);
   const open = new Uint8Array(cells); // 0: the ledge
+  const sky = new Float32Array(cells); // share of the cell that is open sky
 
   for (let gy = 0; gy < gh; gy++) {
     for (let gx = 0; gx < gw; gx++) {
@@ -159,6 +183,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
           for (let l = 0; l < L; l++) run[l][c] += dyn.slabs[l][p];
           haze[c] += dyn.haze[p];
           signMap[c] += dyn.sign[p];
+          if (dyn.depth[p] >= SKY_T) sky[c] += 1;
           for (let k = 0; k < 3; k++) {
             under[c * 3 + k] += dyn.U[p * 3 + k];
             glint[c * 3 + k] += dyn.S[p * 3 + k];
@@ -170,6 +195,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
       for (let l = 0; l < L; l++) run[l][c] /= n;
       haze[c] /= n;
       signMap[c] /= n;
+      sky[c] /= n;
       for (let k = 0; k < 3; k++) {
         under[c * 3 + k] /= n;
         glint[c * 3 + k] /= n;
@@ -192,6 +218,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
         tv[l][c] = (oz + dir[2] * t) * s;
       }
       air[c] = Math.min(1, run[0][c] * 0.011 + run[1][c] * 0.007 + haze[c] * 0.9);
+      if (dir[1] <= 0.005) sky[c] = 0; // only rays that rise and meet nothing are sky
     }
   }
 
@@ -271,9 +298,20 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
     /*
      * The atmosphere at time t (ms). lights: [{ on, x, y, kind, level, r, g, b }] in city pixels,
      * the animation's moving lights (beacons by their level, cars by their colour); entries with
-     * on false are skipped (the animation reuses them).
+     * on false are skipped (the animation reuses them). env: the weather (env.js), STILL_ENV if left out.
      */
-    update(t, lights = []) {
+    update(t, lights = [], env = STILL_ENV) {
+      const wa = WEATHER_AIR;
+      const rain = env.rain;
+      const mistGain = 1 + wa.mist * rain;
+      const mistCap = 1 + wa.mistMax * rain;
+      const hazeGain = 1 + wa.haze * rain;
+      const clouded = (1 - rain) * (1 - rain);
+      const shaftGain = clouded * (1 + wa.moon.shafts * env.moon);
+      const wetGain = 0.3 + 0.7 * (env.wet / WEATHER.wet.start);
+      const runoff = Math.min(rain, env.wet) * wa.runoff.amp;
+      const flash = env.flash;
+      const moonSky = env.moon * clouded * wa.moon.sky;
       // the layers' drift and churn (in texels), the beams' state
       for (let l = 0; l < L; l++) {
         const s = (FEATURE / lay[l].scale) * (t / 1000);
@@ -310,8 +348,8 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
           const n = sample(tex[l], tu[l][c] + du[l], tv[l][c] + dv[l]) * (1 - ly.churn) + sample(texB[l], tu[l][c] + cu[l], tv[l][c] + cv[l]) * ly.churn;
           const d = smooth(ly.lo, ly.hi, n);
           if (d <= 0) continue;
-          const tau = d * m * ly.k;
-          const a = Math.min(ly.max, tau / (1 + tau));
+          const tau = d * m * ly.k * mistGain;
+          const a = Math.min(ly.max * mistCap, tau / (1 + tau));
           // far off, the light under the mist is the whole lit city: let it tint less
           const u = ly.under * (1 - 0.6 * hz);
           r += a * (ly.color[0] + under[k] * u);
@@ -321,7 +359,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
         // distant haze, breathing
         if (hz > 0.01) {
           const n = sample(texH, (c % gw) * 0.35 + t * 0.00006, ((c / gw) | 0) * 0.5);
-          const f = hz * cfg.haze.amp * (0.45 + 0.55 * n) * breath;
+          const f = hz * cfg.haze.amp * (0.45 + 0.55 * n) * breath * hazeGain;
           r += cfg.haze.color[0] * f;
           g += cfg.haze.color[1] * f;
           b += cfg.haze.color[2] * f;
@@ -335,7 +373,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
             if (x > -1 && x < 1) s += (1 - x * x) * (1 - x * x) * beams[i].level;
           }
           if (s > 0) {
-            const f = s * a * sh.strength;
+            const f = s * a * sh.strength * shaftGain;
             r += sh.color[0] * f;
             g += sh.color[1] * f;
             b += sh.color[2] * f;
@@ -345,10 +383,31 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
         const gr = glint[k] + glint[k + 1] + glint[k + 2];
         if (gr > 0.03) {
           const n = smooth(0.48, 0.82, sample(texG, (c % gw) * 0.9 + gl * 0.4, ((c / gw) | 0) * 2.2 - gl));
-          const f = n * cfg.glints.amp;
+          let f = n * cfg.glints.amp * wetGain;
+          // and, while it rains, water running down the streets in slow streaks
+          if (runoff > 0.001) {
+            const q = smooth(0.55, 0.85, sample(texG, (c % gw) * 3.1 + 40, ((c / gw) | 0) * 0.45 - t * wa.runoff.speed));
+            f += q * runoff;
+          }
           r += glint[k] * f;
           g += glint[k + 1] * f;
           b += glint[k + 2] * f;
+        }
+        // lightning: the sky and the distant haze light up, most round where it struck
+        if (flash > 0.001) {
+          const x = ((c % gw) + 0.5) / gw - env.flashX;
+          const near = Math.exp(-(x * x) / (2 * wa.flash.spread * wa.flash.spread));
+          const f = flash * (sky[c] * wa.flash.sky * (0.35 + 0.65 * near) + hz * wa.flash.haze * near + wa.flash.lift * a);
+          r += wa.flash.color[0] * f;
+          g += wa.flash.color[1] * f;
+          b += wa.flash.color[2] * f;
+        }
+        // the moon through a break in the cloud: a little more light in the sky and on the distant haze
+        if (moonSky > 0.0005 && (sky[c] > 0 || hz > 0.01)) {
+          const f = moonSky * sky[c] + env.moon * clouded * wa.moon.haze * hz;
+          r += wa.moon.color[0] * f;
+          g += wa.moon.color[1] * f;
+          b += wa.moon.color[2] * f;
         }
         // the neon sign's glow
         const sg = signGlow[c];
@@ -370,7 +429,7 @@ export function createAtmosphere(frame, { seed = 1 } = {}) {
         const f = (isBeacon ? cfg.glow.beacon : cfg.glow.car) * lt.level;
         if (f > 0.002) halo(lt.x, lt.y, isBeacon ? cfg.glow.beaconRadius : cfg.glow.carRadius, lt.r * f, lt.g * f, lt.b * f);
       }
-      const max = cfg.max;
+      const max = cfg.max + wa.flash.max * flash;
       for (let c = 0; c < cells; c++) {
         const k = c * 3;
         const o = c * 4;

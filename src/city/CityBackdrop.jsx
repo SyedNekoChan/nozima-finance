@@ -1,16 +1,22 @@
 import { Component, useLayoutEffect, useRef, useState } from 'react';
 import { ANIM, createCityAnimation } from './animate.js';
 import { createAtmosphere } from './atmos.js';
+import { createEnvironment } from './env.js';
 import { cityLayout } from './layout.js';
+import { createRain } from './rain.js';
 import { createCityFrame } from './render.js';
 
 /*
  * City mode's backdrop: the night city seen from a supertall tower (see
- * design.md, "City mode"). It takes the pet layer's place and keeps its
- * contract: absolute inset-0 inside the main area, z-0 beneath the tab
- * content, pointer-events: none, aria-hidden, nothing that can scroll.
+ * design.md, "City mode"). It takes the pet layer's place: z-0 beneath the
+ * tab content, pointer-events: none, aria-hidden, nothing that can scroll.
+ * It covers the whole screen (fixed inset-0), but the scene is composed for
+ * the app's main area, between the header and the footer: the rows above it
+ * carry on up the same view into the sky, and the viewer's ledge carries on
+ * below it. Normally the bars hide those; observation mode puts the bars away
+ * and the whole picture shows, without re-rendering anything.
  *
- * Two canvases:
+ * Three canvases:
  *
  *   city        the pixel art. Rendered once per size into a small buffer of
  *               city pixels (in short slices, so the UI never stalls) and drawn
@@ -22,6 +28,12 @@ import { createCityFrame } from './render.js';
  *               exactly over the city and stretched smoothly by the browser
  *               (on the GPU, no redraw), screen-blended, so it only adds light
  *               and never shifts, blurs or re-dithers a pixel of the art.
+ *   rain        the rain, splashes, a shooting star or a lightning bolt
+ *               (rain.js): pixel art at the city's scale, screen-blended over
+ *               it, empty (and hidden) in dry weather.
+ *
+ * The weather and the sky's moments (env.js) carry on across re-renders. The
+ * rare city events (animate.js) and the sky's own moments never overlap.
  *
  * While the page is visible both are updated about 12 times a second (only the
  * city's changed rectangle is redrawn). The animation stops while the page is
@@ -43,20 +55,24 @@ function prefersReduced() {
 }
 
 function sameLayout(a, b) {
-  return a && b && a.w === b.w && a.h === b.h && a.scale === b.scale && a.devW === b.devW && a.devH === b.devH;
+  return (
+    a && b && a.w === b.w && a.h === b.h && a.scale === b.scale && a.devW === b.devW && a.devH === b.devH && a.view.y0 === b.view.y0 && a.view.h === b.view.h
+  );
 }
 
 function CityScene() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const airRef = useRef(null);
+  const rainRef = useRef(null);
   const [ready, setReady] = useState(false);
 
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     const airCanvas = airRef.current;
-    if (!wrap || !canvas || !airCanvas) return undefined;
+    const rainCanvas = rainRef.current;
+    if (!wrap || !canvas || !airCanvas || !rainCanvas) return undefined;
 
     let job = null; // { timer, cancelled }
     let shown = null; // layout of the frame on screen
@@ -80,6 +96,13 @@ function CityScene() {
     let clock = 0; // animation time, ms (stands still while paused)
     let wall = 0;
     let frames = 0;
+    // the weather: one for as long as the city is open, on its own clock (it carries on across re-renders)
+    const weather = createEnvironment({ seed: (Math.random() * 2 ** 31) | 0 });
+    let envClock = 0;
+    let rain = null;
+    let rainCtx = null;
+    let rainImage = null;
+    let rainShown = false;
 
     const setState = (state) => {
       canvas.dataset.cityAnim = state;
@@ -93,11 +116,39 @@ function CityScene() {
       ctx.drawImage(off, x, y, bw, bh, layout.offsetX + x * s, layout.offsetY + y * s, bw * s, bh * s);
     };
 
-    /* The atmosphere at time t: one cell per canvas pixel; the browser stretches it smoothly. */
-    const drawAir = (t) => {
+    /* The atmosphere at time t (env: the weather; left out, the still weather). */
+    const drawAir = (t, env) => {
       if (!air || !baked) return;
-      air.update(t, anim ? anim.lights() : []);
+      air.update(t, anim ? anim.lights() : [], env);
       airCtx.putImageData(airImage, 0, 0);
+    };
+
+    /* The rain layer: drawn only when something in it changed, hidden while it is empty. */
+    const showRain = (on) => {
+      if (on === rainShown) return;
+      rainShown = on;
+      rainCanvas.style.visibility = on ? 'visible' : 'hidden';
+    };
+    const drawRain = (dt) => {
+      if (!rain) return;
+      if (rain.update(envClock, dt, weather.env)) {
+        rainCtx.putImageData(rainImage, 0, 0);
+        showRain(true);
+      } else showRain(false);
+    };
+
+    /* Lay the rain over the city pixels, one buffer pixel to one city pixel. */
+    const placeRain = (layout) => {
+      const dpr = layout.devW / Math.max(1, wrap.getBoundingClientRect().width);
+      const span = layout.scale / dpr;
+      rainCanvas.width = rain.w;
+      rainCanvas.height = rain.h;
+      rainCanvas.style.left = `${layout.offsetX / dpr}px`;
+      rainCanvas.style.top = `${layout.offsetY / dpr}px`;
+      rainCanvas.style.width = `${rain.w * span}px`;
+      rainCanvas.style.height = `${rain.h * span}px`;
+      rainCtx = rainCanvas.getContext('2d');
+      rainImage = new ImageData(rain.rgba, rain.w, rain.h);
     };
 
     /* Lay the atmosphere's grid exactly over the city pixels it was computed for. */
@@ -127,9 +178,12 @@ function CityScene() {
       canvas.dataset.cityPx = String(layout.scale);
       canvas.dataset.cityW = String(layout.w);
       canvas.dataset.cityH = String(layout.h);
+      canvas.dataset.cityView = `${layout.view.y0} ${layout.view.h} ${layout.offsetY}`; // the scene proper: first row, rows, offset
       shown = layout;
       baked = { layout, rgba: new Uint8ClampedArray(rgba) };
       air = null;
+      rain = null;
+      showRain(false);
       clock = 0;
       setReady(true);
       setState('static');
@@ -141,7 +195,7 @@ function CityScene() {
         try {
           air = createAtmosphere(frame, { seed: (Math.random() * 2 ** 31) | 0 });
           placeAir(layout);
-          drawAir(0);
+          drawAir(0, reduced ? undefined : weather.env);
         } catch (err) {
           console.warn('[city] atmosphere could not be set up:', err);
           air = null;
@@ -161,6 +215,13 @@ function CityScene() {
             anim = null;
             return;
           }
+          try {
+            rain = createRain(frame, { seed: (Math.random() * 2 ** 31) | 0 });
+            placeRain(layout);
+          } catch (err) {
+            console.warn('[city] rain could not be set up:', err);
+            rain = null;
+          }
           runAnim();
         }, 0);
       }, 0);
@@ -174,10 +235,14 @@ function CityScene() {
       timer = 0;
       if (!running || !anim) return;
       const now = performance.now();
-      clock += Math.min(now - wall, 2000);
+      const step = Math.min(now - wall, 2000);
+      clock += step;
+      envClock += step;
       wall = now;
       try {
-        const box = anim.update(clock);
+        // the weather and the sky, then the city's lights; a rare event and a moment in the sky never overlap
+        const env = weather.update(envClock, anim.busy());
+        const box = anim.update(clock, !!env.star || env.moon > 0);
         if (box) {
           const { layout } = baked;
           const bw = box.x1 - box.x0 + 1;
@@ -185,7 +250,8 @@ function CityScene() {
           offCtx.putImageData(image, 0, 0, box.x0, box.y0, bw, bh);
           blit(layout, box.x0, box.y0, bw, bh);
         }
-        drawAir(clock);
+        drawAir(clock, env);
+        drawRain(step);
       } catch (err) {
         console.warn('[city] animation stopped:', err);
         stopAnim();
@@ -223,6 +289,7 @@ function CityScene() {
       offCtx.putImageData(new ImageData(new Uint8ClampedArray(baked.rgba), baked.layout.w, baked.layout.h), 0, 0);
       blit(baked.layout, 0, 0, baked.layout.w, baked.layout.h);
       drawAir(0);
+      showRain(false);
       setState('static');
     };
 
@@ -274,7 +341,7 @@ function CityScene() {
       job = me;
       let frame;
       try {
-        frame = createCityFrame(layout.w, layout.h, { capture: true });
+        frame = createCityFrame(layout.w, layout.h, { capture: true, view: layout.view });
       } catch (err) {
         failed = true;
         console.warn('[city] scene could not be set up:', err);
@@ -305,16 +372,24 @@ function CityScene() {
       step();
     };
 
+    // the scene proper is the area between the header and the footer (the app's main area); the layer
+    // itself covers the whole screen, the bars hiding the rest until observation mode puts them away
+    const main = wrap.closest('main') || wrap.parentElement;
+    let lastEntry = null;
     const measure = (entry) => {
+      if (entry) lastEntry = entry;
+      else entry = lastEntry;
       const rect = wrap.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return null;
+      const m = main.getBoundingClientRect();
+      const view = { top: m.top - rect.top, bottom: m.bottom - rect.top };
       const dpr = window.devicePixelRatio || 1;
       // the exact device-pixel size when the browser reports one that agrees with the ratio
       // (device emulation can report CSS pixels here), else the CSS size times the ratio
       const dev = entry && entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
       const exact =
         dev && Math.abs(dev.inlineSize - rect.width * dpr) <= 2 && Math.abs(dev.blockSize - rect.height * dpr) <= 2;
-      return cityLayout(rect.width, rect.height, dpr, exact ? dev.inlineSize : null, exact ? dev.blockSize : null);
+      return cityLayout(rect.width, rect.height, dpr, exact ? dev.inlineSize : null, exact ? dev.blockSize : null, view);
     };
 
     // first frame straight away, later sizes after the resize settles
@@ -322,7 +397,9 @@ function CityScene() {
     if (first) start(first);
 
     const ro = new ResizeObserver((entries) => {
-      const layout = measure(entries[entries.length - 1]);
+      let own = null;
+      for (const e of entries) if (e.target === wrap) own = e;
+      const layout = measure(own);
       if (!layout || sameLayout(layout, shown) || sameLayout(layout, pending)) return;
       pending = layout;
       clearTimeout(resizeTimer);
@@ -339,6 +416,7 @@ function CityScene() {
     } catch {
       ro.observe(wrap);
     }
+    ro.observe(main); // the header and footer can change height (fonts, a rotated phone)
 
     return () => {
       ro.disconnect();
@@ -347,6 +425,7 @@ function CityScene() {
       stopAnim();
       anim = null;
       air = null;
+      rain = null;
       baked = null;
       document.removeEventListener('visibilitychange', onVisibility);
       if (mq) {
@@ -362,10 +441,11 @@ function CityScene() {
       aria-hidden="true"
       data-city=""
       data-city-ready={ready ? '' : undefined}
-      className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none bg-black"
+      className="fixed inset-0 z-0 overflow-hidden pointer-events-none select-none bg-black"
     >
       <canvas ref={canvasRef} className="city-canvas" style={{ opacity: ready ? 1 : 0 }} />
       <canvas ref={airRef} className="city-air" data-city-air="" style={{ opacity: ready ? 1 : 0 }} />
+      <canvas ref={rainRef} className="city-rain" data-city-rain="" />
     </div>
   );
 }

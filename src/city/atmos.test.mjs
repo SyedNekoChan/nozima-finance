@@ -90,3 +90,42 @@ test('the air adds only a little light overall (the UI stays readable over it)',
     assert.ok(mean < 0.05, `mean light added ${mean.toFixed(3)} at ${t} ms`);
   }
 });
+
+test('weather: the still weather is the approved air exactly; rain, lightning and the moon only add to it within bounds', async () => {
+  const { STILL_ENV } = await import('./atmos.js');
+  const a = createAtmosphere(frame, { seed: 4 });
+  const b = createAtmosphere(frame, { seed: 4 });
+  const base = new Uint8ClampedArray(a.update(30000));
+  assert.deepEqual(new Uint8ClampedArray(b.update(30000, [], STILL_ENV)), base);
+  const sum = (d) => {
+    let s = 0;
+    for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2];
+    return s;
+  };
+  // rain thickens the mist and haze
+  const rainy = new Uint8ClampedArray(b.update(30000, [], { ...STILL_ENV, rain: 1, wet: 1 }));
+  assert.ok(sum(rainy) > sum(base), 'rain did not thicken the air');
+  // dry surfaces glint less than wet ones
+  const dry = sum(b.update(30000, [], { ...STILL_ENV, wet: 0 }));
+  const wet = sum(b.update(30000, [], { ...STILL_ENV, wet: 1 }));
+  assert.ok(dry < sum(base) && sum(base) < wet, `${dry} < ${sum(base)} < ${wet}`);
+  // a flash lifts the distant air, most around where it struck
+  const flash = b.update(30000, [], { ...STILL_ENV, rain: 1, wet: 1, flash: 1, flashX: 0.8 });
+  const half = (d, right) => {
+    let s = 0;
+    for (let c = 0; c < b.w * b.h; c++) if ((c % b.w >= b.w / 2) === right) s += d[c * 4] + d[c * 4 + 1] + d[c * 4 + 2];
+    return s;
+  };
+  assert.ok(sum(flash) > sum(rainy) * 1.05, 'the flash hardly showed');
+  assert.ok(half(flash, true) - half(rainy, true) > half(flash, false) - half(rainy, false), 'the flash is not where it struck');
+  // still bounded and still clear of the ledge
+  const ledgeRow = Math.ceil((H - PARAPET_TILES[0].length) / ATMOS.cell);
+  for (let c = 0; c < b.w * b.h; c++) {
+    for (let k = 0; k < 3; k++) assert.ok(flash[c * 4 + k] <= (ATMOS.max + 0.3) * 255 + 1);
+    if (((c / b.w) | 0) >= ledgeRow) assert.equal(flash[c * 4] + flash[c * 4 + 1] + flash[c * 4 + 2], 0);
+  }
+  // the moon through the cloud brightens the shafts; rain closes them
+  const t = 71000 * 0.15; // a time when the first beam is open
+  const clear = sum(b.update(t, [], STILL_ENV));
+  assert.ok(sum(b.update(t, [], { ...STILL_ENV, moon: 1 })) > clear, 'the moon added nothing');
+});

@@ -75,15 +75,44 @@ export function emotionProbePlugin({ fast = false } = {}) {
   };
 }
 
+/*
+ * Test-server only: hands the page City mode's weather (window.__cityWeather), its animation
+ * (window.__cityAnim) and rain layer (window.__cityRain), so a test can force the weather or start a
+ * rare event instead of waiting minutes for the dice; window.__cityEnvSpeed (default 1) runs the
+ * weather's clock faster. Sources are not edited; this rewrites CityBackdrop.jsx in memory.
+ */
+export function cityProbePlugin() {
+  return {
+    name: 'city-probe-for-test',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.split('?')[0].endsWith('/src/city/CityBackdrop.jsx')) return null;
+      const needles = [
+        // (the React plugin may already have reprinted the source: match loosely)
+        [/const weather = createEnvironment\([^;]*\);/, ' window.__cityWeather = weather;'],
+        [/image = new ImageData\(anim\.rgba, layout\.w, layout\.h\);/, ' window.__cityAnim = anim;'],
+        [/placeRain\(layout\);/, ' window.__cityRain = rain;'],
+      ];
+      for (const [re, add] of needles) {
+        if (!re.test(code)) throw new Error(`city probe: CityBackdrop.jsx changed (${re})`);
+        code = code.replace(re, (m) => m + add);
+      }
+      const clock = 'envClock += step;';
+      if (!code.includes(clock)) throw new Error('city probe: CityBackdrop.jsx weather clock changed');
+      return code.replace(clock, 'envClock += step * (window.__cityEnvSpeed || 1);');
+    },
+  };
+}
+
 /* A dev server running the shipped configuration (the sprite-sheet cat). */
-export async function startVite({ probe = false, emotionProbe = false, fast = false } = {}) {
+export async function startVite({ probe = false, emotionProbe = false, fast = false, cityProbe = false } = {}) {
   const vite = await importFromProject('node_modules/vite/dist/node/index.js');
   const react = (await importFromProject('node_modules/@vitejs/plugin-react/dist/index.js')).default;
   const server = await vite.createServer({
     root: ROOT,
     configFile: false,
     base: BASE,
-    plugins: [react(), ...(probe ? [schedulerProbePlugin()] : []), ...(emotionProbe ? [emotionProbePlugin({ fast })] : [])],
+    plugins: [react(), ...(probe ? [schedulerProbePlugin()] : []), ...(emotionProbe ? [emotionProbePlugin({ fast })] : []), ...(cityProbe ? [cityProbePlugin()] : [])],
     server: { host: '127.0.0.1', port: 0, strictPort: false },
     logLevel: 'error',
     clearScreen: false,

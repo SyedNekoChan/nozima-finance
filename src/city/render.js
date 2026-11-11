@@ -628,15 +628,33 @@ export function lightThrough(cam, dist, wy) {
   return Math.sqrt(tr);
 }
 
-export function createCityFrame(w, h, { capture = false } = {}) {
+/*
+ * view: the rows of the frame that are the scene proper, { y0, h } (default:
+ * the whole frame). The camera is the one for a view-sized frame, moved to
+ * where the view sits, so the view shows exactly that frame; rows above it
+ * carry on the same view upward, and the viewer's ledge closes the view at
+ * its bottom and carries on below it. (City mode bakes the whole screen this
+ * way, the view being the area between the header and the footer, so hiding
+ * them for observation reveals more of the same scene, re-rendering nothing.)
+ */
+export function createCityFrame(w, h, { capture = false, view = null } = {}) {
+  const vy0 = view ? view.y0 : 0;
+  const vh = view ? view.h : h;
   const city = createCity();
-  const cam = makeCamera(w, h);
+  const cam = makeCamera(w, vh);
+  cam.cy += vy0;
   const color = new Float32Array(w * h * 3);
   const light = new Float32Array(w * h * 3); // emitted light, after the air
   const depth = new Float32Array(w * h);
   const dir = [0, 0, 0];
   const [ox, oy, oz] = cam.pos;
   const parapetRows = PARAPET_TILES[0].length;
+  const ledgeTop = vy0 + vh - parapetRows; // first row of the viewer's ledge: nothing at or below it is traced
+  // the order rows are traced in: the view's own rows first, top to bottom, then the rows above it. Buildings
+  // are numbered as rays first reach them, and their numbers decide their lit windows, so this keeps the view
+  // exactly what it is on its own
+  const order = new Int32Array(h);
+  for (let k = 0; k < h; k++) order[k] = k < vh ? vy0 + k : k < vh + vy0 ? k - vh : k;
   const n3 = w * h * 3;
   const cap = capture
     ? {
@@ -691,7 +709,7 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     const trL = Math.sqrt(tr);
     const n = py * w + px;
     const k = n * 3;
-    const vig = cap ? vignette(px, py, w, h) : 0;
+    const vig = cap ? vignette(px, py - vy0, w, vh) : 0;
     for (let c = 0; c < 3; c++) {
       let fogC = C.fogHigh[c] + (C.fogLow[c] - C.fogHigh[c]) * low;
       fogC += (C.hazeFar[c] - fogC) * far;
@@ -728,23 +746,24 @@ export function createCityFrame(w, h, { capture = false } = {}) {
     },
     /* with `capture`, after finish(): what the animation needs (see the top of this file) */
     get dynamic() {
-      return cap && cap.F ? { ...cap, depth, parapetRows } : null;
+      return cap && cap.F ? { ...cap, depth, parapetRows, ledgeTop, view: { y0: vy0, h: vh } } : null;
     },
     get progress() {
       return rowsDone / h;
     },
-    /* Shade rows [y0, y1). The parapet's rows are not traced. */
+    /* Shade the next rows, [y0, y1) of h in tracing order (see `order`). The ledge's rows are not traced. */
     renderRows(y0, y1) {
       const last = Math.min(y1, h);
-      for (let py = y0; py < last; py++) {
-        if (py >= h - parapetRows) continue;
+      for (let k = y0; k < last; k++) {
+        const py = order[k];
+        if (py >= ledgeTop) continue;
         for (let px = 0; px < w; px++) shadePixel(px, py);
       }
       rowsDone = Math.max(rowsDone, last);
     },
     /* Whole-frame passes; returns RGBA bytes (w * h * 4). */
     finish() {
-      const placed = addBeacons(city, cam, w, h, light, depth);
+      const placed = addBeacons(city, cam, w, vy0, vh, light, depth);
       beaconCount = placed.length;
       const tight = boxBlur(light, w, h, 1);
       const wide = boxBlur(boxBlur(light, w, h, 4), w, h, 4);
@@ -760,7 +779,7 @@ export function createCityFrame(w, h, { capture = false } = {}) {
         for (let px = 0; px < w; px++) {
           const n = py * w + px;
           const k = n * 3;
-          const vig = vignette(px, py, w, h);
+          const vig = vignette(px, py - vy0, w, vh);
           const r = color[k] * vig + light[k] + glow[k];
           const g = color[k + 1] * vig + light[k + 1] + glow[k + 1];
           const b = color[k + 2] * vig + light[k + 2] + glow[k + 2];
@@ -777,7 +796,7 @@ export function createCityFrame(w, h, { capture = false } = {}) {
           rgba[o + 3] = 255;
         }
       }
-      drawParapet(rgba, w, h);
+      drawParapet(rgba, w, h, ledgeTop);
       return rgba;
     },
   };
@@ -792,13 +811,13 @@ export function createCityFrame(w, h, { capture = false } = {}) {
 const BEACON_MIN_HEIGHT = 380;
 const BEACON_MAX_DEPTH = 1600; // beyond this they are lost in the haze
 
-function addBeacons(city, cam, w, h, light, depth) {
+function addBeacons(city, cam, w, vy0, h, light, depth) {
   const limit = w >= 200 ? 3 : 2;
   const spacing = Math.max(14, w * 0.2);
-  const bottom = h - PARAPET_TILES[0].length - 2;
-  // not jammed against the frame's edges, where a lone red point reads as a stray pixel
+  const bottom = vy0 + h - PARAPET_TILES[0].length - 2;
+  // not jammed against the view's edges, where a lone red point reads as a stray pixel
   const marginX = Math.max(3, Math.round(w * 0.08));
-  const marginY = Math.max(3, Math.round(h * 0.06));
+  const marginY = vy0 + Math.max(3, Math.round(h * 0.06));
   const seen = new Set();
   const candidates = [];
   // the blocks any ray reached are the ones already generated
@@ -933,11 +952,14 @@ function bloom(light, w, h) {
   return out;
 }
 
-/* The viewer's own parapet along the bottom edge, tiles chosen by position. */
-function drawParapet(rgba, w, h) {
+/*
+ * The viewer's own parapet along the bottom of the view, tiles chosen by
+ * position; below it (when the frame runs on past the view) its face carries
+ * on down in the colour of its bottom row.
+ */
+function drawParapet(rgba, w, h, y0) {
   const rows = PARAPET_TILES[0].length;
   const tw = PARAPET_TILES[0][0].length;
-  const y0 = h - rows;
   const colors = {};
   for (const [ch, hex] of Object.entries(PARAPET_KEY)) {
     if (!hex) continue;
@@ -960,6 +982,16 @@ function drawParapet(rgba, w, h) {
         rgba[o + 2] = col[2];
         rgba[o + 3] = 255;
       }
+    }
+  }
+  const face = colors[PARAPET_TILES[0][rows - 1][0]];
+  for (let py = y0 + rows; py < h; py++) {
+    for (let x = 0; x < w; x++) {
+      const o = (py * w + x) * 4;
+      rgba[o] = face[0];
+      rgba[o + 1] = face[1];
+      rgba[o + 2] = face[2];
+      rgba[o + 3] = 255;
     }
   }
 }

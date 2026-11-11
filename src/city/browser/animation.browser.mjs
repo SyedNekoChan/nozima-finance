@@ -85,7 +85,7 @@ const brokenSquares = (page) =>
     const c = document.querySelector('[data-city] canvas.city-canvas');
     const s = Number(c.dataset.cityPx);
     const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-    const offY = c.height - Number(c.dataset.cityH) * s;
+    const offY = Number(c.dataset.cityView.split(' ')[2]);
     const offX = -Math.floor((Number(c.dataset.cityW) * s - c.width) / 2);
     let broken = 0;
     for (const frac of [0.2, 0.5, 0.8]) {

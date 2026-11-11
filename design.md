@@ -35,8 +35,10 @@ foreground UI. Its perspective belongs to the layer itself; no foreground
 element is a transformed descendant of it, so it cannot create clipping or
 stacking problems for dropdowns and modals.
 
-The city backdrop (City mode, below) follows the same contract: the same
-z-0 layer box inside the main area, `pointer-events-none`, `aria-hidden`.
+The city backdrop (City mode, below) follows the same contract at z-0,
+`pointer-events-none`, `aria-hidden`, except that its layer covers the whole
+screen (`fixed inset-0`): the scene is composed for the main area, and the
+header and footer cover the rest of it until Observation mode puts them away.
 
 ## Visual modes
 
@@ -57,6 +59,36 @@ value has been read, so a City choice never flashes the snow first.
   layer measures exactly as in Pet mode). Switching back shows it wherever it
   has got to.
 
+### Observation mode
+
+A way to just watch the scene, in either mode, on any screen. The header
+carries a discreet control next to the mode toggle (`[ OBSERVE ]` on desktop,
+a small eye icon on phones, sharing the toggle's cell and its type). While
+observing (session state only, `observing` in `hooks/useVisualMode.js`, never
+stored):
+
+- **The finance interface is put away**: header, tabs, every page's content,
+  the footer and the over-budget readout. Each is wrapped in `<Hideable>`
+  (`components/Observation.jsx`, a `display: contents` wrapper): not painted
+  (`visibility: hidden`), unreachable (`inert`) and hidden from assistive
+  technology (`aria-hidden`), but still laid out. Nothing is unmounted or
+  resized, so application state is untouched.
+- **The environment fills the screen.** Pet mode: the pet world keeps its
+  size (the layout does not change), so Nomoz stays exactly where it is and
+  carries on with whatever it was doing; the snow already covers the screen.
+  City mode: the city layer already covers the screen and was rendered for it
+  (the view carries on up into the sky above the main area and down the
+  ledge below it), so the whole picture simply shows: nothing is re-rendered,
+  paused or reset.
+- **It stays on across Pet / City.** The only controls left, in the top-right
+  corner at 60 % opacity (full on hover or focus), are the mode toggle and
+  `[ EXIT ]`. Escape also leaves. Focus moves to Exit on entering and back to
+  the observe control on leaving. The corner keeps clear of the safe areas
+  (`env(safe-area-inset-*)`, should the page ever extend into them).
+- **Screens.** No browser fullscreen. A resize or a turned phone re-lays out
+  as it always does (the city re-renders for the new size after a short
+  pause, as outside observation), and observation stays on.
+
 ### City mode
 
 A view straight down from the top of a supertall tower into the downtown
@@ -68,20 +100,29 @@ between the towers, faint moonlight falls into the canyon, and the city fades
 into a lit haze (on tall screens, a sliver of overcast sky at the horizon).
 It is dark on purpose: white UI text sits on it with no scrim.
 
-It is two layers:
+It is three layers:
 
 - **The city** (`city/render.js`, `city/animate.js`): the pixel art. Only its
   light sources ever change; the buildings never shift, blur or re-dither.
 - **The atmosphere** (`city/atmos.js`): the air and light over it. A smooth,
   screen-blended layer: it only adds light, and it moves independently of the
   art underneath.
+- **The rain** (`city/rain.js`): rain, splashes, a shooting star or a
+  lightning bolt. Pixel art at the city's own scale, screen-blended over it;
+  empty and hidden in dry weather.
+
+The weather and the sky (`city/env.js`) drive the last two.
 
 #### The city (pixel art)
 
 - **Pixels.** One city pixel is `round(3 x devicePixelRatio)` device pixels
   on every screen (`city/layout.js`). The scene buffer is as many city pixels
   as fit the layer; the composition adapts to its shape rather than being
-  scaled. The canvas is sized in device pixels and the buffer is drawn onto
+  scaled. The layer covers the screen, but the composition (camera, beacons,
+  vignette, the ledge) is that of the main area's own canvas; the rows above
+  it continue the same view (traced after the view's rows, a multiple of 4 of
+  them, so the view's dither and its buildings are exactly as before) and the
+  ledge continues below it. The canvas is sized in device pixels and the buffer is drawn onto
   it at that whole-number scale with no smoothing (overshoot under one city
   pixel is cropped).
 - **Composition** (`city/scene.js`). The camera stands 640 m up at the end of
@@ -136,6 +177,22 @@ It is two layers:
     3-4 in view (at most 7, fewer on a phone held sideways, which shows less
     of the avenue), with gaps and now and then a quiet spell. They move a
     pixel at a time.
+- **Rare events** (`EVENTS` in `city/animate.js`): one at a time, the first
+  2-5 minutes in, then 5-11 minutes after the last one ended (a handful an
+  hour), never the same kind twice running, and never during the sky's own
+  moments (below). Rooms in an event are held: the ambient switching leaves
+  them alone, and the lit share is not counted for them.
+  - **Power outage.** Two to four floors of one building (5-28 lit rooms,
+    one of the more visible such groups) go dark together, stay dark 25-50 s,
+    and come back one by one over a few seconds.
+  - **Emergency vehicle.** It waits for a lane with no cars, keeps it clear
+    while it drives, and runs the avenue's full length at 21-25 m/s (faster
+    than the traffic): its own head or tail lights plus a light turning red
+    and blue every 0.42 s, that colour streaked faintly on the wet road and
+    glowing softly in the air.
+  - **A building wakes.** In a building that was mostly dark, two to five
+    floors light up room by room, floor by floor from the lowest, over
+    20-40 s; they stay lit 1.5-3 minutes, then go dark again over 15-30 s.
 
 #### The atmosphere (light and air)
 
@@ -162,19 +219,58 @@ but never over the roofs that rise above it.
   light; each opening and closing over a minute or so.
 - **Glints** drift over the bright wet reflections; **glow** halos sit round
   the warning lights (blinking with them), the neon sign (breathing) and the
-  cars (moving with them).
+  cars and the emergency light (moving with them).
+- **Weather** (`STILL_ENV`, `WEATHER_AIR`): with the still weather (clear,
+  damp) the air is exactly the approved one. Rain thickens the mist (up to
+  80 % denser) and the haze, and closes the moonlight shafts; the glints
+  follow how wet the surfaces are (a third as strong when dry, half again
+  when soaked), and while it rains, water runs down the wet streets in slow
+  streaks. Lightning lifts the sky and the distant haze for a moment, most
+  around where it struck; the moon breaking through brightens the shafts,
+  the sky and the haze a little.
+
+#### Weather and the sky (`city/env.js`)
+
+- **States.** Clear, light drizzle, rain and heavy rain, one step at a time
+  (clear never jumps to a storm). Clear spells last 5-12 minutes, drizzle
+  1-2.5, rain 1-3, heavy rain 0.75-2; a wet spell that has gone on for 18
+  minutes only clears from then on. So it is dry about half the time, with a
+  dry spell every quarter hour or so, and it never rains for long. It opens
+  clear (the approved "just after the rain" city) for 2.5-5.5 minutes.
+- **Transitions.** The rain eases toward each state's strength over most of a
+  minute; surfaces soak while it rains (fully wet in under a minute of rain)
+  and dry over about five minutes once it stops.
+- **Rain** (`city/rain.js`): falling straight down in the world, so on screen
+  the streaks run toward the downward vanishing point like the towers' edges,
+  in three depths (far: short, slow, faint; near: long, fast, brighter), a
+  little blown; their number follows the rain. Splashes catch the light for a
+  moment on the wet reflections. Faint and sparse even at its heaviest (well
+  under 6 % of the pixels), drawn in whole city pixels.
+- **Lightning** only comes when it rains at least moderately hard, more often
+  the heavier it is (every 14-42 s in heavy rain, 50-140 s at the threshold):
+  one flash, sometimes a fainter second flicker a moment later, gone within
+  half a second; never a strobe. Where the sky is in view, a thin bolt.
+- **The sky's moments**, only under a clear sky and one at a time: a shooting
+  star every 3-9 minutes (drawn only where the sky is in view: the top of a
+  tall phone screen, or more of it while observing; a desktop's view looks
+  down past the horizon and shows none), and every 4-10 minutes the moon
+  breaking through for half a minute or so.
 
 #### Running it
 
 - **Timing.** About 12 updates a second while the page is visible: the city's
   changed rectangle is redrawn; the atmosphere grid is replaced (a few
-  thousand to ~32 000 cells, a few ms) and the browser restretches it.
+  thousand to ~32 000 cells, a few ms) and the browser restretches it; the
+  rain layer is redrawn only while there is something in it (under 1 ms) and
+  is hidden otherwise. The weather has its own clock, which carries on across
+  re-renders (a resize does not reset it).
 - **Setup** after the bake runs in separate short slices (city, atmosphere,
   animation), so the page never stalls.
 - **Paused** while the page is hidden; its clock stops too, so nothing jumps
   on return. Leaving City mode stops it entirely.
 - **Reduced motion.** Under `prefers-reduced-motion` nothing runs: the still
-  city and a still atmosphere are shown; the setting is followed live.
+  city and a still atmosphere (the still weather: no rain, no events, no
+  lightning) are shown; the setting is followed live.
 - **Errors** leave the layer as it is (or black); the app carries on.
 
 ## Persistent budget readout

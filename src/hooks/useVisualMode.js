@@ -15,6 +15,9 @@ import { DEFAULT_VISUAL_MODE, VISUAL_MODE_KEY, nextVisualMode, normalizeVisualMo
 const useVisualMode = create((set, get) => ({
   mode: DEFAULT_VISUAL_MODE,
   hydrated: false,
+  // observation mode: the finance interface put away, only the environment on screen. Kept for the
+  // session only (the app always opens with its interface), and across Pet / City switches
+  observing: false,
 
   hydrate: async () => {
     if (get().hydrated) return;
@@ -34,6 +37,8 @@ const useVisualMode = create((set, get) => ({
   },
 
   toggle: () => get().setMode(nextVisualMode(get().mode)),
+
+  setObserving: (on) => set({ observing: !!on }),
 }));
 
 export default useVisualMode;

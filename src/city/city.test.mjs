@@ -170,3 +170,60 @@ test('the neon sign still shows on a phone', () => {
   for (let i = 0; i < rgba.length; i += 4) if (neon.has((rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2])) n++;
   assert.ok(n >= 4, `only ${n} neon pixels`);
 });
+
+test('observation mode: the layer can cover the whole screen while the scene is composed for the main area', () => {
+  for (const [w, h, dpr, top, bottom] of [
+    [1440, 900, 1, 42, 840],
+    [390, 844, 2, 49, 800],
+    [844, 390, 3, 41, 350],
+  ]) {
+    const l = cityLayout(w, h, dpr, null, null, { top, bottom });
+    assert.equal(l.view.y0 % 4, 0, 'the rows above the view keep the dither in phase');
+    // the view's rows land on the main area, to within a city pixel
+    const viewTop = l.offsetY + l.view.y0 * l.scale;
+    const viewBottom = viewTop + l.view.h * l.scale;
+    assert.ok(Math.abs(viewBottom - bottom * dpr) < 1, `bottom ${viewBottom} vs ${bottom * dpr}`);
+    assert.ok(viewTop <= top * dpr && viewTop > top * dpr - l.scale, `top ${viewTop} vs ${top * dpr}`);
+    // and the buffer still covers the whole canvas
+    assert.ok(l.offsetY <= 0 && l.offsetY + l.h * l.scale >= l.devH);
+    assert.ok(l.w * l.scale >= l.devW);
+  }
+  // without a view, the layout is the one it always was
+  const plain = cityLayout(1440, 820, 1);
+  assert.deepEqual(plain.view, { y0: 0, h: plain.h });
+});
+
+test('the extended frame shows the same scene in the view, the sky above it and the ledge below', () => {
+  const w = 130;
+  const vh = 200;
+  const y0 = 60;
+  const below = 22;
+  const h = y0 + vh + below;
+  const plain = renderCity(w, vh);
+  const f = createCityFrame(w, h, { view: { y0, h: vh } });
+  f.renderRows(0, h);
+  const ext = f.finish();
+  // the view region is the plain frame (bar a little bloom at its very top, from the light above it)
+  let differ = 0;
+  for (let y = 0; y < vh; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = (y * w + x) * 4;
+      const b = ((y + y0) * w + x) * 4;
+      if (plain[a] === ext[b] && plain[a + 1] === ext[b + 1] && plain[a + 2] === ext[b + 2]) continue;
+      differ++;
+      assert.ok(y < 8, `row ${y} of the view differs`);
+    }
+  }
+  assert.ok(differ / (w * vh) < 0.01, `${differ} pixels differ`);
+  // below the view: the ledge, the colour of its bottom row all the way down
+  const last = ((y0 + vh - 1) * w) * 4;
+  for (let y = y0 + vh; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = (y * w + x) * 4;
+    assert.deepEqual([ext[o], ext[o + 1], ext[o + 2]], [ext[last + x * 4], ext[last + x * 4 + 1], ext[last + x * 4 + 2]]);
+  }
+  // above it the view carries on up into the sky: the top rows are open sky (rays that rise)
+  const cam = f.camera;
+  const dir = [0, 0, 0];
+  rayDir(cam, w / 2, 1, dir);
+  assert.ok(dir[1] > 0, 'no sky above the view on a phone');
+});
