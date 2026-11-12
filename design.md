@@ -180,11 +180,20 @@ The weather and the sky (`city/env.js`) drive the last two.
   the facades, height fog thickening toward the streets and the distance (the
   depth of the art itself), bloom on lights, then an ordered dither into the
   fixed palette (`city/palette.js`), so every pixel is a palette colour.
-- **Materials.** Each style (glass, concrete, stone, brick) sets a wall's
-  brightness and its window grid; each building then takes one of a few
-  materials of that brightness, weighted by style (glass mostly steel blue and
-  slate; concrete neutral, charcoal or slate; stone muted violet, concrete or
-  slate; brick mostly brownstone), so no street is one colour.
+- **Materials** (`MATERIALS`, `ROOFS` in `city/scene.js`). Each building
+  has one coherent material, chosen by its style (which also sets its window
+  grid): glass towers deep steel blue, charcoal blue or cool slate; concrete
+  neutral grey, blue-grey or stone; the older brick buildings brownstone,
+  burgundy or charcoal; the dark office facades muted violet or midnight blue
+  (some grey and stone). Its walls are that colour, lit and shaded by face,
+  its glass carries a little of it, and its roof has its own finish
+  (concrete, standing-seam metal, weathered tar and gravel, or fresh tar),
+  with a lighter parapet rim. The materials differ in brightness as well as
+  hue, so towers read apart at a glance (light concrete and stone against
+  dark glass), while staying muted and cool overall and keeping the scene's
+  mean brightness under the limit that keeps white text readable on it; the
+  palette has a few flat colours per material, so a facade is one colour, not
+  a dither of several.
 - **Windows** are lit in rooms: two to four windows side by side share one
   light and one colour of light, so facades show clusters, not a scatter; some
   office floors are lit end to end. Far off, where a pixel stands for a window
@@ -295,12 +304,27 @@ but never over the roofs that rise above it.
 - **Transitions.** The rain eases toward each state's strength over most of a
   minute; surfaces soak while it rains (fully wet in under a minute of rain)
   and dry over about five minutes once it stops.
-- **Rain** (`city/rain.js`): falling straight down in the world, so on screen
-  the streaks run toward the downward vanishing point like the towers' edges,
-  in three depths (far: short, slow, faint; near: long, fast, brighter), a
-  little blown; their number follows the rain. Splashes catch the light for a
-  moment on the wet reflections. Faint and sparse even at its heaviest (well
-  under 6 % of the pixels), drawn in whole city pixels.
+- **Rain** (`city/rain.js`): out there, over the city, seen from under
+  cover. Three layers, each with its own density, streak length, speed and
+  brightness: **distant** (1.8-9 km: fine, short, faint streaks in the haze
+  over the far city and the skyline), **middle** (150 m-1.8 km: the main
+  rainfall, over the whole city, its towers and the avenue) and **exterior**
+  (40-150 m, just beyond the building's edge: longer, brighter streaks over
+  the rooftops below; it joins once the rain is more than a drizzle). Every
+  drop has a distance and is drawn only where nothing nearer stands in front
+  of it, so rain falls between and in front of the towers but never through
+  them, and never on or below the viewer's parapet: nothing falls in front of
+  the viewer. Drops appear anywhere in the picture where their layer has open
+  air and live under a second, fading in and out; each starts where its drift
+  (toward the point straight below, and with the wind) brings it to its spot
+  half-way through its life, so the rain stays evenly spread across the whole
+  width, with no stream or column. Each falls toward the point straight
+  below, like the towers' edges, faster and longer the farther it is from that
+  point (as in perspective), tilted by a wind that slowly swings and gusts and
+  a small tilt of its own; speed, length and brightness vary per drop.
+  Splashes catch the light for a moment on the wet reflections. Faint and
+  sparse even at its heaviest (about 2 % of the pixels), drawn in whole city
+  pixels.
 - **Lightning** only comes when it rains at least moderately hard, more often
   the heavier it is (every 14-42 s in heavy rain, 50-140 s at the threshold):
   one flash, sometimes a fainter second flicker a moment later, gone within

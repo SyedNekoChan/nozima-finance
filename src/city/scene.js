@@ -42,47 +42,71 @@ export const STYLES = [
 ];
 
 /*
- * Facade materials. A style sets how bright a wall is and how its windows
- * are laid out; each building then takes one of a few believable night-time
- * colours of that brightness (cast after rain under a cool overcast), so a
- * street of one style is not one colour: charcoal, slate, steel blue, muted
- * violet, neutral concrete and, for the brick, brownstone. Weights per style.
+ * Facade and roof materials. Each building has one coherent material: its
+ * walls are that colour (lit and shaded by face), its glass carries a little
+ * of it, and its roof has a finish of its own. They are distinct at a glance
+ * but all belong to a New York night after rain: muted, cool on the whole,
+ * the warm ones (brownstone, burgundy, stone) dark and desaturated. Each style
+ * picks from its own family:
+ *
+ *   glass      deep steel blue, charcoal blue, cool slate
+ *   concrete   neutral grey, blue-grey, stone
+ *   brick      (the older buildings) brownstone, burgundy, charcoal
+ *   stone      (the dark office facades) muted violet, midnight blue, and
+ *              some grey and stone
  */
 export const MATERIALS = {
-  charcoal: [1.0, 1.0, 1.05],
-  slate: [0.92, 1.0, 1.12],
-  steel: [0.8, 0.98, 1.28],
-  violet: [1.05, 0.9, 1.15],
-  concrete: [1.05, 1.02, 0.95],
-  brownstone: [1.16, 0.96, 0.86],
+  steelBlue: [0.024, 0.046, 0.088],
+  charcoalBlue: [0.026, 0.032, 0.048],
+  coolSlate: [0.058, 0.067, 0.084],
+  grey: [0.092, 0.092, 0.095],
+  blueGrey: [0.062, 0.075, 0.098],
+  stone: [0.102, 0.094, 0.082],
+  brownstone: [0.092, 0.062, 0.05],
+  burgundy: [0.086, 0.042, 0.05],
+  charcoal: [0.03, 0.031, 0.035],
+  violet: [0.056, 0.044, 0.08],
+  midnight: [0.021, 0.029, 0.054],
 };
 const MATERIAL_MIX = {
-  glass: [['steel', 0.45], ['slate', 0.35], ['charcoal', 0.2]],
-  concrete: [['concrete', 0.5], ['charcoal', 0.3], ['slate', 0.2]],
-  stone: [['violet', 0.35], ['concrete', 0.35], ['slate', 0.3]],
-  brick: [['brownstone', 0.55], ['charcoal', 0.25], ['violet', 0.2]],
+  glass: [['steelBlue', 0.4], ['charcoalBlue', 0.3], ['coolSlate', 0.3]],
+  concrete: [['grey', 0.35], ['blueGrey', 0.4], ['stone', 0.25]],
+  brick: [['brownstone', 0.45], ['burgundy', 0.3], ['charcoal', 0.25]],
+  stone: [['violet', 0.35], ['midnight', 0.35], ['grey', 0.15], ['stone', 0.15]],
 };
+// roof finishes: membrane / concrete decks, standing-seam metal, weathered (old tar and gravel), fresh tar
+export const ROOFS = {
+  concrete: [0.055, 0.055, 0.058],
+  metal: [0.042, 0.049, 0.062],
+  weathered: [0.05, 0.047, 0.042],
+  tar: [0.029, 0.03, 0.035],
+};
+const ROOF_MIX = [['concrete', 0.35], ['metal', 0.25], ['weathered', 0.25], ['tar', 0.15]];
 
-/* The wall and glass colour of a building of `style`, from a 0..1 pick: the style's brightness, a material's hue. */
-function material(style, r) {
-  let name = MATERIAL_MIX[style.name][0][0];
-  for (const [m, w] of MATERIAL_MIX[style.name]) {
-    if (r < w) {
-      name = m;
-      break;
-    }
+const pick = (mix, r) => {
+  for (const [name, w] of mix) {
+    if (r < w) return name;
     r -= w;
   }
-  const tint = MATERIALS[name];
+  return mix[mix.length - 1][0];
+};
+
+/* A building's materials, from two 0..1 picks: its walls and glass by style, and its roof. */
+function material(style, r, rr) {
+  const name = pick(MATERIAL_MIX[style.name], r);
+  const wall = MATERIALS[name];
+  const roof = ROOFS[pick(ROOF_MIX, rr)];
   const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  const tl = lum(tint);
-  const wl = lum(style.wall);
   const gl = lum(style.glass);
+  const wl = lum(wall);
   return {
     material: name,
-    wall: tint.map((t) => (t / tl) * wl),
-    // glass keeps a cool cast whatever the frame; a little of the material shows in it
-    glass: style.glass.map((g, c) => g * 0.75 + (tint[c] / tl) * gl * 0.25),
+    wall,
+    // glass keeps a cool cast whatever the walls; a little of the material shows in it
+    glass: style.glass.map((g, c) => g * 0.75 + (wall[c] / wl) * gl * 0.25),
+    roofMaterial: pick(ROOF_MIX, rr),
+    roofColor: roof,
+    roofRim: roof.map((v) => v * 1.55 + 0.006),
   };
 }
 
@@ -357,7 +381,7 @@ function buildBlock(i, j) {
       crown: crownOf(h),
       shops: hash3(i, j, s + 18) < 0.55,
       seed: Math.floor(hash3(i, j, s + 19) * 1e6),
-      ...material(style, hash3(i, j, s + 40)),
+      ...material(style, hash3(i, j, s + 40), hash3(i, j, s + 41)),
     };
     const first = boxes.length;
     shape(i, j, s, x0, x1, z0, z1, h, b, boxes, h === h0 ? 0 : h0);
