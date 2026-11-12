@@ -491,9 +491,10 @@ function reflection(city, x, y, z, dx, dy, dz, out) {
   const py = y + rdy * t;
   const pz = z + dz * t;
   if (h.axis === 1) {
-    out[0] = C.roof[0];
-    out[1] = C.roof[1];
-    out[2] = C.roof[2];
+    const rc = h.box.b.roofColor;
+    out[0] = rc[0];
+    out[1] = rc[1];
+    out[2] = rc[2];
   } else {
     shadeFacade(h.box.b, h.box, h.axis, h.sign, px, py, pz, t / 200, t, rBase, rEmit);
     out[0] = rBase[0] + rEmit[0];
@@ -517,18 +518,18 @@ function shadeRoof(city, b, box, x, y, z, dx, dy, dz, pf) {
   const rimW = Math.max(0.6, pf * 1.05);
   let r0 = 0.12;
   if (edge < rimW) {
-    set3(base, C.rim);
+    set3(base, b.roofRim);
     r0 = 0.04;
   } else {
-    set3(base, C.roof);
+    set3(base, b.roofColor);
     // membrane patches
     const p = 0.85 + 0.3 * hash3(Math.floor(x / 3), Math.floor(z / 3), b.id);
     for (let c = 0; c < 3; c++) base[c] *= p;
 
     if (box.part === 'mech' && pf < 1.2) {
       const ch = decal(PLANT, (rx % PLANT_SIZE) / PLANT_SIZE, (rz % PLANT_SIZE) / PLANT_SIZE);
-      if (ch === 'a') for (let c = 0; c < 3; c++) base[c] = C.rim[c] * 0.85;
-      else if (ch === 'b') for (let c = 0; c < 3; c++) base[c] = C.roof[c] * 0.7;
+      if (ch === 'a') for (let c = 0; c < 3; c++) base[c] = b.roofRim[c] * 0.85;
+      else if (ch === 'b') for (let c = 0; c < 3; c++) base[c] = b.roofColor[c] * 0.7;
       else if (ch === 'c') for (let c = 0; c < 3; c++) base[c] = C.metal[c] * 0.8;
     } else if (b.key === FOCAL.helipad && box.y1 >= b.h - 0.01) {
       const u = (x - (box.x0 + box.x1) / 2) / HELIPAD_SIZE + 0.5;

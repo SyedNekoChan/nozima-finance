@@ -19,6 +19,11 @@ export const CITY_PALETTE_HEX = [
   '#141c20', '#1c272c', '#26343a', '#32454c', '#43585f', '#5a7178',
   // building materials: charcoal, steel blue, muted violet, brownstone
   '#141518', '#1e2024', '#18202b', '#222c3a', '#2e3a4b', '#1c1826', '#282233', '#1d1714', '#2a221d',
+  // more materials, so each reads as its own flat colour: neutral grey, blue-grey, stone, burgundy,
+  // deep steel blue, charcoal
+  '#18191b', '#232426', '#2e3033', '#151a21', '#1f2630', '#2a3340', '#1b1a17', '#282622', '#35322c',
+  '#1a1013', '#271a1d', '#35232a', '#0b111c', '#121a28', '#0e0f11',
+  '#221f1b', '#2a2a2d', '#1b2230', '#2a1c17', '#221a2d', '#0c1220',
   // warm darks (the odd sodium street, amber shopfronts)
   '#382416', '#4d311a', '#69421e',
   // amber accents (sodium, crowns, the parapet lamps)

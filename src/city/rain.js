@@ -1,4 +1,4 @@
-import { hash3 } from './noise.js';
+import { hash3, smoothstep } from './noise.js';
 import { MAX_T as VIEW_T } from './render.js';
 import { project, rayDir } from './scene.js';
 
@@ -9,25 +9,54 @@ import { project, rayDir } from './scene.js';
  * whole-number scale, unsmoothed, screen-blended over it (it only adds light
  * and never touches a pixel of the art).
  *
- * Rain falls straight down in the world, so in the picture the streaks run
- * toward the downward vanishing point, like the towers' edges: near drops
- * long and fast, far ones short and slow. How much of it there is follows the
- * weather (env.js); in clear weather the layer is empty and costs nothing.
- * Splashes catch the light on wet roofs and streets while it rains. A
- * shooting star or a bolt only ever shows where the sky is in view.
+ * The viewer watches from under cover at the top of a tower: the rain is
+ * out there, over the city, never on this side of the parapet. It falls in
+ * three depth layers, each with its own density, streak length, speed and
+ * contrast:
+ *
+ *   distant   fine, short, faint streaks kilometres off, part of the haze
+ *             over the far city and the skyline
+ *   middle    the main rainfall, a few hundred metres to a couple of
+ *             kilometres out, over the whole city, its towers and the avenue
+ *   exterior  the nearest, just beyond the building's edge: a little longer
+ *             and brighter, over the rooftops below
+ *
+ * Every drop has a depth: it is only drawn where nothing nearer stands in
+ * front of it (the city's own depth per pixel), so rain falls between and
+ * in front of the towers but never through them, and nowhere on or below the
+ * viewer's parapet. Drops are spread evenly over the picture (they appear
+ * anywhere and live under a second, fading in and out), so there is no
+ * column or stream of rain anywhere. Rain falls straight down in the world,
+ * so each streak points toward the point straight below the viewer, like the
+ * towers' edges, tilted a little by a wind that slowly swings and gusts; every
+ * drop has its own speed, length, brightness and a small tilt of its own.
+ * How much of each layer there is follows the weather (env.js); in clear
+ * weather the layer is empty and costs nothing. Splashes catch the light on
+ * wet roofs and streets while it rains. A shooting star or a bolt only ever
+ * shows where the sky is in view.
  */
 
 export const RAIN = {
-  density: 1 / 230, // drops per city pixel at the heaviest
-  max: 650,
-  min: 60,
-  // per depth band: share of the drops, speed (city px / s), streak length (px), brightness
-  bands: [
-    { share: 0.5, speed: [28, 46], len: 2, light: 0.13 },
-    { share: 0.33, speed: [80, 120], len: 4, light: 0.19 },
-    { share: 0.17, speed: [190, 260], len: 7, light: 0.27 },
+  // per layer: distance from the viewer (m), drops per visible city pixel at the heaviest, streak length
+  // and speed (city px, px / s), brightness, how soon it comes in as the rain strengthens (0: from the
+  // first drizzle) and its colour
+  layers: [
+    { name: 'distant', depth: [1800, 9000], density: 1 / 520, len: [1, 2], speed: [22, 40], light: [0.11, 0.16], from: 0, color: [0.56, 0.6, 0.7] },
+    { name: 'middle', depth: [150, 1800], density: 1 / 220, len: [3, 5], speed: [55, 105], light: [0.22, 0.33], from: 0, color: [0.58, 0.64, 0.76] },
+    { name: 'exterior', depth: [40, 150], density: 1 / 600, len: [5, 9], speed: [150, 240], light: [0.3, 0.42], from: 0.2, color: [0.62, 0.68, 0.8] },
   ],
-  color: [0.58, 0.66, 0.78],
+  max: 900, // drops in all, whatever the screen
+  /*
+   * Perspective: a drop's speed and streak on screen grow with its distance from the point straight below
+   * (times `persp` = that distance over the picture's middle's, at most `max`). Near that point rain falls
+   * almost straight away from the eye and would shrink to still dots. Where the point is close under the
+   * picture (a phone held upright: `near` -> 1, from how far below the parapet it is, as a share of the
+   * picture's height), streaks keep most of their length and drops keep moving: the floors rise from their
+   * first value (far below, as on a desktop or a phone on its side, unchanged) to their second.
+   */
+  perspective: { max: 1.6, near: [0.3, 0.8], lenFloor: [0.7, 0.95], speedFloor: [0.35, 0.85] },
+  lifeMs: [450, 1100], // a drop is seen for this long, fading in and out
+  wind: { base: 0.12, swing: 0.1, swingMs: 23000, gust: 0.06, gustMs: 4100, jitter: 0.06 }, // sideways drift per unit of fall
   splashes: 0.5, // per second, per 1000 wet pixels, at the heaviest
   star: [1, 0.96, 0.86],
   bolt: [0.82, 0.88, 1],
@@ -39,7 +68,7 @@ export function createRain(frame, { seed = 1 } = {}) {
   let dyn = frame.dynamic;
   const { w, h } = frame;
   const cam = frame.camera;
-  const rows = dyn.ledgeTop;
+  const rows = dyn.ledgeTop; // the viewer's parapet and everything below it: no rain, ever
   const cfg = RAIN;
 
   // where the sky is in view (rays that rise and meet nothing): stars and bolts only go there
@@ -67,8 +96,34 @@ export function createRain(frame, { seed = 1 } = {}) {
   }
   const wet = Int32Array.from(wetList);
 
-  // falling rain heads toward the point straight below
+  // how far off the city is at each pixel above the parapet: a drop shows only in front of it
+  const depth = Float32Array.from(dyn.depth.subarray(0, w * rows));
+
+  // falling rain heads toward the point straight below; in perspective a drop's speed (and its streak) on
+  // screen grows with its distance from that point, so the rain thins out evenly instead of gathering there
   const vp = project(cam, cam.pos[0], cam.pos[1] - 1e5, cam.pos[2] + 1e-3) || { x: w / 2, y: h * 4 };
+  const vpRef = Math.hypot(vp.x - w / 2, vp.y - rows / 2) || 1; // the speeds and lengths above are for the picture's middle
+  const P = cfg.perspective;
+  const near = 1 - smoothstep(P.near[0], P.near[1], (vp.y - rows) / rows);
+  const lenFloor = P.lenFloor[0] + (P.lenFloor[1] - P.lenFloor[0]) * near;
+  const speedFloor = P.speedFloor[0] + (P.speedFloor[1] - P.speedFloor[0]) * near;
+  const vel = [0, 0, 0]; // direction (x, y) and speed of a drop, from velocity()
+  /* Where a drop at (x, y) heads and how fast (px / s): toward the point below, tilted by the wind, in perspective. */
+  function velocity(x, y, tilt, speed) {
+    let ux = vp.x - x;
+    let uy = vp.y - y;
+    const dist = Math.hypot(ux, uy) || 1;
+    ux /= dist;
+    uy /= dist;
+    // the wind pushes sideways (across the fall)
+    const fx = ux - uy * tilt;
+    const fy = uy + ux * tilt;
+    const fn = Math.hypot(fx, fy) || 1;
+    vel[0] = fx / fn;
+    vel[1] = fy / fn;
+    vel[2] = speed * Math.max(speedFloor, Math.min(P.max, dist / vpRef));
+    return Math.min(P.max, dist / vpRef); // persp
+  }
   dyn = null;
 
   let a = seed >>> 0;
@@ -78,30 +133,74 @@ export function createRain(frame, { seed = 1 } = {}) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  const between = ([lo, hi]) => lo + (hi - lo) * random();
+  let windNow = cfg.wind.base; // the wind at the last update (a new drop starts upwind of where it is going)
 
-  const maxDrops = Math.round(Math.min(cfg.max, Math.max(cfg.min, w * h * cfg.density)));
+  // per layer: the pixels it can fall in front of (the city there is farther off than the layer's nearest
+  // drops), and how many drops it has at the heaviest
+  const layers = cfg.layers.map((L) => {
+    const spots = [];
+    for (let p = 0; p < w * rows; p++) if (depth[p] > L.depth[0] + 20) spots.push(p);
+    return { ...L, spots: Int32Array.from(spots), max: Math.round(spots.length * L.density) };
+  });
+  const total = layers.reduce((n, L) => n + L.max, 0);
+  const scale = total > cfg.max ? cfg.max / total : 1;
+  for (const L of layers) L.max = Math.round(L.max * scale);
+  const maxDrops = layers.reduce((n, L) => n + L.max, 0);
+
+  // the drops, layer after layer
+  const dLayer = new Uint8Array(maxDrops);
   const dx = new Float32Array(maxDrops);
   const dy = new Float32Array(maxDrops);
-  const dv = new Float32Array(maxDrops); // speed
-  const band = new Uint8Array(maxDrops);
-  for (let i = 0; i < maxDrops; i++) {
-    const r = i / maxDrops;
-    band[i] = r < cfg.bands[0].share ? 0 : r < cfg.bands[0].share + cfg.bands[1].share ? 1 : 2;
+  const dd = new Float32Array(maxDrops); // its distance from the viewer (m)
+  const dv = new Float32Array(maxDrops); // speed (px / s)
+  const dl = new Float32Array(maxDrops); // streak length (px)
+  const db = new Float32Array(maxDrops); // brightness
+  const dt0 = new Float32Array(maxDrops); // its own sideways tilt
+  const dAge = new Float32Array(maxDrops); // seconds
+  const dLife = new Float32Array(maxDrops);
+  const firstOf = [];
+  {
+    let i = 0;
+    layers.forEach((L, l) => {
+      firstOf.push(i);
+      for (let k = 0; k < L.max; k++) dLayer[i++] = l;
+    });
   }
-  const place = (i, anywhere) => {
-    dx[i] = random() * w;
-    dy[i] = anywhere ? random() * h : -random() * 12;
-    const s = cfg.bands[band[i]].speed;
-    dv[i] = s[0] + (s[1] - s[0]) * random();
-  };
-  // spread the drops' order so the shares hold for any number in use
-  const order = new Int32Array(maxDrops);
-  for (let i = 0; i < maxDrops; i++) order[i] = i;
-  for (let i = maxDrops - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    const tmp = order[i];
-    order[i] = order[j];
-    order[j] = tmp;
+  // a drop appears at a random spot of its layer where its depth is in front of the city
+  function place(i, anyAge) {
+    const L = layers[dLayer[i]];
+    dLife[i] = between(cfg.lifeMs) / 1000;
+    dAge[i] = anyAge ? random() * dLife[i] : 0;
+    dv[i] = between(L.speed);
+    dl[i] = between(L.len);
+    db[i] = between(L.light);
+    dt0[i] = (random() * 2 - 1) * cfg.wind.jitter;
+    for (let tries = 0; tries < 6; tries++) {
+      const p = L.spots[Math.floor(random() * L.spots.length)];
+      // its distance: anywhere through the layer in front of what is there (evenly, so most drops have open
+      // air around them rather than sitting against the facade behind)
+      const far = Math.min(L.depth[1], depth[p] - 15);
+      if (far <= L.depth[0]) continue;
+      dd[i] = L.depth[0] + random() * (far - L.depth[0]);
+      // drops drift toward the point below (and with the wind) as they fall: start it where it must be so that it
+      // is at the chosen spot half-way through its life (spots are even over the picture, so the rain stays even,
+      // edges and all), tracing its path back from the spot with the same motion it will have
+      let x = (p % w) + random();
+      let y = ((p / w) | 0) + random();
+      const back = dLife[i] / 2 - dAge[i];
+      const steps = Math.max(1, Math.ceil(Math.abs(back) / 0.04));
+      const h = back / steps;
+      for (let k = 0; k < steps; k++) {
+        velocity(x, y, windNow + dt0[i], dv[i]);
+        x -= vel[0] * vel[2] * h;
+        y -= vel[1] * vel[2] * h;
+      }
+      dx[i] = x;
+      dy[i] = y;
+      return;
+    }
+    dAge[i] = dLife[i]; // nowhere to go this time: try again on the next update
   }
   for (let i = 0; i < maxDrops; i++) place(i, true);
 
@@ -110,7 +209,7 @@ export function createRain(frame, { seed = 1 } = {}) {
   const BLACK = 0xff000000; // opaque black adds nothing under screen blending
   px32.fill(BLACK);
   let dirty = false; // something drawn last time (so it must be cleared)
-  const level = new Float32Array(w * h); // light per pixel this update
+  const level = new Float32Array(w * h * 3); // light per pixel this update (r, g, b)
   const touched = new Int32Array(w * h);
   let nTouched = 0;
   const splashes = new Int32Array(64);
@@ -119,11 +218,16 @@ export function createRain(frame, { seed = 1 } = {}) {
   let splashCarry = 0;
   let boltSeed = -1;
 
-  function light(x, y, v) {
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
+  /* A streak pixel of light v and colour c, for a drop at distance d: only in front of the city, above the parapet. */
+  function light(x, y, v, c, d) {
+    if (x < 0 || y < 0 || x >= w || y >= rows) return;
     const p = y * w + x;
-    if (level[p] === 0) touched[nTouched++] = p;
-    if (v > level[p]) level[p] = v;
+    if (depth[p] <= d) return; // something nearer stands in front of it
+    const k = p * 3;
+    if (level[k] === 0 && level[k + 1] === 0 && level[k + 2] === 0) touched[nTouched++] = p;
+    level[k] = Math.max(level[k], c[0] * v);
+    level[k + 1] = Math.max(level[k + 1], c[1] * v);
+    level[k + 2] = Math.max(level[k + 2], c[2] * v);
   }
 
   function paint(color, p, v) {
@@ -142,37 +246,58 @@ export function createRain(frame, { seed = 1 } = {}) {
     update(t, dtMs, env) {
       const dt = Math.min(0.25, Math.max(0, dtMs / 1000));
       const rain = env.rain;
-      const n = Math.round(maxDrops * Math.min(1, rain) ** 0.9);
+      const raining = maxDrops > 0 && rain > 0.001;
       const flashing = hasSky && env.flash > 0.3;
       const star = hasSky ? env.star : null;
-      if (!n && !nSplash && !flashing && !star && !dirty) return false;
+      if (!raining && !nSplash && !flashing && !star && !dirty) return false;
 
       // clear what was drawn
-      for (let i = 0; i < nTouched; i++) level[touched[i]] = 0;
+      for (let i = 0; i < nTouched; i++) level[touched[i] * 3] = level[touched[i] * 3 + 1] = level[touched[i] * 3 + 2] = 0;
       nTouched = 0;
       if (dirty) px32.fill(BLACK);
       dirty = false;
 
-      // rain: streaks toward the point below, a little blown by the wind
-      const wind = 6 + 14 * rain;
-      for (let k = 0; k < n; k++) {
-        const i = order[k];
-        let ux = vp.x - dx[i];
-        let uy = vp.y - dy[i];
-        const d = Math.hypot(ux, uy) || 1;
-        ux /= d;
-        uy /= d;
-        const b = cfg.bands[band[i]];
-        dx[i] += (ux * dv[i] + wind * (band[i] + 1) * 0.4) * dt;
-        dy[i] += uy * dv[i] * dt;
-        if (dy[i] >= h || dx[i] < -8 || dx[i] >= w + 8 || d < 3) {
-          place(i, false);
-          continue;
+      // rain: each layer as heavy as the weather makes it, every streak toward the point below, a little blown
+      const wcfg = cfg.wind;
+      const wind = (wcfg.base + wcfg.swing * Math.sin((t / wcfg.swingMs) * Math.PI * 2)) * (0.6 + 0.4 * rain) + wcfg.gust * Math.max(0, Math.sin((t / wcfg.gustMs) * Math.PI * 2)) ** 3 * rain;
+      windNow = wind;
+      let n = 0;
+      layers.forEach((L, l) => {
+        const k = rain <= L.from ? 0 : Math.min(1, (rain - L.from) / (1 - L.from)) ** 0.9;
+        const count = Math.round(L.max * k);
+        n += count;
+        for (let j = 0; j < count; j++) {
+          const i = firstOf[l] + j;
+          dAge[i] += dt;
+          if (dAge[i] >= dLife[i]) place(i, false);
+          if (dAge[i] >= dLife[i]) continue;
+          const persp = velocity(dx[i], dy[i], wind + dt0[i], dv[i]);
+          const sx = vel[0];
+          const sy = vel[1];
+          dx[i] += sx * vel[2] * dt;
+          dy[i] += sy * vel[2] * dt;
+          // (a drop may start or pass outside the picture on its way: it is just not drawn there)
+          if (dy[i] >= rows || dx[i] < -w || dx[i] >= 2 * w) {
+            dAge[i] = dLife[i];
+            continue;
+          }
+          const life = dAge[i] / dLife[i];
+          const fade = Math.min(1, life * 5, (1 - life) * 5);
+          const v = db[i] * (0.65 + 0.35 * rain) * fade;
+          // (near the point below, where rain falls almost straight away from the eye, streaks would shrink to
+          // dots: they keep most of their length there, see RAIN.perspective)
+          const len = Math.max(1, Math.round(dl[i] * Math.max(lenFloor, persp)));
+          for (let s = 0; s < len; s++) light(Math.round(dx[i] - sx * s), Math.round(dy[i] - sy * s), v * (1 - s / (len + 1)), L.color, dd[i]);
         }
-        const v = b.light * (0.55 + 0.45 * rain);
-        for (let s = 0; s < b.len; s++) light(Math.round(dx[i] - ux * s), Math.round(dy[i] - uy * s), v * (1 - s / (b.len + 1)));
+      });
+      for (let i = 0; i < nTouched; i++) {
+        const p = touched[i];
+        const o = p * 4;
+        const k = p * 3;
+        out[o] = level[k] * 255;
+        out[o + 1] = level[k + 1] * 255;
+        out[o + 2] = level[k + 2] * 255;
       }
-      for (let i = 0; i < nTouched; i++) paint(cfg.color, touched[i], level[touched[i]]);
 
       // splashes on wet roofs and streets: a pixel catches the light for a moment
       if (wet.length) {
@@ -185,7 +310,7 @@ export function createRain(frame, { seed = 1 } = {}) {
         splashCarry = Math.min(splashCarry, 4);
       }
       for (let i = 0; i < nSplash; ) {
-        paint(cfg.color, splashes[i], 0.26);
+        paint(cfg.layers[1].color, splashes[i], 0.26);
         splashLife[i] -= dt;
         if (splashLife[i] <= 0) {
           splashes[i] = splashes[nSplash - 1];
