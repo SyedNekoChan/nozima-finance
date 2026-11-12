@@ -1,4 +1,4 @@
-import { hash3 } from './noise.js';
+import { hash3, smoothstep } from './noise.js';
 import { MAX_T as VIEW_T } from './render.js';
 import { project, rayDir } from './scene.js';
 
@@ -46,6 +46,15 @@ export const RAIN = {
     { name: 'exterior', depth: [40, 150], density: 1 / 600, len: [5, 9], speed: [150, 240], light: [0.3, 0.42], from: 0.2, color: [0.62, 0.68, 0.8] },
   ],
   max: 900, // drops in all, whatever the screen
+  /*
+   * Perspective: a drop's speed and streak on screen grow with its distance from the point straight below
+   * (times `persp` = that distance over the picture's middle's, at most `max`). Near that point rain falls
+   * almost straight away from the eye and would shrink to still dots. Where the point is close under the
+   * picture (a phone held upright: `near` -> 1, from how far below the parapet it is, as a share of the
+   * picture's height), streaks keep most of their length and drops keep moving: the floors rise from their
+   * first value (far below, as on a desktop or a phone on its side, unchanged) to their second.
+   */
+  perspective: { max: 1.6, near: [0.3, 0.8], lenFloor: [0.7, 0.95], speedFloor: [0.35, 0.85] },
   lifeMs: [450, 1100], // a drop is seen for this long, fading in and out
   wind: { base: 0.12, swing: 0.1, swingMs: 23000, gust: 0.06, gustMs: 4100, jitter: 0.06 }, // sideways drift per unit of fall
   splashes: 0.5, // per second, per 1000 wet pixels, at the heaviest
@@ -94,6 +103,27 @@ export function createRain(frame, { seed = 1 } = {}) {
   // screen grows with its distance from that point, so the rain thins out evenly instead of gathering there
   const vp = project(cam, cam.pos[0], cam.pos[1] - 1e5, cam.pos[2] + 1e-3) || { x: w / 2, y: h * 4 };
   const vpRef = Math.hypot(vp.x - w / 2, vp.y - rows / 2) || 1; // the speeds and lengths above are for the picture's middle
+  const P = cfg.perspective;
+  const near = 1 - smoothstep(P.near[0], P.near[1], (vp.y - rows) / rows);
+  const lenFloor = P.lenFloor[0] + (P.lenFloor[1] - P.lenFloor[0]) * near;
+  const speedFloor = P.speedFloor[0] + (P.speedFloor[1] - P.speedFloor[0]) * near;
+  const vel = [0, 0, 0]; // direction (x, y) and speed of a drop, from velocity()
+  /* Where a drop at (x, y) heads and how fast (px / s): toward the point below, tilted by the wind, in perspective. */
+  function velocity(x, y, tilt, speed) {
+    let ux = vp.x - x;
+    let uy = vp.y - y;
+    const dist = Math.hypot(ux, uy) || 1;
+    ux /= dist;
+    uy /= dist;
+    // the wind pushes sideways (across the fall)
+    const fx = ux - uy * tilt;
+    const fy = uy + ux * tilt;
+    const fn = Math.hypot(fx, fy) || 1;
+    vel[0] = fx / fn;
+    vel[1] = fy / fn;
+    vel[2] = speed * Math.max(speedFloor, Math.min(P.max, dist / vpRef));
+    return Math.min(P.max, dist / vpRef); // persp
+  }
   dyn = null;
 
   let a = seed >>> 0;
@@ -153,15 +183,21 @@ export function createRain(frame, { seed = 1 } = {}) {
       const far = Math.min(L.depth[1], depth[p] - 15);
       if (far <= L.depth[0]) continue;
       dd[i] = L.depth[0] + random() * (far - L.depth[0]);
-      // drops drift toward the point below as they fall: start it where it must be so that it is at the chosen
-      // spot half-way through its life (spots are even over the picture, so the rain stays even, edges and all)
-      // (and upwind of it, by the drift the wind gives it on the way)
-      const back = Math.exp((dv[i] / vpRef) * (dLife[i] / 2 - dAge[i]));
-      const sx0 = (p % w) + random();
-      const sy0 = ((p / w) | 0) + random();
-      const persp = Math.min(1.6, Math.max(0.35, Math.hypot(vp.x - sx0, vp.y - sy0) / vpRef));
-      dx[i] = vp.x + (sx0 - vp.x) * back + (windNow + dt0[i]) * dv[i] * persp * (dLife[i] / 2 - dAge[i]);
-      dy[i] = vp.y + (sy0 - vp.y) * back;
+      // drops drift toward the point below (and with the wind) as they fall: start it where it must be so that it
+      // is at the chosen spot half-way through its life (spots are even over the picture, so the rain stays even,
+      // edges and all), tracing its path back from the spot with the same motion it will have
+      let x = (p % w) + random();
+      let y = ((p / w) | 0) + random();
+      const back = dLife[i] / 2 - dAge[i];
+      const steps = Math.max(1, Math.ceil(Math.abs(back) / 0.04));
+      const h = back / steps;
+      for (let k = 0; k < steps; k++) {
+        velocity(x, y, windNow + dt0[i], dv[i]);
+        x -= vel[0] * vel[2] * h;
+        y -= vel[1] * vel[2] * h;
+      }
+      dx[i] = x;
+      dy[i] = y;
       return;
     }
     dAge[i] = dLife[i]; // nowhere to go this time: try again on the next update
@@ -235,21 +271,11 @@ export function createRain(frame, { seed = 1 } = {}) {
           dAge[i] += dt;
           if (dAge[i] >= dLife[i]) place(i, false);
           if (dAge[i] >= dLife[i]) continue;
-          let ux = vp.x - dx[i];
-          let uy = vp.y - dy[i];
-          const dist = Math.hypot(ux, uy) || 1;
-          ux /= dist;
-          uy /= dist;
-          const persp = Math.min(1.6, Math.max(0.35, dist / vpRef));
-          // the wind pushes sideways (across the fall)
-          const tilt = wind + dt0[i];
-          const fx = ux - uy * tilt;
-          const fy = uy + ux * tilt;
-          const fn = Math.hypot(fx, fy) || 1;
-          const sx = fx / fn;
-          const sy = fy / fn;
-          dx[i] += sx * dv[i] * persp * dt;
-          dy[i] += sy * dv[i] * persp * dt;
+          const persp = velocity(dx[i], dy[i], wind + dt0[i], dv[i]);
+          const sx = vel[0];
+          const sy = vel[1];
+          dx[i] += sx * vel[2] * dt;
+          dy[i] += sy * vel[2] * dt;
           // (a drop may start or pass outside the picture on its way: it is just not drawn there)
           if (dy[i] >= rows || dx[i] < -w || dx[i] >= 2 * w) {
             dAge[i] = dLife[i];
@@ -259,8 +285,8 @@ export function createRain(frame, { seed = 1 } = {}) {
           const fade = Math.min(1, life * 5, (1 - life) * 5);
           const v = db[i] * (0.65 + 0.35 * rain) * fade;
           // (near the point below, where rain falls almost straight away from the eye, streaks would shrink to
-          // dots: they keep most of their length there)
-          const len = Math.max(1, Math.round(dl[i] * Math.max(0.7, persp)));
+          // dots: they keep most of their length there, see RAIN.perspective)
+          const len = Math.max(1, Math.round(dl[i] * Math.max(lenFloor, persp)));
           for (let s = 0; s < len; s++) light(Math.round(dx[i] - sx * s), Math.round(dy[i] - sy * s), v * (1 - s / (len + 1)), L.color, dd[i]);
         }
       });

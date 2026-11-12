@@ -321,7 +321,15 @@ but never over the roofs that rise above it.
   width, with no stream or column. Each falls toward the point straight
   below, like the towers' edges, faster and longer the farther it is from that
   point (as in perspective), tilted by a wind that slowly swings and gusts and
-  a small tilt of its own; speed, length and brightness vary per drop.
+  a small tilt of its own; speed, length and brightness vary per drop. Near
+  that point rain falls almost straight away from the eye and would shrink to
+  still dots, so speed and length have floors (`RAIN.perspective`): where the
+  point lies far below the picture (a desktop, a phone on its side) they stay
+  at 35 % of the speed and 70 % of the length; where it lies just under the
+  parapet (a phone held upright, about 12 % of the picture's height below it)
+  they rise to 85 % and 95 %, so rain over the lower city keeps most of its
+  streak and visibly falls. A drop's starting point is traced back along the
+  same motion, so the spread stays even.
   Splashes catch the light for a moment on the wet reflections. Faint and
   sparse even at its heaviest (about 2 % of the pixels), drawn in whole city
   pixels.
