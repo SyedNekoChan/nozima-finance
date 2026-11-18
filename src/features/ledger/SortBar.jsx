@@ -1,65 +1,67 @@
-import Button from '../../components/Button.jsx';
 import SelectorField from '../../components/SelectorField.jsx';
+import { Segmented } from '../../components/Field.jsx';
+import { IconButton } from '../../components/Button.jsx';
+import { IconSortAsc, IconSortDesc } from '../../components/icons.jsx';
 
-const SORT_FIELDS = ['DATE', 'AMOUNT', 'CATEGORY', 'ACCOUNT'];
+const SORT_FIELDS = [
+  { value: 'DATE', label: 'Date' },
+  { value: 'AMOUNT', label: 'Amount' },
+  { value: 'CATEGORY', label: 'Category' },
+  { value: 'ACCOUNT', label: 'Account' },
+];
 
-export default function SortBar({ sortBy, sortDirection, onSortChange }) {
-  const arrow = sortDirection === 'DESC' ? '↓' : '↑';
+const DIR_LABEL = {
+  DATE: { DESC: 'Newest first', ASC: 'Oldest first' },
+  AMOUNT: { DESC: 'Largest first', ASC: 'Smallest first' },
+  CATEGORY: { DESC: 'A to Z', ASC: 'Z to A' },
+  ACCOUNT: { DESC: 'A to Z', ASC: 'Z to A' },
+};
 
-  const options = SORT_FIELDS.flatMap((field) => [
-    { value: `${field}_DESC`, label: `${field} ↓` },
-    { value: `${field}_ASC`, label: `${field} ↑` },
-  ]);
+/*
+ * Sort by one field, in one direction. Choosing a field starts at its
+ * natural order (newest, largest, A–Z); the arrow flips it.
+ */
+export default function SortBar({ sortBy, sortDirection, onSortChange, stacked = false }) {
+  const setField = (field) => onSortChange({ sortBy: field, sortDirection: field === sortBy ? sortDirection : 'DESC' });
+  const flip = () => onSortChange({ sortBy, sortDirection: sortDirection === 'DESC' ? 'ASC' : 'DESC' });
+  const dirLabel = DIR_LABEL[sortBy]?.[sortDirection] || '';
 
-  const handleChange = (compositeValue) => {
-    const [field, direction] = compositeValue.split('_');
-    onSortChange({ sortBy: field, sortDirection: direction });
-  };
-
-  const handleSort = (option) => {
-    if (option === sortBy) {
-      const flipped = sortDirection === 'DESC' ? 'ASC' : 'DESC';
-      onSortChange({ sortBy: option, sortDirection: flipped });
-    } else {
-      onSortChange({ sortBy: option, sortDirection: 'DESC' });
-    }
-  };
+  // the side column on wide screens: the fields full width, the direction under them
+  if (stacked) {
+    return (
+      <div className="space-y-3">
+        <Segmented value={sortBy} options={SORT_FIELDS} onChange={setField} label="Sort by" size="sm" className="w-full" />
+        <button
+          type="button"
+          onClick={flip}
+          data-action="sort-direction"
+          aria-label={`${dirLabel}. Reverse the order.`}
+          className="inline-flex items-center gap-2 h-10 -ml-2 px-2 rounded text-sm text-ink-2 hover:text-ink hover:bg-white/[0.05] motion-btn cursor-pointer"
+        >
+          {sortDirection === 'DESC' ? <IconSortDesc className="w-[18px] h-[18px]" /> : <IconSortAsc className="w-[18px] h-[18px]" />}
+          {dirLabel}
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-shrink-0 w-full bg-transparent border-b border-gray-800 px-4 sm:px-3 md:px-6 py-2 md:py-3">
-      <div className="flex items-center justify-end sm:justify-start gap-2 md:hidden">
-        <span className="font-mono text-xs tracking-widest text-gray-500 leading-none whitespace-nowrap">
-          SORT:
-        </span>
-        <div className="w-36 sm:w-40">
-          <SelectorField
-            value={`${sortBy}_${sortDirection}`}
-            options={options}
-            onChange={handleChange}
-            searchable={false}
-            placeholder={`${sortBy} ${arrow}`}
-          />
-        </div>
+    <div className="flex items-center gap-2 sm:gap-3">
+      <span className="hidden sm:inline text-sm text-ink-3">Sort</span>
+      <div className="sm:hidden flex-1 min-w-0">
+        <SelectorField value={sortBy} options={SORT_FIELDS} onChange={setField} searchable={false} size="sm" label="Sort by" />
       </div>
-
-      <div className="hidden md:flex md:items-center md:gap-6">
-        <span className="font-mono text-xs tracking-widest text-gray-500">SORT:</span>
-        <div className="flex flex-nowrap gap-3">
-          {SORT_FIELDS.map((option) => {
-            const active = sortBy === option;
-            const label = active ? `${sortBy} ${sortDirection === 'DESC' ? '↓' : '↑'}` : option;
-            return (
-              <Button
-                key={option}
-                active={active}
-                onClick={() => handleSort(option)}
-              >
-                {label}
-              </Button>
-            );
-          })}
-        </div>
-      </div>
+      <Segmented value={sortBy} options={SORT_FIELDS} onChange={setField} label="Sort by" size="sm" className="hidden sm:inline-flex" />
+      <IconButton
+        label={`${dirLabel}. Reverse the order.`}
+        onClick={flip}
+        tone="outline"
+        data-action="sort-direction"
+        className="sm:!h-10 sm:!w-10"
+      >
+        {sortDirection === 'DESC' ? <IconSortDesc /> : <IconSortAsc />}
+      </IconButton>
+      <span className="hidden md:inline text-xs text-ink-3 whitespace-nowrap">{dirLabel}</span>
     </div>
   );
 }

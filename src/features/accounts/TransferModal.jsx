@@ -6,6 +6,9 @@ import Reveal from '../../components/Reveal.jsx';
 import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import useHeldValue from '../../hooks/useHeldValue.js';
 import Button from '../../components/Button.jsx';
+import { Field, FieldGroup, TextInput, AmountInput, ChoiceChips } from '../../components/Field.jsx';
+import { accountLabel } from '../../lib/format.js';
+import { IconArrowRight } from '../../components/icons.jsx';
 import { parseAmount } from '../../lib/currency.js';
 import { getTodayDateString } from '../../lib/date.js';
 
@@ -88,20 +91,20 @@ export default function TransferModal({ isOpen, onClose, sourceAccount: sourceAc
     if (isSubmitting) return;
 
     if (!destinationAccount) {
-      setErrorMsg('SELECT DESTINATION');
+      setErrorMsg('Choose the account to transfer to.');
       return;
     }
 
     const amt = parseAmount(amountInput);
     if (isNaN(amt) || amt <= 0) {
-      setErrorMsg('INVALID AMOUNT');
+      setErrorMsg('Enter an amount above zero.');
       return;
     }
 
     if (isCrossCurrency) {
       const rate = parseAmount(rateInput);
       if (isNaN(rate) || rate <= 0) {
-        setErrorMsg('INVALID RATE');
+        setErrorMsg('Enter an exchange rate above zero.');
         return;
       }
     }
@@ -129,108 +132,108 @@ export default function TransferModal({ isOpen, onClose, sourceAccount: sourceAc
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={`TRANSFER: ${sourceAccount?.name || ''}`} size="md">
-      <div className="border-b border-gray-800 pb-3 sm:pb-4 mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">FROM</span>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="font-mono text-sm text-white min-w-0 break-words">[ {sourceAccount.name} ]</span>
-          <span className="font-mono text-xs text-gray-500 flex-shrink-0">{sourceAccount.currency}</span>
-          <span className="font-mono text-xs text-gray-500 sm:ml-auto flex-shrink-0">
-            <AnimatedAmount value={sourceAccount.balance} currency={sourceAccount.currency} />
-          </span>
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={`Transfer from ${accountLabel(sourceAccount?.name)}`}
+      size="md"
+      footer={
+        <>
+          <Button onClick={handleClose} disabled={isSubmitting}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={handleTransfer}
+            disabled={isSubmitting || !destinationId || !amountInput}
+            data-action="confirm-transfer"
+          >
+            {isSubmitting ? 'Transferring…' : 'Transfer'}
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="space-y-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleTransfer();
+        }}
+      >
+        <div className="rounded border border-line bg-white/[0.02] p-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="eyebrow">From</p>
+            <p className="mt-1 text-sm text-ink break-words">{accountLabel(sourceAccount.name)}</p>
+          </div>
+          <div className="text-right">
+            <p className="eyebrow">Available</p>
+            <p className="mt-1 text-sm text-ink">
+              <AnimatedAmount value={sourceAccount.balance} currency={sourceAccount.currency} split codeClassName="ml-1 font-mono text-[max(12px,0.8em)] text-ink-3" />
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">TO</span>
-        <div className="flex flex-wrap sm:flex-nowrap gap-1 sm:gap-2 sm:overflow-x-auto pb-1">
+        <FieldGroup label="To">
           {availableDestinations.length === 0 ? (
-            <span className="font-mono text-xs text-gray-500">[ NO OTHER ACCOUNTS ]</span>
+            <p className="text-sm text-ink-3">There is no other account to transfer to yet.</p>
           ) : (
-            availableDestinations.map((account) => (
-              <Button
-                key={account.id}
-                className="sm:whitespace-nowrap sm:flex-shrink-0"
-                active={destinationId === account.id}
-                disabled={isSubmitting}
-                onClick={() => {
-                  setDestinationId(account.id);
-                  setErrorMsg('');
-                }}
-              >
-                {account.name}
-              </Button>
-            ))
+            <ChoiceChips
+              value={destinationId}
+              disabled={isSubmitting}
+              onChange={(id) => {
+                setDestinationId(id);
+                setErrorMsg('');
+              }}
+              options={availableDestinations.map((a) => ({ value: a.id, label: accountLabel(a.name), meta: a.currency }))}
+            />
           )}
-        </div>
-      </div>
+        </FieldGroup>
 
-      <div className="mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">AMOUNT</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={amountInput}
-          onChange={(e) => setAmountInput(e.target.value)}
-          placeholder="0"
-          disabled={isSubmitting}
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-2xl disabled:opacity-40"
-        />
-        <span className="font-mono text-xs text-gray-500 mt-1 block">{sourceAccount.currency}</span>
-      </div>
-
-      <Reveal show={isCrossCurrency}>
-        <div className="mb-4 sm:mb-6">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">EXCHANGE RATE</span>
-          <span className="block font-mono text-xs text-gray-500 mb-2">
-            1 {sourceAccount.currency} = ? {destinationAccount?.currency}
-          </span>
-          <input
-            type="text"
+        <Field label="Amount" htmlFor="transfer-amount">
+          <AmountInput
+            id="transfer-amount"
             inputMode="decimal"
-            value={rateInput}
-            onChange={(e) => setRateInput(e.target.value)}
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value)}
+            placeholder="0"
             disabled={isSubmitting}
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm disabled:opacity-40"
+            currency={sourceAccount.currency}
+            autoComplete="off"
           />
-          <Reveal show={Boolean(showReceived)}>
-            <div className="mt-3 font-mono text-sm text-gray-400">
-              YOU WILL RECEIVE: <AnimatedAmount value={received} currency={destinationAccount?.currency} />
-            </div>
-          </Reveal>
-        </div>
-      </Reveal>
+        </Field>
 
-      <Reveal show={!isCrossCurrency && Boolean(showReceived) && Boolean(destinationAccount)}>
-        <div className="mb-4 sm:mb-6 font-mono text-sm text-gray-400">
-          YOU WILL RECEIVE: <AnimatedAmount value={received} currency={destinationAccount?.currency} />
-        </div>
-      </Reveal>
+        <Reveal show={isCrossCurrency}>
+          <Field
+            label="Exchange rate"
+            htmlFor="transfer-rate"
+            hint={`1 ${sourceAccount.currency} = this many ${destinationAccount?.currency || ''}`}
+          >
+            <TextInput
+              id="transfer-rate"
+              inputMode="decimal"
+              value={rateInput}
+              onChange={(e) => setRateInput(e.target.value)}
+              disabled={isSubmitting}
+              className="tnum"
+              autoComplete="off"
+            />
+          </Field>
+        </Reveal>
 
-      <div className="mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-2">NOTE</span>
-        <input
-          type="text"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="optional"
-          disabled={isSubmitting}
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm disabled:opacity-40"
-        />
-      </div>
+        <Reveal show={Boolean(showReceived) && Boolean(destinationAccount)}>
+          <div className="flex items-center gap-3 rounded bg-positive/[0.08] border border-positive/25 px-4 py-3 text-sm text-ink-2">
+            <IconArrowRight className="w-[18px] h-[18px] text-positive flex-shrink-0" />
+            <span>
+              {accountLabel(destinationAccount?.name)} receives{' '}
+              <AnimatedAmount value={received} currency={destinationAccount?.currency} className="text-ink font-medium" />
+            </span>
+          </div>
+        </Reveal>
 
-      <FieldError message={errorMsg} className="mb-4" />
+        <Field label="Note" htmlFor="transfer-note" hint="Optional">
+          <TextInput id="transfer-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What is it for?" disabled={isSubmitting} />
+        </Field>
 
-      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
-        <Button
-          onClick={handleTransfer}
-          active={true}
-          className="w-full sm:w-auto"
-          disabled={isSubmitting || !destinationId || !amountInput}
-        >
-          {isSubmitting ? 'TRANSFERRING...' : 'CONFIRM TRANSFER'}
-        </Button>
-      </div>
+        <FieldError message={errorMsg} className="" />
+      </form>
     </Modal>
   );
 }

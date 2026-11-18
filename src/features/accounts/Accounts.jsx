@@ -1,21 +1,28 @@
 import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import AccountCard from './AccountCard.jsx';
+import AccountRow from './AccountRow.jsx';
 import NewAccountModal from './NewAccountModal.jsx';
 import EditAccountModal from './EditAccountModal.jsx';
 import TransferModal from './TransferModal.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
-import { formatAmount } from '../../lib/currency.js';
-import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import Reveal from '../../components/Reveal.jsx';
 import useHeldValue from '../../hooks/useHeldValue.js';
+import { accountLabel } from '../../lib/format.js';
+import { convertToBase } from '../../lib/currency.js';
+import { FUTURE_FUND_NAME } from '../../lib/constants.js';
+import { IconPlus } from '../../components/icons.jsx';
 
 export default function Accounts() {
   const accounts = useFinanceStore((s) => s.accounts);
   const deleteAccount = useFinanceStore((s) => s.deleteAccount);
   const getTotalBalanceInUZS = useFinanceStore((s) => s.getTotalBalanceInUZS);
+  const totalLiability = useFinanceStore((s) => s.getTotalLiabilityInUZS());
+  const transactions = useFinanceStore((s) => s.transactions);
+  const exchangeRates = useFinanceStore((s) => s.exchangeRates);
 
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [editAccount, setEditAccount] = useState(null);
@@ -24,97 +31,139 @@ export default function Accounts() {
 
   const totalUZS = getTotalBalanceInUZS();
   const heldDeleteTarget = useHeldValue(deleteTarget, !!deleteTarget);
+  // deleting an account also deletes every entry that uses it (the store cascades)
+  const linkedEntries = heldDeleteTarget
+    ? transactions.filter((t) => t.accountId === heldDeleteTarget.id || t.toAccountId === heldDeleteTarget.id).length
+    : 0;
 
-  const handleEdit = (account) => setEditAccount(account);
-  const handleEditClose = () => setEditAccount(null);
-
-  const handleTransfer = (account) => setTransferAccount(account);
-  const handleTransferClose = () => setTransferAccount(null);
-
-  const handleDelete = (account) => setDeleteTarget(account);
   const handleDeleteCancel = () => setDeleteTarget(null);
   const handleDeleteConfirm = () => {
     if (deleteTarget) deleteAccount(deleteTarget.id);
     setDeleteTarget(null);
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex flex-nowrap sm:flex-wrap items-center justify-between gap-3 px-4 py-3 sm:py-4 border-b border-gray-800">
-        <div className="min-w-0">
-          <span className="font-mono text-sm uppercase tracking-widest text-gray-500 block mb-1">
-            [ &gt; ACCOUNTS ]
-          </span>
-          <span className="font-mono text-[length:clamp(1.25rem,7vw,1.875rem)] sm:text-3xl font-bold break-words block"><AnimatedAmount value={totalUZS} currency="UZS" /></span>
-        </div>
-        <button
-          type="button"
-          aria-label="NEW ACCOUNT"
-          title="NEW ACCOUNT"
-          onClick={() => setIsNewOpen(true)}
-          className="sm:hidden flex-shrink-0 flex items-center justify-center w-9 h-9 border-2 border-white bg-white text-black motion-btn select-none cursor-pointer active:translate-y-[1px]"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-        <Button className="hidden sm:inline-block" onClick={() => setIsNewOpen(true)} active={true}>
-          + NEW ACCOUNT
-        </Button>
-      </div>
+  const code = 'ml-1 font-mono text-[max(12px,0.6em)] text-ink-3';
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 pb-4 sm:py-4 sm:pb-24">
-        <Reveal show={accounts.length === 0}>
-          <div className="flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
-            <span className="font-mono text-sm text-gray-500">[ NO ACCOUNTS ]</span>
-          </div>
-        </Reveal>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <AnimatePresence initial={false}>
-            {accounts.map((account) => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                onEdit={handleEdit}
-                onTransfer={handleTransfer}
-                onDelete={handleDelete}
-              />
-            ))}
-          </AnimatePresence>
+  // where the balance sits: each positive account's share in UZS, in greys
+  // (largest brightest), OUR_FUTURE in the heart's rose
+  const GREYS = ['rgb(237 237 235)', 'rgb(190 190 187)', 'rgb(145 145 142)', 'rgb(105 105 103)', 'rgb(75 75 74)'];
+  const shares = accounts
+    .filter((a) => a.type !== 'DEBT' && a.balance > 0)
+    .map((a) => ({ a, v: convertToBase(a.balance, a.currency, exchangeRates) }))
+    .filter((x) => x.v > 0)
+    .sort((x, y) => y.v - x.v);
+  const shareTotal = shares.reduce((t, x) => t + x.v, 0);
+  const swatchOf = {};
+  let gi = 0;
+  for (const x of shares) {
+    swatchOf[x.a.id] = x.a.name.toUpperCase() === FUTURE_FUND_NAME ? 'rgb(var(--rose))' : GREYS[Math.min(gi++, GREYS.length - 1)];
+  }
+
+  return (
+    <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="frame py-6 sm:py-8 lg:py-10 lg:grid lg:grid-cols-12 lg:gap-12">
+        <aside className="lg:col-span-4 lg:sticky lg:top-10 lg:self-start">
+          <PageHeader
+            title="Accounts"
+            subtitle={`${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
+            action={
+              <Button variant="primary" onClick={() => setIsNewOpen(true)} data-action="new-account" icon={<IconPlus className="w-[18px] h-[18px]" />}>
+                New account
+              </Button>
+            }
+          >
+            <StatRow
+              layout="grid"
+              items={[
+                { label: 'Total balance', value: <AnimatedAmount value={totalUZS} currency="UZS" split codeClassName={code} /> },
+                ...(totalLiability > 0
+                  ? [{ label: 'Owed', value: <AnimatedAmount value={totalLiability} currency="UZS" split codeClassName={code} />, tone: 'text-negative' }]
+                  : []),
+              ]}
+            />
+          </PageHeader>
+
+          {shareTotal > 0 && (
+            <div className="mt-8">
+              <p className="eyebrow on-scene mb-2.5">Where the balance is</p>
+              <div
+                className="flex h-2.5 gap-[3px] rounded-full overflow-hidden"
+                role="img"
+                aria-label={shares.map((x) => `${accountLabel(x.a.name)} ${Math.round((x.v / shareTotal) * 100)}%`).join(', ')}
+              >
+                {shares.map((x) => (
+                  <span key={x.a.id} style={{ flexGrow: x.v, background: swatchOf[x.a.id] }} className="min-w-[3px]" />
+                ))}
+              </div>
+              <p className="mt-2.5 text-2xs text-ink-3 on-scene">
+                {shares
+                  .slice(0, 3)
+                  .map((x) => `${accountLabel(x.a.name)} ${Math.round((x.v / shareTotal) * 100)}%`)
+                  .join(' · ')}
+              </p>
+            </div>
+          )}
+        </aside>
+
+        <div className="mt-8 lg:mt-0 lg:col-span-8">
+          <Reveal show={accounts.length === 0}>
+            <div className="veil py-16 px-6 text-center">
+              <p className="text-base text-ink">No accounts yet</p>
+              <p className="mt-1 text-sm text-ink-3">Add a bank account, cash or a card to start recording money.</p>
+              <Button variant="primary" className="mt-6" onClick={() => setIsNewOpen(true)} icon={<IconPlus className="w-[18px] h-[18px]" />}>
+                Add the first account
+              </Button>
+            </div>
+          </Reveal>
+          {accounts.length > 0 && (
+            <ul className="veil">
+              <AnimatePresence initial={false}>
+                {accounts.map((account) => (
+                  <AccountRow
+                    key={account.id}
+                    account={account}
+                    swatch={swatchOf[account.id] || 'rgb(255 255 255 / 0.18)'}
+                    onEdit={setEditAccount}
+                    onTransfer={setTransferAccount}
+                    onDelete={setDeleteTarget}
+                  />
+                ))}
+              </AnimatePresence>
+            </ul>
+          )}
         </div>
       </div>
 
       <NewAccountModal isOpen={isNewOpen} onClose={() => setIsNewOpen(false)} />
 
-      <EditAccountModal isOpen={!!editAccount} onClose={handleEditClose} account={editAccount} />
+      <EditAccountModal isOpen={!!editAccount} onClose={() => setEditAccount(null)} account={editAccount} />
 
-      <TransferModal
-        isOpen={!!transferAccount}
-        onClose={handleTransferClose}
-        sourceAccount={transferAccount}
-      />
+      <TransferModal isOpen={!!transferAccount} onClose={() => setTransferAccount(null)} sourceAccount={transferAccount} />
 
-      <Modal isOpen={!!deleteTarget} onClose={handleDeleteCancel} title="CONFIRM DELETE" size="sm">
-        {heldDeleteTarget && (
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={handleDeleteCancel}
+        title={`Delete ${accountLabel(heldDeleteTarget?.name)}?`}
+        description={
+          linkedEntries > 0
+            ? `Its ${linkedEntries} ${linkedEntries === 1 ? 'entry is' : 'entries are'} deleted with it, and their effect on other accounts is reversed. This can't be undone.`
+            : "This can't be undone."
+        }
+        size="sm"
+        footer={
           <>
-            <div className="mb-6">
-              <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">ACCOUNT</span>
-              <span className="font-mono text-sm text-white">[ {heldDeleteTarget.name} ]</span>
-            </div>
-            <div className="mb-6">
-              <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">BALANCE</span>
-              <span className="font-mono text-sm text-white">
-                {formatAmount(heldDeleteTarget.balance, heldDeleteTarget.currency)}
-              </span>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-gray-800 pt-4">
-              <Button onClick={handleDeleteCancel}>CANCEL</Button>
-              <Button onClick={handleDeleteConfirm} active={true}>
-                CONFIRM DELETE
-              </Button>
-            </div>
+            <Button onClick={handleDeleteCancel}>Keep it</Button>
+            <Button variant="danger" onClick={handleDeleteConfirm} data-action="confirm-delete">
+              Delete account
+            </Button>
           </>
+        }
+      >
+        {heldDeleteTarget && (
+          <div className="rounded border border-line bg-white/[0.02] p-4 flex items-center justify-between gap-4">
+            <span className="text-sm text-ink">{accountLabel(heldDeleteTarget.name)}</span>
+            <Amount value={heldDeleteTarget.balance} currency={heldDeleteTarget.currency} className="text-sm font-medium text-ink" />
+          </div>
         )}
       </Modal>
     </div>

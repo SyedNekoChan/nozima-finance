@@ -6,6 +6,7 @@ import useExchangeRates from './hooks/useExchangeRates.js';
 import useVisualMode from './hooks/useVisualMode.js';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
+import Note from './components/Note.jsx';
 import Snow from './components/Snow.jsx';
 import Anomaly from './components/Anomaly.jsx';
 import { Hideable, ObservationControls } from './components/Observation.jsx';
@@ -30,6 +31,8 @@ export default function App() {
   const hydrateVisualMode = useVisualMode((s) => s.hydrate);
   // the snow belongs to Pet mode; nothing is shown until the stored mode is known
   const showSnow = useVisualMode((s) => s.hydrated && s.mode !== 'city');
+  // the scene behind the interface tunes the content panels (styles/index.css)
+  const scene = useVisualMode((s) => (s.hydrated && s.mode === 'city' ? 'city' : 'pet'));
 
   useExchangeRates();
 
@@ -54,7 +57,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-    <div className="h-screen [height:100dvh] w-screen overflow-hidden bg-black text-white font-mono flex flex-col">
+    <div data-scene={scene} className="h-screen [height:100dvh] w-screen overflow-hidden bg-ground text-ink font-sans flex flex-col">
       {showSnow && <Snow />}
       <Hideable name="header">
         <Header />
@@ -83,6 +86,7 @@ export default function App() {
         <Footer />
       </Hideable>
       <ObservationControls />
+      <Note />
     </div>
     </MotionConfig>
   );

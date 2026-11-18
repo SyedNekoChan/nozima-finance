@@ -4,7 +4,6 @@ import useFinanceStore from '../hooks/useFinanceStore.js';
 import useCurrentMonth from '../hooks/useCurrentMonth.js';
 import useVisualMode from '../hooks/useVisualMode.js';
 import CityBackdrop from '../city/CityBackdrop.jsx';
-import { Hideable } from './Observation.jsx';
 import usePet from '../pets/usePet.js';
 import usePrefersReducedMotion from '../pets/usePrefersReducedMotion.js';
 import PetErrorBoundary from '../pets/PetErrorBoundary.jsx';
@@ -308,55 +307,11 @@ function Pet({ pet }) {
 }
 
 /*
- * Persistent status readout. Purely level-based (re-reads store state
- * on every render) — completely separate from anomalyEvent, so it
- * can never repeat-fire and needs no dismiss/clear. It is the
- * design.md "[ ! OVER BUDGET ! ]" indicator, surfaced once at the
- * app shell so it stays visible across Dashboard/Ledger/Calendar/
- * Accounts without duplicating the anomaly component per page.
- * AsciiProgressBar (Dashboard's budget bar) intentionally no longer
- * renders this same string, so this is the single authoritative
- * OVER BUDGET indicator on every screen including Dashboard.
- *
- * Positioned as a small fixed terminal readout rather than a toast:
- * top-anchored, inset from the edges by viewport-relative spacing
- * plus safe-area insets on all three sides so it never touches the
- * screen edge (or sits under a notch/rounded corner) on any phone,
- * sized with clamp-style responsive text so it stays legible without
- * becoming either a tiny effect or an oversized banner, and sits at
- * z-20 — above ordinary tab content (z-10) but below Header (z-30),
- * Footer (z-50) and Modal (z-50), so it never covers navigation or
- * dialogs.
+ * The persistent over-budget signal is part of the interface, not the
+ * backdrop: it lives in the header (components/Header.jsx).
  */
-function OverBudgetIndicator({ isOverBudget }) {
-  if (!isOverBudget) return null;
-
-  return (
-    <div
-      className="absolute z-20 pointer-events-none flex justify-center"
-      style={{
-        top: 'max(0.375rem, env(safe-area-inset-top))',
-        left: 'max(0.5rem, env(safe-area-inset-left))',
-        right: 'max(0.5rem, env(safe-area-inset-right))',
-      }}
-    >
-      <span
-        className="font-mono font-bold uppercase tracking-widest text-white bg-black border border-white px-1.5 py-px whitespace-nowrap brutalist-overbudget-pulse"
-        style={{
-          fontSize: 'clamp(0.5rem, 2.2vw, 0.65rem)',
-          maxWidth: '100%',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        [ ! OVER BUDGET ! ]
-      </span>
-    </div>
-  );
-}
 
 export default function Anomaly() {
-  const isOverBudget = useFinanceStore((s) => s.getIsOverBudgetThisMonth());
   // The registered pet shown in the backdrop (NOMOZ.EXE unless configured).
   const pet = getActivePet();
   // City mode puts the city in the backdrop (see design.md, "Visual modes").
@@ -386,16 +341,6 @@ export default function Anomaly() {
         </div>
       )}
 
-      {/*
-        The status readout is a SEPARATE top-level layer (its own
-        stacking context, z-20) rather than nested inside the z-0
-        layer above — nesting it there would cap its effective
-        stacking order at z-0, hiding it behind every tab's z-10
-        content on Dashboard/Ledger/Calendar/Accounts alike.
-      */}
-      <Hideable name="readout">
-        <OverBudgetIndicator isOverBudget={isOverBudget} />
-      </Hideable>
     </>
   );
 }

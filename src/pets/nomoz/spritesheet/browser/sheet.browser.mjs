@@ -549,14 +549,15 @@ describe('real browser: the app', () => {
   guard('tab changes and resizing: the pet persists, keeps drawing, nothing throws', async () => {
     const { ctx, page, log } = await openApp('shipped');
     await page.waitForTimeout(1200);
-    const labels = await page.evaluate(() => [...document.querySelectorAll('footer button')].map((b) => b.getAttribute('aria-label') || b.textContent.trim()).filter(Boolean));
-    assert.ok(labels.length >= 2, 'footer tabs not found');
+    // the section tabs: in the phone tab bar, or in the header on wider screens
+    const labels = await page.evaluate(() => [...document.querySelectorAll('nav[aria-label="Sections"] button')].map((b) => b.getAttribute('aria-label') || b.textContent.trim()).filter(Boolean));
+    assert.ok(labels.length >= 2, 'section tabs not found');
     await page.evaluate(() => (window.__canvas = document.querySelector('canvas.nomoz-canvas[data-mood]')));
     for (const viewport of [MOBILE, DESKTOP, { width: 768, height: 1024 }, DESKTOP]) {
       await page.setViewportSize(viewport);
       for (const label of [...new Set(labels)].slice(0, 4)) {
-        await page.locator('footer button:visible', { hasText: label }).first().click({ timeout: 3000 }).catch(async () => {
-          await page.locator(`footer button[aria-label="${label}"]:visible`).first().click({ timeout: 3000 });
+        await page.locator('nav[aria-label="Sections"] button:visible', { hasText: label }).first().click({ timeout: 3000 }).catch(async () => {
+          await page.locator(`nav[aria-label="Sections"] button[aria-label="${label}"]:visible`).first().click({ timeout: 3000 });
         });
         await page.waitForTimeout(250);
       }
