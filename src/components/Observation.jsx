@@ -66,23 +66,24 @@ export function ObservationControls() {
   return (
     <div
       data-observe-controls=""
-      className="fixed z-[60] flex items-center gap-3 font-mono uppercase text-[10px] md:text-xs leading-none tracking-wider text-gray-400 opacity-60 hover:opacity-100 focus-within:opacity-100 motion-fade"
+      className="fixed z-[60] flex items-center gap-1 p-1 rounded-full bg-ground/70 border border-line opacity-60 hover:opacity-100 focus-within:opacity-100 motion-fade"
       style={{
-        top: 'max(0.5rem, env(safe-area-inset-top))',
+        top: 'max(0.75rem, env(safe-area-inset-top))',
         right: 'max(0.75rem, env(safe-area-inset-right))',
       }}
     >
-      <ModeToggle className="py-2" />
+      <ModeToggle className="!rounded-full" />
       <button
         ref={exitRef}
         type="button"
         onClick={() => setObserving(false)}
         data-observe-exit=""
-        aria-label="Leave observation mode and show the interface (Escape)"
+        aria-label="Leave observation and show the interface (Escape)"
         title="Show the interface (Esc)"
-        className="py-2 font-mono uppercase whitespace-nowrap cursor-pointer select-none motion-btn hover:text-white focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-white focus-visible:outline-offset-2"
+        className="inline-flex items-center gap-2 h-11 px-4 rounded-full text-sm text-ink hover:bg-white/[0.08] motion-btn cursor-pointer select-none"
       >
-        [ EXIT ]
+        Exit
+        <kbd className="hidden md:inline font-mono text-2xs text-ink-3 border border-line-strong rounded-sm px-1.5 py-px">Esc</kbd>
       </button>
     </div>
   );

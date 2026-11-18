@@ -1,16 +1,91 @@
-# NOZIMA // FINANCE.SYS — Design
+# Nozima Finance — Design
 
-Black background, white monospace type, square corners, no shadows. Motion
-is short, ease-out only (`cubic-bezier(0.2, 0, 0, 1)`), with no springs or
-bounce. Timing comes from the tiers in `src/lib/motion.js` and the matching
-CSS tokens in `src/styles/index.css`:
+A private finance tool, made for Нозима, used at night over a living
+backdrop (Nomoz, or the rainy city). A polished monochrome instrument: the
+figures lead, controls stay secondary, colour appears only where it means
+something, and the scene behind shows through the interface.
+
+## Interface
+
+**Type.** One family, self-hosted (`src/styles/fonts.js`, Latin and
+Cyrillic, variable):
+
+| Face | Use |
+| --- | --- |
+| Geist 400–600 | every word and every figure, with tabular numerals (`.tnum`) |
+| Geist Mono 400 | technical metadata only: currency codes, the clock, the note and its distance line |
+
+One scale (`tailwind.config.js`): 12, 13, 14, 16, 18, 22, 28, 36px, plus
+the fluid hero balance. Figures are set medium (500) with tight negative
+tracking so they stay firm over the lit city; page titles semibold. Sentence
+case throughout; capitals only in stored account names and the mono
+metadata. No serif, no italics.
+
+**Colour.** Tokens in `src/styles/index.css` (RGB triplets, mapped in
+Tailwind). A monochrome foundation, with colour reserved for meaning:
+
+| Token | Value | Meaning |
+| --- | --- | --- |
+| `ground` | #09090A | black |
+| `raised` | #171719 | charcoal: dialogs, menus, sheets |
+| `ink` / `ink-2` / `ink-3` | #EDEDEB / #A6A6A3 / #8C8C89 | white, grey, graphite text |
+| `accent` | = ink | interaction is white: primary action, focus, current period |
+| `positive` | #7AC997 | money in, on track |
+| `caution` | #E6B65C | over the daily allowance, spending ahead of the month |
+| `negative` | #F07A66 | over budget, over twice the allowance, debt, delete |
+| `rose` | #E88FA3 | OUR_FUTURE only (its heart and its share of the balance) |
+
+No violet, no gradients. Expenses are not red: spending is normal; only
+going over is.
+
+**Surfaces over the backdrop.** Three tiers, tuned per scene
+(`[data-scene]` on the app root):
+
+| Tier | Over Nomoz | Over the city | Used for |
+| --- | --- | --- | --- |
+| open | no surface, soft halo (`.on-scene`) | stronger halo | titles, greeting, balance, figures, the side columns |
+| veil (`.veil`) | charcoal at 40 % | blue-black at 60 % + 1px text shadow | the chart, the month, lists, the calendar |
+| solid | opaque charcoal | opaque charcoal | dialogs, menus, sticky bars (`.veil-strong`) |
+
+The header and tab bar are translucent bars (`--bar`). No blur anywhere: it
+would smear the pixel art and cost frames over the animated city.
+
+**Frame.** `.frame`: one content width (1280px max) and one pair of edges
+(16 / 32 / 48px). Wide screens: header navigation; Ledger and Accounts put
+their title, figures and controls in a sticky column on the scene and the
+list in a veil beside it. Phones: one column, a bottom tab bar, dialogs as
+sheets, rows that open their actions on a tap.
+
+**Personal details.** The header carries the app's mark (a crescent) and
+"Finance", never the name. Нозима is greeted by name on the Dashboard, and the
+note is addressed to her. The note (`SYSTEM_MESSAGE`, shown verbatim in mono,
+`components/Note.jsx`) opens from the mark and from the distance line under
+the greeting (`KARACHI → TASHKENT · {formatDistance(getDistanceBetweenUs())}`),
+which is on screen on every device; the dialog repeats the distance.
+
+**Components.** One button family (`Button.jsx`: primary white, secondary
+hairline, quiet, danger), 44px touch targets (40px on a pointer device), 48px
+fields with visible labels, a segmented control, choice chips, a keyboard
+listbox (`SelectorField`), dialogs (`Modal.jsx`: Escape closes the top-most,
+focus held and returned).
+
+**Data.** The spending chart: one bar per period, never interpolated; the
+current period white, past periods graphite; days over the allowance amber,
+over twice it red; months over the budget red. Read values by hover, tap or
+focus and arrows. The budget meter: white on track, amber when ahead of the
+month's pace (the tick), red over budget. The calendar tints days in the same
+three steps. Accounts show where the balance sits as one slim bar.
+
+**Motion.** Short, ease-out only (`cubic-bezier(0.2, 0, 0, 1)`), with no
+springs or bounce. Timing comes from the tiers in `src/lib/motion.js` and the
+matching CSS tokens:
 
 | Tier    | Duration | Use                                       |
 | ------- | -------- | ----------------------------------------- |
 | micro   | ~120ms   | hover / pressed / focus feedback          |
 | state   | ~180ms   | UI state changes (tab fill, popovers)     |
 | content | ~220ms   | content swaps (tabs, modals, months)      |
-| data    | ~320ms   | financial figures and progress values     |
+| data    | ~320ms   | financial figures, bars, the budget meter |
 | ambient | ~700ms   | slow backdrop drift and fades (NOMOZ.EXE) |
 
 All tiers collapse to 0ms under `prefers-reduced-motion`.
@@ -21,9 +96,8 @@ All tiers collapse to 0ms under `prefers-reduced-motion`.
 | --------------------------------------- | ------- |
 | Backdrop layer (NOMOZ.EXE or the city)  | 0       |
 | Active tab content                      | 10      |
-| `[ ! OVER BUDGET ! ]` readout           | 20      |
 | Header                                  | 30      |
-| Footer                                  | 50      |
+| Footer (phone tab bar)                  | 50      |
 | Modals and dropdown overlays            | 50–100  |
 
 The pet backdrop layer is `absolute inset-0 overflow-hidden pointer-events-none`
@@ -42,10 +116,9 @@ header and footer cover the rest of it until Observation mode puts them away.
 
 ## Visual modes
 
-The header carries a text-only toggle, `[ MODE: PET ]` / `[ MODE: CITY ]`
-(desktop: left of the clock; phones: the free top-right cell of the header
-grid, same type and padding as its neighbours, so the header does not change
-size; its touch area extends invisibly down over the clock cell). The choice
+The header carries the scene toggle (a cat or towers icon with the scene's
+name, Nomoz / City; on phones the icon alone, the name read out) at the right
+end of its scene controls, so the header never changes size. The choice
 is stored in the Dexie `settings` table under `visualMode` and defaults to
 `pet`; any unknown stored value reads as `pet` (`lib/visualMode.js`,
 `hooks/useVisualMode.js`). Nothing mode-specific is shown until the stored
@@ -62,8 +135,8 @@ value has been read, so a City choice never flashes the snow first.
 ### Observation mode
 
 A way to just watch the scene, in either mode, on any screen. The header
-carries a discreet control next to the mode toggle (`[ OBSERVE ]` on desktop,
-a small eye icon on phones, sharing the toggle's cell and its type). While
+carries an Observe control next to the scene toggle (an eye with "Observe"
+on wide screens, the eye alone on phones). While
 observing (session state only, `observing` in `hooks/useVisualMode.js`, never
 stored):
 
@@ -82,7 +155,7 @@ stored):
   paused or reset.
 - **It stays on across Pet / City.** The only controls left, in the top-right
   corner at 60 % opacity (full on hover or focus), are the mode toggle and
-  `[ EXIT ]`. Escape also leaves. Focus moves to Exit on entering and back to
+  Exit. Escape also leaves. Focus moves to Exit on entering and back to
   the observe control on leaving. The corner keeps clear of the safe areas
   (`env(safe-area-inset-*)`, should the page ever extend into them).
 - **Screens.** No browser fullscreen. A resize or a turned phone re-lays out
@@ -360,13 +433,13 @@ but never over the roofs that rise above it.
   lightning) are shown; the setting is followed live.
 - **Errors** leave the layer as it is (or black); the app carries on.
 
-## Persistent budget readout
+## Persistent budget signal
 
-When this month's spending exceeds the monthly budget, a small boxed
-`[ ! OVER BUDGET ! ]` readout is shown at the top of the main area on every
-tab. It is a level-based status (no dismiss, never re-fires) and is the only
-OVER BUDGET indicator in the app. The Dashboard progress bar simply renders
-maxed out at 100%.
+When this month's spending exceeds the monthly budget, a small red
+"Over budget" pill (a dot alone under 375px, the words still read out) shows
+in the header on every tab. It is level-based (no dismiss, never re-fires)
+and the only global over-budget indicator; on the Dashboard the budget meter
+also fills in red.
 
 ## NOMOZ.EXE — the backdrop pet
 
@@ -479,12 +552,12 @@ Z-depth (`src/pets/core/space.js`, numbers in `WORLD` in
   open/close and ordinary UI updates. Nothing ever teleports, respawns,
   resets or relocates to stay visible; foreground content may cover it.
 - Only a physical viewport resize may clamp the position back into range.
-- Stacking: layer z-0, behind tab content (z-10), the OVER BUDGET readout
-  (z-20), header (z-30), footer and modals (z-50+). The layer is
+- Stacking: layer z-0, behind tab content (z-10), header (z-30), footer
+  and modals (z-50+). The layer is
   `pointer-events: none`, `aria-hidden` and `overflow-hidden`; it never
   intercepts input or scrolls the page.
 - Placement keeps a margin from every edge (14px desktop, 6px mobile),
-  clears the OVER BUDGET readout and ends above the footer. Spots are
+  keeps a top clearance band (made for the former in-page over-budget readout) and ends above the footer. Spots are
   random and never chosen with reference to the foreground UI. Layers
   under 640px use the compact profile (narrower depth range, shorter walks);
   no horizontal scrolling at 320–375px.

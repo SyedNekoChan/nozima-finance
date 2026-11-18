@@ -2,113 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Motion tokens: mirrored by DUR / EASE in src/lib/motion.js */
+/*
+ * Design tokens (see design.md, "Interface").
+ *
+ * A monochrome foundation: black, charcoal, graphite, white and greys.
+ * White is the interaction colour (the primary action, focus, the current
+ * period). Colour is kept for meaning only, and always means the same thing:
+ *   positive  money in, on track
+ *   caution   over the daily allowance, spending ahead of the month
+ *   negative  over budget, far over the allowance, debt, delete
+ *   rose      the OUR_FUTURE heart
+ * Colours are RGB triplets so Tailwind can apply opacity to them.
+ *
+ * Motion tokens are mirrored by DUR / EASE in src/lib/motion.js.
+ */
 :root {
+  --ground: 9 9 10;          /* black */
+  --raised: 23 23 25;        /* charcoal: dialogs, menus, sheets (opaque) */
+  --ink: 237 237 235;        /* white */
+  --ink-2: 166 166 163;      /* grey: secondary text */
+  --ink-3: 140 140 137;      /* graphite: tertiary text, AA on every surface */
+  --accent: 237 237 235;     /* interaction is white */
+  --on-accent: 10 10 11;
+  --positive: 122 201 151;
+  --caution: 230 182 92;
+  --negative: 240 122 102;
+  --rose: 232 143 163;
+
+  /*
+   * Surfaces over the living backdrop (Nomoz or the city), in three tiers:
+   *   open   no surface: titles, the balance, figures (a soft halo, .on-scene)
+   *   veil   content regions: translucent charcoal, no blur, a hairline edge;
+   *          the scene stays visible through it
+   *   solid  dialogs, menus and sticky bars: opaque, they hold attention
+   * Each scene tunes the veil: Nomoz's night is black, so a light veil is
+   * enough; the lit city needs more to keep small text above AA.
+   */
+  --veil: 18 18 20 / 0.4;
+  --veil-strong: 14 14 16 / 0.78;
+  --veil-line: 255 255 255 / 0.08;
+  --bar: 9 9 10 / 0.62;      /* header and tab bar */
+  --halo: 0 1px 2px rgb(0 0 0 / 0.55);
+
   --motion-micro: 120ms;
   --motion-state: 180ms;
   --motion-content: 220ms;
   --motion-data: 320ms;
   --motion-ambient: 700ms;
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: dark;
 }
 
-* {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+[data-scene='city'] {
+  --veil: 8 9 12 / 0.6;
+  --veil-strong: 8 9 12 / 0.84;
+  --veil-line: 255 255 255 / 0.1;
+  --bar: 7 8 11 / 0.66;
+  --halo: 0 1px 2px rgb(0 0 0 / 0.9), 0 0 10px rgb(0 0 0 / 0.65);
 }
+
+/* loose text over the scene: a soft dark halo instead of a scrim */
+.on-scene { text-shadow: var(--halo); }
+/* over the city, small text inside a veil gets a crisp 1px shadow against lit windows */
+[data-scene='city'] .veil { text-shadow: 0 1px 1px rgb(0 0 0 / 0.75); }
+[data-scene='city'] .veil .tnum { text-shadow: 0 1px 1px rgb(0 0 0 / 0.75); }
 
 html, body, #root {
   height: 100%;
   overflow: hidden;
-  background: #000000;
-  color: #ffffff;
+  background: rgb(var(--ground));
+  color: rgb(var(--ink));
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #000000; }
-::-webkit-scrollbar-thumb { background: #333333; }
-::-webkit-scrollbar-thumb:hover { background: #ffffff; }
+body {
+  font-family: 'Geist Variable', system-ui, sans-serif;
+  font-feature-settings: 'ss01' 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
 
-*:focus {
-  outline: 2px solid #ffffff;
+::selection {
+  background: rgb(255 255 255 / 0.22);
+  color: rgb(var(--ink));
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.12); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.24); background-clip: padding-box; }
+
+/* keyboard focus only: a white ring that never shows on a tap or click */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
 }
 
-/* Terminal-style blinking cursor for the NOZIMA_ trailing underscore */
-@keyframes cursor-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--ink-3));
+  opacity: 1;
 }
 
-.brutalist-cursor-blink {
-  animation: cursor-blink 1s linear infinite;
+/* number inputs: no spinners, figures line up */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; }
+
+/* OUR_FUTURE: the heart breathes, and beats when money arrives */
+@keyframes heart-beat {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.22); }
+  60% { transform: scale(0.96); }
 }
 
-/* OUR_FUTURE funding reaction: subtle scale/opacity pulse, linear timing only */
-@keyframes heart-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.15); }
+@keyframes heart-idle {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
 }
 
-.brutalist-heart-pulse {
-  animation: heart-pulse 0.5s linear;
-  animation-iteration-count: 3;
-}
+.heart-beat { animation: heart-beat 0.5s var(--motion-ease) 3; }
+.heart-idle { animation: heart-idle 2.4s ease-in-out infinite; }
 
-/* OUR_FUTURE card: continuous idle pulse for the heart, always active */
-@keyframes heart-idle-pulse {
-  0%, 100% { opacity: 0.85; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.08); }
+/* the over-budget signal: one soft glow cycle, then it rests */
+@keyframes signal-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--negative) / 0); }
+  50% { box-shadow: 0 0 0 4px rgb(var(--negative) / 0.18); }
 }
+.signal-breathe { animation: signal-breathe 2.4s ease-in-out infinite; }
 
-.brutalist-heart-idle {
-  animation: heart-idle-pulse 1.8s linear infinite;
-}
-
-/* Persistent OVER BUDGET readout: restrained continuous border/opacity
-   pulse (linear only, no scale/bounce) so it reads as an ongoing
-   living-state indicator rather than a one-shot toast notification */
-@keyframes overbudget-pulse {
-  0%, 100% { opacity: 1; border-color: #ffffff; }
-  50% { opacity: 0.7; border-color: #888888; }
-}
-
-.brutalist-overbudget-pulse {
-  animation: overbudget-pulse 1.6s linear infinite;
-}
-
-/* ---- Motion system --------------------------------------------------
-   Buttons / rows / fields only transition paint properties (color,
-   background, border, opacity) plus the 1px pressed translate, so
-   nothing here triggers layout. */
 @layer base {
   input,
   textarea {
-    transition-property: border-color, background-color, color, opacity;
+    transition-property: border-color, background-color, color, opacity, box-shadow;
     transition-duration: var(--motion-state);
     transition-timing-function: var(--motion-ease);
   }
+
+  .tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
 }
 
 @layer components {
   .motion-btn {
-    transition-property: color, background-color, border-color, opacity, transform;
+    transition-property: color, background-color, border-color, opacity, transform, box-shadow;
     transition-duration: var(--motion-micro);
     transition-timing-function: var(--motion-ease);
   }
 
-  /* active/inactive tab + selected-state fills ease a touch slower */
   .motion-state {
     transition-duration: var(--motion-state);
-  }
-
-  .motion-field {
-    transition-property: border-color, background-color, color, opacity;
-    transition-duration: var(--motion-state);
-    transition-timing-function: var(--motion-ease);
   }
 
   .motion-fade {
@@ -117,11 +162,24 @@ html, body, #root {
     transition-timing-function: var(--motion-ease);
   }
 
-  .motion-row,
-  .motion-row * {
-    transition-property: color, background-color, border-color;
-    transition-duration: var(--motion-micro);
-    transition-timing-function: var(--motion-ease);
+  /* a content region over the backdrop: the scene shows through */
+  .veil {
+    background: rgb(var(--veil));
+    border: 1px solid rgb(var(--veil-line));
+    border-radius: 12px;
+  }
+  /* sticky bars inside a region: they sit over scrolling content */
+  .veil-strong {
+    background: rgb(var(--veil-strong));
+  }
+
+  /* the small label above a figure or a group */
+  .eyebrow {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgb(var(--ink-2));
   }
 
   /* NOMOZ.EXE: one absolutely positioned actor inside the perspective
@@ -184,13 +242,6 @@ html, body, #root {
     pointer-events: none;
     visibility: hidden; /* until there is something in it */
   }
-
-  /* touch devices have no hover: give a short pressed dim instead */
-  @media (hover: none) {
-    .motion-btn:active {
-      opacity: 0.75;
-    }
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -202,7 +253,25 @@ html, body, #root {
     --motion-ambient: 0ms;
   }
 
-  .motion-btn:active {
-    transform: none;
+  .heart-beat,
+  .heart-idle,
+  .signal-breathe {
+    animation: none;
   }
+
+  .motion-btn:active {
+    transform: none !important;
+  }
+}
+
+/* the frame: one content width and one pair of edges for every view, the header included */
+@layer components {
+  .frame {
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+    padding-inline: max(16px, env(safe-area-inset-left));
+  }
+  @media (min-width: 640px) { .frame { padding-inline: 32px; } }
+  @media (min-width: 1024px) { .frame { padding-inline: 48px; } }
 }

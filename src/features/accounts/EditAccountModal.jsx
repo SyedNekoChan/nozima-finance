@@ -4,6 +4,8 @@ import { parseAmount, convertBetween } from '../../lib/currency.js';
 import Modal from '../../components/Modal.jsx';
 import FieldError from '../../components/FieldError.jsx';
 import Button from '../../components/Button.jsx';
+import { Field, TextInput, AmountInput, Segmented } from '../../components/Field.jsx';
+import { accountLabel } from '../../lib/format.js';
 import useHeldValue from '../../hooks/useHeldValue.js';
 import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import { ensureExchangeRates } from '../../hooks/useExchangeRates.js';
@@ -49,11 +51,11 @@ export default function EditAccountModal({ isOpen, onClose, account: accountProp
 
   const handleSave = async () => {
     if (!nameInput.trim()) {
-      setErrorMsg('NAME REQUIRED');
+      setErrorMsg('Give the account a name.');
       return;
     }
     if (!currencyInput || currencyInput.length !== 3) {
-      setErrorMsg('CURRENCY MUST BE 3 LETTERS');
+      setErrorMsg('A currency code is three letters, like USD.');
       return;
     }
 
@@ -78,7 +80,7 @@ export default function EditAccountModal({ isOpen, onClose, account: accountProp
 
     // never convert with a missing rate: it would zero the balance
     if (currencyChanged && !(await ensureExchangeRates([account.currency, currencyInput]))) {
-      setErrorMsg('NO EXCHANGE RATE FOR THIS CURRENCY. CHECK CONNECTION.');
+      setErrorMsg('No exchange rate for this currency yet. Check the connection and try again.');
       return;
     }
 
@@ -135,97 +137,104 @@ export default function EditAccountModal({ isOpen, onClose, account: accountProp
     onClose();
   };
 
-  return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={`EDIT: ${account.name}`} size="md">
-      <div className="border-b border-gray-800 pb-3 sm:pb-4 mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENT BALANCE</span>
-        <span className="font-mono text-2xl md:text-3xl text-white">
-          <AnimatedAmount value={account.balance} currency={account.currency} />
-        </span>
-      </div>
+  const adjustLabel = isDebt
+    ? { add: 'Borrowed more', remove: 'Paid back' }
+    : { add: 'Add money', remove: 'Remove money' };
 
-      <div className="mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-gray-800">
-        <div className="mb-3 sm:mb-5">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">ADJUSTMENT</span>
-          <div className="flex gap-2">
-            <Button active={adjustmentMode === '+ ADD'} onClick={() => setAdjustmentMode('+ ADD')}>
-              + ADD
-            </Button>
-            <Button active={adjustmentMode === '- REMOVE'} onClick={() => setAdjustmentMode('- REMOVE')}>
-              - REMOVE
-            </Button>
-          </div>
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={`Edit ${accountLabel(account.name)}`}
+      size="md"
+      footer={
+        <>
+          <Button onClick={handleClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} data-action="save-account">
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="space-y-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSave();
+        }}
+      >
+        <div className="rounded border border-line bg-white/[0.02] p-4">
+          <p className="eyebrow">{isDebt ? 'Currently owed' : 'Current balance'}</p>
+          <p className={`mt-1.5 text-2xl font-medium tracking-[-0.02em] ${account.balance < 0 ? 'text-negative' : 'text-ink'}`}>
+            <AnimatedAmount value={account.balance} currency={account.currency} split codeClassName="ml-1.5 text-[max(12px,0.55em)] font-mono font-normal text-ink-3" />
+          </p>
         </div>
 
-        <div className="mb-3 sm:mb-5">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">AMOUNT</span>
-          <div className="flex items-center w-full min-w-0 bg-black border-b-2 border-gray-800 focus-within:border-white motion-field">
-            {isDebt && (
-              <span className="shrink-0 select-none font-mono text-2xl text-white pl-1 pr-1">-</span>
-            )}
-            <input
-              type="text"
+        <fieldset className="space-y-4 min-w-0">
+          <legend className="text-base font-medium text-ink mb-1">Adjust the balance</legend>
+          <p className="text-xs text-ink-3 -mt-2">
+            {isDebt
+              ? 'Changes what is owed. No entry is recorded.'
+              : 'Recorded in the ledger as an Other entry dated today.'}
+          </p>
+          <Segmented
+            value={adjustmentMode}
+            onChange={setAdjustmentMode}
+            label="Adjustment"
+            className="w-full"
+            options={[
+              { value: '+ ADD', label: adjustLabel.add },
+              { value: '- REMOVE', label: adjustLabel.remove },
+            ]}
+          />
+          <Field label="Amount" htmlFor="adjust-amount">
+            <AmountInput
+              id="adjust-amount"
               inputMode={isDebt ? 'decimal' : 'numeric'}
               value={amountInput}
               onChange={(e) =>
                 setAmountInput(
-                  isDebt
-                    ? e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
-                    : e.target.value
+                  isDebt ? e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1') : e.target.value
                 )
               }
               placeholder="0"
-              className="w-full min-w-0 bg-black text-white font-mono focus:outline-none px-1 py-2 text-2xl"
+              prefix={isDebt ? '−' : undefined}
+              currency={account.currency}
+              autoComplete="off"
             />
+          </Field>
+          <Field label="Note" htmlFor="adjust-note" hint="Optional">
+            <TextInput id="adjust-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Salary, correction…" />
+          </Field>
+        </fieldset>
+
+        <fieldset className="space-y-4 pt-6 border-t border-line min-w-0">
+          <legend className="text-base font-medium text-ink mb-1 float-left w-full">Account details</legend>
+          <div className="grid gap-4 sm:grid-cols-[1fr_140px] clear-both">
+            <Field label="Name" htmlFor="edit-name">
+              <TextInput
+                id="edit-name"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
+                className="uppercase tracking-[0.04em]"
+                autoComplete="off"
+              />
+            </Field>
+            <Field label="Currency" htmlFor="edit-currency" hint="Converts the balance">
+              <TextInput
+                id="edit-currency"
+                value={currencyInput}
+                onChange={(e) => setCurrencyInput(e.target.value.toUpperCase().slice(0, 3))}
+                maxLength={3}
+                className="uppercase font-mono tracking-[0.08em]"
+                autoComplete="off"
+              />
+            </Field>
           </div>
-          <span className="font-mono text-xs text-gray-500 mt-1 block">{account.currency}</span>
-        </div>
+        </fieldset>
 
-        <div>
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">NOTE</span>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. salary, correction"
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm"
-          />
-        </div>
-      </div>
-
-      <div className="mb-4 sm:mb-6">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-4">ACCOUNT DETAILS</span>
-
-        <div className="mb-3 sm:mb-5">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">NAME</span>
-          <input
-            type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm uppercase tracking-widest"
-          />
-        </div>
-
-        <div>
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENCY</span>
-          <input
-            type="text"
-            value={currencyInput}
-            onChange={(e) => setCurrencyInput(e.target.value.toUpperCase().slice(0, 3))}
-            maxLength={3}
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm uppercase tracking-widest"
-          />
-          <span className="font-mono text-xs text-gray-600 mt-1 block">3-LETTER CODE</span>
-        </div>
-      </div>
-
-      <FieldError message={errorMsg} className="mb-4" />
-
-      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
-        <Button onClick={handleSave} active={true} className="w-full sm:w-auto">
-          SAVE CHANGES
-        </Button>
-      </div>
+        <FieldError message={errorMsg} className="" />
+      </form>
     </Modal>
   );
 }

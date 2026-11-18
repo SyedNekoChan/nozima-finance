@@ -112,7 +112,7 @@ for (const [name, viewport, mobile] of [
     try {
       await page.waitForFunction(() => document.querySelector('canvas.fixed.inset-0'), null, { timeout: 15000 });
       let s = await state(page);
-      assert.equal(s.label, '[ MODE: PET ]');
+      assert.equal(s.label, 'Nomoz');
       assert.ok(s.petMounted && s.petVisible && s.snow && !s.city, JSON.stringify(s));
       const headerH = s.headerH;
 
@@ -124,7 +124,7 @@ for (const [name, viewport, mobile] of [
       await page.click('[data-mode-toggle]:visible');
       await page.waitForSelector('[data-city][data-city-ready]', { timeout: 20000 });
       s = await state(page);
-      assert.equal(s.label, '[ MODE: CITY ]');
+      assert.equal(s.label, 'City');
       assert.equal(s.headerH, headerH, 'header height changed');
       assert.ok(s.petMounted && s.sameActor, 'pet was remounted');
       assert.ok(!s.petVisible && !s.petCanvasVisible, 'pet still painted in city mode');
@@ -150,7 +150,7 @@ for (const [name, viewport, mobile] of [
       await page.reload();
       await page.waitForSelector('[data-city][data-city-ready]', { timeout: 20000 });
       s = await state(page);
-      assert.equal(s.label, '[ MODE: CITY ]');
+      assert.equal(s.label, 'City');
       assert.ok(!s.snow && s.petMounted && !s.petVisible);
 
       // and back to pet mode, with the pet where it is now
@@ -160,7 +160,7 @@ for (const [name, viewport, mobile] of [
       await page.click('[data-mode-toggle]:visible');
       await page.waitForFunction(() => document.querySelector('canvas.fixed.inset-0'), null, { timeout: 15000 });
       s = await state(page);
-      assert.equal(s.label, '[ MODE: PET ]');
+      assert.equal(s.label, 'Nomoz');
       assert.ok(s.petVisible && s.petCanvasVisible && s.sameActor && !s.city, JSON.stringify(s));
       assert.equal(s.headerH, headerH);
 

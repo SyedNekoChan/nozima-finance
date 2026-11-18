@@ -4,6 +4,8 @@ import Modal from '../../components/Modal.jsx';
 import FieldError from '../../components/FieldError.jsx';
 import Reveal from '../../components/Reveal.jsx';
 import Button from '../../components/Button.jsx';
+import { Field, FieldGroup, TextInput, ChoiceChips } from '../../components/Field.jsx';
+import { accountTypeLabel } from '../../lib/format.js';
 
 const ACCOUNT_TYPES = ['BANK', 'CASH', 'CREDIT', 'DEBT'];
 const CURRENCY_OPTIONS = ['UZS', 'USD', 'EUR', 'RUB', 'KZT', 'TRY'];
@@ -44,11 +46,11 @@ export default function NewAccountModal({ isOpen, onClose }) {
     const finalCurrency = currency === 'OTHER' ? customCurrency : currency;
 
     if (!name.trim()) {
-      setErrorMsg('NAME REQUIRED');
+      setErrorMsg('Give the account a name.');
       return;
     }
     if (!finalCurrency || finalCurrency.length !== 3) {
-      setErrorMsg('CURRENCY CODE MUST BE 3 LETTERS');
+      setErrorMsg('A currency code is three letters, like GBP.');
       return;
     }
 
@@ -67,65 +69,67 @@ export default function NewAccountModal({ isOpen, onClose }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="NEW ACCOUNT" size="md">
-      <div className="mb-3 sm:mb-5">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">NAME</span>
-        <input
-          type="text"
-          value={name}
-          onChange={handleNameChange}
-          placeholder="e.g. MAIN_BANK"
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm uppercase tracking-widest"
-        />
-      </div>
-
-      <div className="mb-3 sm:mb-5">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">TYPE</span>
-        <div className="flex flex-wrap gap-1 sm:gap-2">
-          {ACCOUNT_TYPES.map((option) => (
-            <Button key={option} onClick={() => setType(option)} active={type === option}>
-              {option}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      <div className="mb-3 sm:mb-5">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CURRENCY</span>
-        <div className="flex flex-wrap gap-1 sm:gap-2">
-          {CURRENCY_OPTIONS.map((option) => (
-            <Button key={option} onClick={() => setCurrency(option)} active={currency === option}>
-              {option}
-            </Button>
-          ))}
-          <Button onClick={() => setCurrency('OTHER')} active={currency === 'OTHER'}>
-            OTHER
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="New account"
+      size="md"
+      footer={
+        <>
+          <Button onClick={handleClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} data-action="save-account">
+            Create account
           </Button>
-        </div>
-      </div>
-
-      <Reveal show={currency === 'OTHER'}>
-        <div className="mb-3 sm:mb-5">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1">CODE</span>
-          <input
-            type="text"
-            value={customCurrency}
-            onChange={(e) => setCustomCurrency(e.target.value.toUpperCase().slice(0, 3))}
-            maxLength={3}
-            placeholder="GBP"
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm uppercase tracking-widest"
+        </>
+      }
+    >
+      <form
+        className="space-y-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSave();
+        }}
+      >
+        <Field label="Name" htmlFor="account-name" hint="Shown in capitals, with spaces kept as underscores.">
+          <TextInput
+            id="account-name"
+            value={name}
+            onChange={handleNameChange}
+            placeholder="MAIN_BANK"
+            className="uppercase tracking-[0.04em]"
+            autoComplete="off"
           />
-          <span className="font-mono text-xs text-gray-600 mt-1 block">3-LETTER CODE</span>
-        </div>
-      </Reveal>
+        </Field>
 
-      <FieldError message={errorMsg} className="mb-4" />
+        <FieldGroup label="Type">
+          <ChoiceChips value={type} onChange={setType} options={ACCOUNT_TYPES.map((t) => ({ value: t, label: accountTypeLabel(t) }))} />
+          {type === 'DEBT' && <p className="mt-2 text-xs text-ink-3">A debt account tracks what is owed; it starts at zero.</p>}
+        </FieldGroup>
 
-      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
-        <Button onClick={handleSave} active={true} className="w-full sm:w-auto">
-          SAVE ACCOUNT
-        </Button>
-      </div>
+        <FieldGroup label="Currency">
+          <ChoiceChips
+            value={currency}
+            onChange={setCurrency}
+            options={[...CURRENCY_OPTIONS.map((c) => ({ value: c, label: c })), { value: 'OTHER', label: 'Other' }]}
+          />
+        </FieldGroup>
+
+        <Reveal show={currency === 'OTHER'}>
+          <Field label="Currency code" htmlFor="account-code" hint="Three letters">
+            <TextInput
+              id="account-code"
+              value={customCurrency}
+              onChange={(e) => setCustomCurrency(e.target.value.toUpperCase().slice(0, 3))}
+              maxLength={3}
+              placeholder="GBP"
+              className="uppercase font-mono tracking-[0.08em] max-w-[140px]"
+              autoComplete="off"
+            />
+          </Field>
+        </Reveal>
+
+        <FieldError message={errorMsg} className="" />
+      </form>
     </Modal>
   );
 }

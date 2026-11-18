@@ -1,13 +1,17 @@
 import { useState, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { monthVariants } from '../../lib/motion.js';
-import Button from '../../components/Button.jsx';
 import DailyLogModal from './DailyLogModal.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, convertToBase } from '../../lib/currency.js';
-import { getDaysInMonth, getMonthName } from '../../lib/date.js';
+import { convertToBase } from '../../lib/currency.js';
+import { getDaysInMonth } from '../../lib/date.js';
+import { categoryLabel, compact, monthLong, shortDate } from '../../lib/format.js';
+import { Amount } from '../../components/AnimatedAmount.jsx';
+import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import { IconButton } from '../../components/Button.jsx';
+import { IconChevronLeft, IconChevronRight } from '../../components/icons.jsx';
 
-const WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FALLBACK_ALLOWANCE = 100000;
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -15,6 +19,20 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const parseTxDate = (dateStr) => {
   const [d, m, y] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
+};
+
+/*
+ * A day's spending against the daily allowance, in four steps:
+ *   none   nothing spent
+ *   under  within the allowance
+ *   over   up to twice the allowance
+ *   far    more than twice the allowance
+ */
+const LEVEL = {
+  none: { cell: 'hover:bg-white/[0.04]', figure: '', dot: '' },
+  under: { cell: 'bg-white/[0.035] hover:bg-white/[0.07]', figure: 'text-ink-2', dot: 'bg-ink-3' },
+  over: { cell: 'bg-caution/[0.16] hover:bg-caution/[0.24]', figure: 'text-caution', dot: 'bg-caution' },
+  far: { cell: 'bg-negative/[0.24] hover:bg-negative/[0.32]', figure: 'text-negative', dot: 'bg-negative' },
 };
 
 export default function Calendar() {
@@ -38,67 +56,61 @@ export default function Calendar() {
     lastMonthIndex.current = year * 12 + month;
   }
   const dir = monthDir.current;
-  const monthMotion = {
-    custom: dir,
-    variants: monthVariants,
-    initial: 'enter',
-    animate: 'center',
-    exit: 'exit',
-  };
+  const monthMotion = { custom: dir, variants: monthVariants, initial: 'enter', animate: 'center', exit: 'exit' };
 
-  const computedDailyAllowance = getDailyAllowanceUZS() || FALLBACK_ALLOWANCE;
+  const budgetAllowance = getDailyAllowanceUZS();
+  const computedDailyAllowance = budgetAllowance || FALLBACK_ALLOWANCE;
 
-  const toUZS = (tx) => {
-    return convertToBase(tx.amount, tx.currency, exchangeRates);
-  };
+  const monthTx = useMemo(
+    () =>
+      transactions.filter((tx) => {
+        const d = parseTxDate(tx.date);
+        return d.getFullYear() === year && d.getMonth() === month;
+      }),
+    [transactions, year, month]
+  );
 
-  const monthTx = useMemo(() => {
-    return transactions.filter((tx) => {
-      const d = parseTxDate(tx.date);
-      return d.getFullYear() === year && d.getMonth() === month;
-    });
-  }, [transactions, year, month]);
-
-  const getDaySpending = (day) => {
-    let sum = 0;
+  const calendar = useMemo(() => {
+    const spendByDay = new Map();
     for (const tx of monthTx) {
       if (tx.type !== 'EXPENSE') continue;
-      const d = parseTxDate(tx.date);
-      if (d.getDate() === day) sum += toUZS(tx);
+      const day = parseTxDate(tx.date).getDate();
+      spendByDay.set(day, (spendByDay.get(day) || 0) + convertToBase(tx.amount, tx.currency, exchangeRates));
     }
-    return sum;
-  };
+    const level = (spend) => {
+      if (spend <= 0) return 'none';
+      if (spend < computedDailyAllowance) return 'under';
+      if (spend < computedDailyAllowance * 2) return 'over';
+      return 'far';
+    };
 
-  const getSpendingLevel = (spend) => {
-    if (spend <= 0) return '.';
-    if (spend < computedDailyAllowance) return '.';
-    if (spend < computedDailyAllowance * 2) return '*';
-    return '#';
-  };
-
-  const getCalendarDays = (date) => {
-    const y = date.getFullYear();
-    const m = date.getMonth();
-    const totalDays = getDaysInMonth(y, m + 1);
-    const firstDayJs = new Date(y, m, 1).getDay();
+    const totalDays = getDaysInMonth(year, month + 1);
+    const firstDayJs = new Date(year, month, 1).getDay();
     const leadingEmpty = firstDayJs === 0 ? 6 : firstDayJs - 1;
-
+    const today = new Date();
     const cells = [];
     for (let i = 0; i < leadingEmpty; i++) cells.push({ empty: true });
-
+    let spent = 0;
+    let overDays = 0;
     for (let day = 1; day <= totalDays; day++) {
-      const dateString = `${pad2(day)}-${pad2(m + 1)}-${y}`;
-      const spend = getDaySpending(day);
-      cells.push({ day, dateString, spendingLevel: getSpendingLevel(spend) });
+      const spend = spendByDay.get(day) || 0;
+      const lv = level(spend);
+      spent += spend;
+      if (lv === 'over' || lv === 'far') overDays++;
+      const date = new Date(year, month, day);
+      cells.push({
+        day,
+        dateString: `${pad2(day)}-${pad2(month + 1)}-${year}`,
+        spend,
+        level: lv,
+        isToday: date.toDateString() === today.toDateString(),
+        future: date > today,
+      });
     }
-
     const totalCells = cells.length <= 35 ? 35 : 42;
     while (cells.length < totalCells) cells.push({ empty: true });
-
-    return cells;
-  };
-
-  const calendarDays = useMemo(() => getCalendarDays(viewDate), [viewDate, monthTx, computedDailyAllowance]);
+    return { cells, spent, overDays };
+  }, [monthTx, exchangeRates, computedDailyAllowance, year, month]);
 
   const handlePrevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setViewDate(new Date(year, month + 1, 1));
@@ -107,11 +119,8 @@ export default function Calendar() {
     setSelectedDate(null);
   };
 
-  // newest first, for the compact mobile feed under the grid
-  const monthFeed = useMemo(
-    () => [...monthTx].sort((a, b) => parseTxDate(b.date) - parseTxDate(a.date)),
-    [monthTx]
-  );
+  // newest first: the month's entries beside (or under) the grid
+  const monthFeed = useMemo(() => [...monthTx].sort((a, b) => parseTxDate(b.date) - parseTxDate(a.date)), [monthTx]);
 
   const openDay = (cell) => {
     setSelectedDate({ day: cell.day, dateString: cell.dateString });
@@ -124,191 +133,149 @@ export default function Calendar() {
     setShowDailyLog(true);
   };
 
-  const navBtn =
-    'flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]';
+  const monthName = `${monthLong(month)} ${year}`;
 
   return (
-    <>
-      {/* MOBILE: mockup composition */}
-      <div className="sm:hidden flex flex-col h-full w-full overflow-hidden px-4 pt-2 pb-2">
-        <h1 className="flex-shrink-0 font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0 mb-1">
-          [ &gt; CALENDAR.LOG ]
-        </h1>
+    <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="frame py-6 sm:py-8 lg:py-10">
+        <PageHeader
+          title="Calendar"
+          subtitle={
+            budgetAllowance
+              ? `Daily allowance ${compact(budgetAllowance)} UZS, from this month's budget`
+              : `No budget this month: days are measured against ${compact(FALLBACK_ALLOWANCE)} UZS`
+          }
+        >
+          <StatRow
+            items={[
+              { label: `Spent in ${monthLong(month)}`, value: <Amount value={calendar.spent} currency="UZS" codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" /> },
+              {
+                label: 'Days over allowance',
+                value: <span className="tnum">{calendar.overDays}</span>,
+                tone: calendar.overDays ? 'text-caution' : 'text-ink',
+              },
+            ]}
+          />
+        </PageHeader>
 
-        <div className="flex-shrink-0 grid grid-cols-[2.25rem_1fr_2.25rem] items-center mb-1">
-          <button
-            type="button"
-            aria-label="PREVIOUS MONTH"
-            title="PREVIOUS MONTH"
-            onClick={handlePrevMonth}
-            className={navBtn}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <span className="text-center font-mono uppercase tracking-widest text-sm text-white leading-none whitespace-nowrap">
-            <AnimatePresence mode="wait" initial={false} custom={dir}>
-              <motion.span key={monthKey} className="inline-block" {...monthMotion}>
-                {getMonthName(month + 1)} {year}
-              </motion.span>
-            </AnimatePresence>
-          </span>
-          <button
-            type="button"
-            aria-label="NEXT MONTH"
-            title="NEXT MONTH"
-            onClick={handleNextMonth}
-            className={navBtn}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex-shrink-0 grid grid-cols-7 mb-1">
-          {WEEKDAYS.map((day) => (
-            <div key={day} className="text-center font-mono text-[10px] tracking-widest text-gray-500 py-1 leading-none">
-              {day}
+        <div className="mt-8 grid gap-6 lg:grid-cols-12">
+          {/* the month */}
+          <section aria-label={monthName} className="lg:col-span-8 veil p-3 sm:p-5 self-start">
+            <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+              <IconButton label="Previous month" onClick={handlePrevMonth} data-action="prev-month">
+                <IconChevronLeft />
+              </IconButton>
+              <h2 className="text-base sm:text-lg font-medium text-ink text-center" aria-live="polite">
+                <AnimatePresence mode="wait" initial={false} custom={dir}>
+                  <motion.span key={monthKey} className="inline-block" {...monthMotion}>
+                    {monthName}
+                  </motion.span>
+                </AnimatePresence>
+              </h2>
+              <IconButton label="Next month" onClick={handleNextMonth} data-action="next-month">
+                <IconChevronRight />
+              </IconButton>
             </div>
-          ))}
-        </div>
 
-        <AnimatePresence mode="wait" initial={false} custom={dir}>
-        <motion.div
-          key={monthKey}
-          className="flex-shrink-0 grid grid-cols-7 auto-rows-[2rem] gap-y-0.5"
-          {...monthMotion}
-        >
-          {calendarDays.map((cell, idx) => {
-            if (cell.empty) return <div key={idx} />;
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5" aria-hidden="true">
+              {WEEKDAYS.map((d) => (
+                <div key={d} className="text-center text-2xs font-medium text-ink-3 py-1">
+                  <span className="sm:hidden">{d.charAt(0)}</span>
+                  <span className="hidden sm:inline">{d}</span>
+                </div>
+              ))}
+            </div>
 
-            const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
+            <AnimatePresence mode="wait" initial={false} custom={dir}>
+              <motion.div key={monthKey} className="grid grid-cols-7 gap-1 sm:gap-1.5" {...monthMotion}>
+                {calendar.cells.map((cell, idx) => {
+                  if (cell.empty) return <div key={idx} aria-hidden="true" />;
+                  const lv = LEVEL[cell.level];
+                  const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
+                  return (
+                    <button
+                      key={cell.dateString}
+                      type="button"
+                      data-day={cell.dateString}
+                      onClick={() => openDay(cell)}
+                      aria-label={`${cell.day} ${monthLong(month)}${cell.isToday ? ', today' : ''}: ${
+                        cell.spend > 0 ? `${Math.round(cell.spend).toLocaleString('en-US')} UZS spent` : 'nothing spent'
+                      }`}
+                      className={`relative flex flex-col justify-between min-w-0 h-12 xs:h-14 sm:h-[64px] lg:h-[60px] xl:h-[64px] rounded-sm sm:rounded p-1.5 sm:p-2.5 text-left motion-btn cursor-pointer ${lv.cell} ${
+                        isSelected ? 'ring-1 ring-ink' : cell.isToday ? 'ring-1 ring-accent' : ''
+                      }`}
+                    >
+                      <span
+                        className={`text-xs sm:text-sm tnum leading-none ${
+                          cell.isToday ? 'text-accent font-medium' : cell.future ? 'text-ink-3' : 'text-ink'
+                        }`}
+                      >
+                        {cell.day}
+                      </span>
+                      {cell.spend > 0 && (
+                        <>
+                          <span className={`hidden sm:block text-2xs font-medium tnum truncate ${lv.figure}`}>{compact(cell.spend)}</span>
+                          <span className={`sm:hidden self-end w-1.5 h-1.5 rounded-full ${lv.dot}`} aria-hidden="true" />
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            </AnimatePresence>
 
-            return (
-              <button
-                key={cell.dateString}
-                type="button"
-                onClick={() => openDay(cell)}
-                className={`min-w-0 flex items-center justify-center border motion-btn cursor-pointer font-mono text-xs leading-none whitespace-nowrap ${
-                  isSelected
-                    ? 'bg-white text-black border-white font-bold'
-                    : 'bg-transparent text-white border-transparent hover:border-white'
-                }`}
-              >
-                {cell.day}
-                <span className={`text-[10px] ${isSelected ? 'text-black' : 'text-gray-500'}`}>
-                  {cell.spendingLevel}
-                </span>
-              </button>
-            );
-          })}
-        </motion.div>
-        </AnimatePresence>
+            <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 px-1 text-2xs text-ink-3" aria-label="Legend">
+              <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-white/[0.12]" />Within allowance</li>
+              <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-caution/70" />Over allowance</li>
+              <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-negative/70" />Over twice the allowance</li>
+            </ul>
+          </section>
 
-        <AnimatePresence mode="wait" initial={false} custom={dir}>
-        <motion.div
-          key={monthKey}
-          className="flex-1 min-h-0 overflow-y-auto mt-2 border-t border-gray-800"
-          {...monthMotion}
-        >
-          {monthFeed.length === 0 ? (
-            <div className="font-mono text-xs text-gray-500 py-3">[ NO ENTRIES THIS MONTH ]</div>
-          ) : (
-            monthFeed.map((tx) => (
-              <button
-                key={tx.id}
-                type="button"
-                onClick={() => openDayFromTx(tx)}
-                className="w-full flex justify-between items-start gap-3 py-2 border-b border-dashed border-gray-800 text-left font-mono motion-btn cursor-pointer"
-              >
-                <span className="min-w-0 flex flex-col gap-1">
-                  <span className="text-xs font-bold tracking-widest text-white truncate">
-                    [ {tx.type === 'TRANSFER' ? 'TRANSFER' : tx.category} ]
-                  </span>
-                  <span className="text-[10px] tracking-widest text-gray-500">{tx.date}</span>
-                </span>
-                <span className="flex-shrink-0 text-xs font-bold text-white">
-                  {tx.type === 'INCOME' ? '+' : '-'}{formatAmount(tx.amount, tx.currency)}
-                </span>
-              </button>
-            ))
-          )}
-        </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* SM+: original desktop/tablet layout, untouched */}
-      <div className="hidden sm:flex flex-col h-full w-full overflow-hidden p-4 md:p-8 pb-24">
-        <div className="flex justify-between items-center mb-4 gap-2">
-          <h1 className="font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0">
-            [ &gt; CALENDAR.LOG ]
-          </h1>
-          <div className="flex gap-2 flex-shrink-0">
-            <Button className="whitespace-nowrap" onClick={handlePrevMonth}>{'< PREV'}</Button>
-            <Button className="whitespace-nowrap" onClick={handleNextMonth}>{'NEXT >'}</Button>
-          </div>
-        </div>
-
-        <div className="font-mono text-xs tracking-widest text-gray-500 mb-6">
-          MONTH:{' '}
-          <AnimatePresence mode="wait" initial={false} custom={dir}>
-            <motion.span key={monthKey} className="inline-block" {...monthMotion}>
-              {getMonthName(month + 1)} {year}
-            </motion.span>
-          </AnimatePresence>
-        </div>
-
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="grid grid-cols-7 gap-1 md:gap-2 mb-2">
-            {WEEKDAYS.map((day) => (
-              <div key={day} className="text-center font-mono text-xs text-gray-500 py-1">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <AnimatePresence mode="wait" initial={false} custom={dir}>
-          <motion.div
-            key={monthKey}
-            className="grid grid-cols-7 gap-1 md:gap-2 flex-1 min-h-0"
-            {...monthMotion}
-          >
-            {calendarDays.map((cell, idx) => {
-              if (cell.empty) {
-                return <div key={idx} className="border border-transparent" />;
-              }
-
-              const isSelected = selectedDate && selectedDate.dateString === cell.dateString;
-
-              const baseClass = isSelected
-                ? 'flex flex-col items-center justify-center border bg-white text-black border-white md:border-2 motion-btn'
-                : 'flex flex-col items-center justify-center border border-gray-800 bg-black text-white hover:border-white md:border-2 motion-btn';
-
-              return (
-                <button
-                  key={cell.dateString}
-                  className={`${baseClass} p-1 md:p-2 h-full w-full cursor-pointer`}
-                  onClick={() => openDay(cell)}
-                >
-                  <span className="font-mono text-sm md:text-base font-bold">
-                    {isSelected ? `[ ${cell.day} ]` : cell.day}
-                  </span>
-                  {!isSelected && (
-                    <span className="font-mono text-xs mt-1 text-gray-400">
-                      {cell.spendingLevel}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </motion.div>
-          </AnimatePresence>
+          {/* the month's entries */}
+          <section aria-labelledby="month-feed" className="lg:col-span-4 veil flex flex-col max-h-[560px] lg:max-h-none lg:h-0 lg:min-h-full">
+            <h2 id="month-feed" className="flex-shrink-0 flex items-baseline justify-between gap-3 px-5 pt-5 pb-3">
+              <span className="eyebrow">This month's entries</span>
+              <span className="text-2xs text-ink-3 tnum">{monthFeed.length}</span>
+            </h2>
+            <AnimatePresence mode="wait" initial={false} custom={dir}>
+              <motion.ul key={monthKey} className="flex-1 min-h-0 overflow-y-auto px-2 pb-2" {...monthMotion}>
+                {monthFeed.length === 0 ? (
+                  <li className="px-3 py-8 text-sm text-ink-3">Nothing recorded in {monthLong(month)}.</li>
+                ) : (
+                  monthFeed.map((tx) => {
+                    const income = tx.type === 'INCOME';
+                    return (
+                      <li key={tx.id}>
+                        <button
+                          type="button"
+                          onClick={() => openDayFromTx(tx)}
+                          className="w-full flex items-center justify-between gap-3 min-h-[56px] px-3 py-2 rounded text-left hover:bg-white/[0.05] motion-btn cursor-pointer"
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm text-ink truncate">{tx.note || categoryLabel(tx.category)}</span>
+                            <span className="block mt-0.5 text-xs text-ink-3 truncate">
+                              <span className="tnum">{shortDate(tx.date)}</span> · {categoryLabel(tx.category)}
+                            </span>
+                          </span>
+                          <Amount
+                            value={tx.amount}
+                            currency={tx.currency}
+                            sign={income ? '+' : '-'}
+                            className={`flex-shrink-0 text-sm ${income ? 'text-positive' : 'text-ink'}`}
+                            codeClassName="ml-1 font-mono text-[max(12px,0.72em)] text-ink-3"
+                          />
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+              </motion.ul>
+            </AnimatePresence>
+          </section>
         </div>
       </div>
 
       <DailyLogModal isOpen={showDailyLog} onClose={handleCloseDailyLog} selectedDate={selectedDate} />
-    </>
+    </div>
   );
 }

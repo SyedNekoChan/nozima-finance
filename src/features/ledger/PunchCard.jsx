@@ -15,7 +15,16 @@ import SelectorField from '../../components/SelectorField.jsx';
 import Reveal from '../../components/Reveal.jsx';
 import FieldError from '../../components/FieldError.jsx';
 import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import { Field, TextInput, AmountInput, Segmented } from '../../components/Field.jsx';
+import { IconImage, IconTransfer, IconTrash } from '../../components/icons.jsx';
+import { accountLabel, categoryLabel } from '../../lib/format.js';
 import useHeldValue from '../../hooks/useHeldValue.js';
+
+const TYPE_OPTIONS = [
+  { value: 'EXPENSE', label: 'Expense' },
+  { value: 'INCOME', label: 'Income' },
+  { value: 'TRANSFER', label: 'Transfer' },
+];
 
 export default function PunchCard({
   isOpen,
@@ -280,10 +289,12 @@ export default function PunchCard({
       }
 
       if (!accountId) {
+        setErrorMsg('Choose an account.');
         return;
       }
 
       if (!sourceAccount) {
+        setErrorMsg('Choose an account.');
         return;
       }
 
@@ -296,6 +307,7 @@ export default function PunchCard({
         !amount ||
         Number.isNaN(amount)
       ) {
+        setErrorMsg('Enter an amount.');
         return;
       }
 
@@ -307,6 +319,7 @@ export default function PunchCard({
             accountId
         )
       ) {
+        setErrorMsg('Choose the account to transfer to.');
         return;
       }
 
@@ -412,376 +425,174 @@ export default function PunchCard({
       }
     };
 
+  const accountOptions = accounts.map((account) => ({
+    value: account.id,
+    label: accountLabel(account.name),
+    meta: account.currency,
+  }));
+
+  const categoryOptions = (category && !TRANSACTION_CATEGORIES.includes(category)
+    ? [category, ...TRANSACTION_CATEGORIES] // keep legacy values (e.g. FOOD) selectable
+    : TRANSACTION_CATEGORIES
+  ).map((option) => ({ value: option, label: categoryLabel(option) }));
+
+  const isTransfer = type === 'TRANSFER';
+
   return (
     <>
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title={
-        editingTx
-          ? 'EDIT ENTRY'
-          : 'NEW LEDGER ENTRY'
-      }
-      size="md"
-    >
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          DATE
-        </span>
-
-        <input
-          type="text"
-          value={date}
-          onChange={(e) =>
-            setDate(
-              e.target.value
-            )
-          }
-          placeholder="DD-MM-YYYY"
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm tracking-widest"
-        />
-      </div>
-
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          TYPE
-        </span>
-
-        <div className="flex sm:hidden gap-2">
-          {[
-            {
-              key: 'EXPENSE',
-              icon: (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                  <rect x="2" y="6" width="20" height="12" />
-                  <line x1="9" y1="12" x2="15" y2="12" />
-                </svg>
-              ),
-            },
-            {
-              key: 'INCOME',
-              icon: (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                  <rect x="2" y="6" width="20" height="12" />
-                  <line x1="12" y1="9" x2="12" y2="15" />
-                  <line x1="9" y1="12" x2="15" y2="12" />
-                </svg>
-              ),
-            },
-            {
-              key: 'TRANSFER',
-              icon: (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-                  <polyline points="17 1 21 5 17 9" />
-                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <polyline points="7 23 3 19 7 15" />
-                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-              ),
-            },
-          ].map(
-            (option) => (
-              <button
-                key={option.key}
-                type="button"
-                aria-label={option.key}
-                title={option.key}
-                onClick={() =>
-                  handleTypeChange(
-                    option.key
-                  )
-                }
-                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-1.5 border-2 motion-btn select-none cursor-pointer active:translate-y-[1px] ${
-                  type === option.key
-                    ? 'bg-white text-black border-white font-bold'
-                    : 'bg-black text-white border-transparent hover:border-white'
-                }`}
-              >
-                {option.icon}
-                <span className="font-mono text-[10px] leading-none tracking-wide uppercase">
-                  {option.key}
-                </span>
-              </button>
-            )
-          )}
-        </div>
-
-        <div className="hidden sm:flex gap-2 overflow-x-auto">
-          {[
-            'EXPENSE',
-            'INCOME',
-            'TRANSFER',
-          ].map(
-            (option) => (
-              <Button
-                key={option}
-                active={
-                  type === option
-                }
-                className="whitespace-nowrap flex-shrink-0"
-                onClick={() =>
-                  handleTypeChange(
-                    option
-                  )
-                }
-              >
-                {option}
-              </Button>
-            )
-          )}
-        </div>
-      </div>
-
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          ACCOUNT
-        </span>
-
-        {accounts.length ===
-        0 ? (
-          <span className="font-mono text-xs text-gray-500 leading-normal">
-            NO ACCOUNTS — CREATE ONE
-            FIRST
-          </span>
-        ) : (
-          <SelectorField
-            value={accountId}
-            options={accounts.map(
-              (account) => ({
-                value: account.id,
-                label: account.name,
-              })
-            )}
-            onChange={
-              handleAccountChange
-            }
-            placeholder="SELECT ACCOUNT"
-          />
-        )}
-      </div>
-
-      <Reveal show={type === 'TRANSFER'}>
-        <div className="mb-3 sm:mb-4">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-            TO ACCOUNT
-          </span>
-
-          <SelectorField
-            value={toAccountId}
-            options={accounts
-              .filter(
-                (a) =>
-                  a.id !==
-                  accountId
-              )
-              .map(
-                (account) => ({
-                  value:
-                    account.id,
-                  label:
-                    account.name,
-                })
-              )}
-            onChange={
-              setToAccountId
-            }
-            placeholder="SELECT DESTINATION"
-          />
-        </div>
-      </Reveal>
-
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          AMOUNT
-        </span>
-
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={
-              amountInput
-            }
-            onChange={(e) =>
-              setAmountInput(
-                e.target.value
-              )
-            }
-            placeholder="0"
-            className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-2xl"
-          />
-
-          <span className="font-mono text-xs text-gray-500">
-            {
-              currencyCode
-            }
-          </span>
-        </div>
-      </div>
-
-      <Reveal show={type !== 'TRANSFER'}>
-        <div className="mb-3 sm:mb-4">
-          <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-            CATEGORY
-          </span>
-
-          <SelectorField
-            value={category}
-            options={(category &&
-              !TRANSACTION_CATEGORIES.includes(category)
-                ? [category, ...TRANSACTION_CATEGORIES] // keep legacy values (e.g. FOOD) selectable
-                : TRANSACTION_CATEGORIES
-            ).map(
-              (option) => ({
-                value: option,
-                label: option,
-              })
-            )}
-            onChange={setCategory}
-            placeholder="SELECT CATEGORY"
-            searchable={false}
-          />
-        </div>
-      </Reveal>
-
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          NOTE
-        </span>
-
-        <input
-          type="text"
-          value={note}
-          onChange={(e) =>
-            setNote(
-              e.target.value
-            )
-          }
-          placeholder="optional"
-          className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm"
-        />
-      </div>
-
-      <div className="mb-3 sm:mb-4">
-        <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-          ATTACH
-        </span>
-
-        {imageData ? (
-          <div>
-            <img
-              src={imageData}
-              alt="receipt"
-              onClick={() =>
-                setImageViewerOpen(
-                  true
-                )
-              }
-              className="w-12 h-12 object-cover border-2 border-white filter grayscale contrast-125 cursor-pointer"
-            />
-
-            <div className="mt-2">
-              <Button
-                onClick={() =>
-                  setImageData(
-                    null
-                  )
-                }
-              >
-                REMOVE IMAGE
-              </Button>
-            </div>
-          </div>
-        ) : (
+        title={editingTx ? 'Edit entry' : 'New entry'}
+        size="md"
+        footer={
           <>
-            <Button
-              onClick={() =>
-                fileInputRef.current?.click()
-              }
-            >
-              + UPLOAD IMAGE
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={handleSave} disabled={isSubmitting} data-action="save-entry">
+              {isSubmitting ? 'Saving…' : editingTx ? 'Save changes' : 'Save entry'}
             </Button>
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={
-                handleImageUpload
-              }
-              className="hidden"
-              ref={
-                fileInputRef
-              }
-            />
           </>
-        )}
-      </div>
-
-      <Reveal show={type === 'TRANSFER' && isCrossCurrency}>
-          <div className="mb-3 sm:mb-4">
-            <span className="block font-mono text-xs tracking-widest text-gray-500 mb-1 leading-none">
-              EXCHANGE RATE
-            </span>
-
-            <span className="block font-mono text-xs text-gray-500 mb-1">
-              1{' '}
-              {
-                sourceAccount?.currency
-              }{' '}
-              ={' '}
-              {
-                destAccount?.currency
-              }
-            </span>
-
-            <input
-              type="text"
-              inputMode="decimal"
-              value={
-                exchangeRateInput
-              }
-              onChange={(e) =>
-                setExchangeRateInput(
-                  e.target.value
-                )
-              }
-              className="w-full bg-black text-white font-mono border-b-2 border-gray-800 focus:border-white focus:outline-none px-1 py-2 text-sm"
-            />
-
-            <span className="font-mono text-xs text-gray-500 mt-2 block">
-              YOU WILL RECEIVE:{' '}
-              <AnimatedAmount
-                value={calculatedDestination}
-                currency={destAccount?.currency}
-              />
-            </span>
-          </div>
-      </Reveal>
-
-      <FieldError message={errorMsg} className="mb-3 sm:mb-4" />
-
-      <div className="flex sm:justify-end mt-4 sm:mt-6 border-t border-gray-800 pt-3 sm:pt-4">
-        <Button
-          className="w-full sm:w-auto"
-          onClick={handleSave}
-          disabled={isSubmitting}
+        }
+      >
+        <form
+          className="space-y-5"
+          onSubmit={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            // Enter in a text field saves, as a form should
+            if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'file') {
+              e.preventDefault();
+              handleSave();
+            }
+          }}
         >
-          {isSubmitting
-            ? 'SAVING...'
-            : editingTx
-              ? 'SAVE CHANGES'
-              : 'SAVE ENTRY'}
-        </Button>
-      </div>
+          <Segmented
+            value={type}
+            options={TYPE_OPTIONS}
+            onChange={handleTypeChange}
+            label="Type of entry"
+            optionAttr="data-type-option"
+            className="w-full"
+          />
+
+          <Field label="Amount" htmlFor="entry-amount">
+            <AmountInput
+              id="entry-amount"
+              inputMode="decimal"
+              value={amountInput}
+              onChange={(e) => setAmountInput(e.target.value)}
+              placeholder="0"
+              currency={currencyCode}
+              autoComplete="off"
+            />
+          </Field>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label={isTransfer ? 'From account' : 'Account'} htmlFor="entry-account">
+              {accounts.length === 0 ? (
+                <p className="text-sm text-ink-3">No accounts yet. Create one in Accounts first.</p>
+              ) : (
+                <SelectorField
+                  id="entry-account"
+                  value={accountId}
+                  options={accountOptions}
+                  onChange={handleAccountChange}
+                  placeholder="Choose an account"
+                />
+              )}
+            </Field>
+
+            {isTransfer ? (
+              <Field label="To account" htmlFor="entry-to-account">
+                <SelectorField
+                  id="entry-to-account"
+                  value={toAccountId}
+                  options={accountOptions.filter((a) => a.value !== accountId)}
+                  onChange={setToAccountId}
+                  placeholder="Choose where it goes"
+                />
+              </Field>
+            ) : (
+              <Field label="Category" htmlFor="entry-category">
+                <SelectorField
+                  id="entry-category"
+                  value={category}
+                  options={categoryOptions}
+                  onChange={setCategory}
+                  placeholder="Choose a category"
+                  searchable={false}
+                />
+              </Field>
+            )}
+          </div>
+
+          <Reveal show={isTransfer && isCrossCurrency}>
+            <div className="rounded border border-line bg-white/[0.02] p-4">
+              <Field label="Exchange rate" htmlFor="entry-rate" hint={`1 ${sourceAccount?.currency || ''} = this many ${destAccount?.currency || ''}`}>
+                <div className="flex items-center gap-3">
+                  <TextInput
+                    id="entry-rate"
+                    inputMode="decimal"
+                    value={exchangeRateInput}
+                    onChange={(e) => setExchangeRateInput(e.target.value)}
+                    className="tnum"
+                  />
+                  <IconTransfer className="w-5 h-5 text-ink-3 flex-shrink-0" />
+                </div>
+              </Field>
+              <p className="mt-3 text-sm text-ink-2">
+                {accountLabel(destAccount?.name)} receives{' '}
+                <AnimatedAmount value={calculatedDestination} currency={destAccount?.currency} className="text-ink font-medium" />
+              </p>
+            </div>
+          </Reveal>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Date" htmlFor="entry-date" hint="Day-month-year">
+              <TextInput
+                id="entry-date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                placeholder="DD-MM-YYYY"
+                className="tnum"
+                autoComplete="off"
+              />
+            </Field>
+            <Field label="Note" htmlFor="entry-note" hint="Optional">
+              <TextInput id="entry-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was it for?" />
+            </Field>
+          </div>
+
+          <div>
+            <span className="block text-sm font-medium text-ink-2 mb-2">Receipt</span>
+            {imageData ? (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setImageViewerOpen(true)}
+                  aria-label="View receipt"
+                  className="w-14 h-14 rounded overflow-hidden border border-line-strong hover:border-white/40 motion-btn cursor-pointer"
+                >
+                  <img src={imageData} alt="" className="w-full h-full object-cover" />
+                </button>
+                <Button size="sm" variant="quiet" onClick={() => setImageData(null)} icon={<IconTrash className="w-4 h-4" />}>
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Button size="sm" onClick={() => fileInputRef.current?.click()} icon={<IconImage className="w-4 h-4" />}>
+                  Attach a photo
+                </Button>
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" ref={fileInputRef} />
+              </>
+            )}
+          </div>
+
+          <FieldError message={errorMsg} className="" />
+        </form>
       </Modal>
 
-      <ImageViewerModal
-        isOpen={imageViewerOpen}
-        onClose={() =>
-          setImageViewerOpen(false)
-        }
-        imageData={imageData}
-      />
+      <ImageViewerModal isOpen={imageViewerOpen} onClose={() => setImageViewerOpen(false)} imageData={imageData} />
     </>
   );
 }

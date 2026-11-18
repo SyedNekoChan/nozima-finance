@@ -1,45 +1,67 @@
 import { useState, useMemo } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { convertToBase } from '../../lib/currency.js';
-import AnimatedAmount from '../../components/AnimatedAmount.jsx';
-import { getMonthName } from '../../lib/date.js';
+import { getDaysInMonth } from '../../lib/date.js';
+import { compact, monthLong, monthShort } from '../../lib/format.js';
+import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import HeroStats from './HeroStats.jsx';
-import AsciiProgressBar from '../../components/AsciiProgressBar.jsx';
-import DotMatrixGraph from '../../components/DotMatrixGraph.jsx';
+import BudgetMeter from '../../components/BudgetMeter.jsx';
+import SpendingChart from '../../components/SpendingChart.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
+import { Field, AmountInput, Segmented } from '../../components/Field.jsx';
+import { IconEdit, IconPlus } from '../../components/icons.jsx';
+
+const GRANULARITY = [
+  { value: 'DAY', label: 'Days' },
+  { value: 'MONTH', label: 'Months' },
+  { value: 'YEAR', label: 'Years' },
+];
+
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function Dashboard() {
   const spentThisMonth = useFinanceStore((s) => s.getSpentThisMonthInUZS());
   const monthlyBudget = useFinanceStore((s) => s.getMonthlyBudgetUZS());
+  const dailyAllowance = useFinanceStore((s) => s.getDailyAllowanceUZS());
   const setMonthlyBudget = useFinanceStore((s) => s.setMonthlyBudget);
   const transactions = useFinanceStore((s) => s.transactions);
   const exchangeRates = useFinanceStore((s) => s.exchangeRates);
 
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
-  const [granularity, setGranularity] = useState('MONTH');
+  const [granularity, setGranularity] = useState('DAY');
 
   const now = new Date();
+  const day = now.getDate();
+  const days = getDaysInMonth(now.getFullYear(), now.getMonth() + 1);
 
-  const { graphData, graphLabels } = useMemo(() => {
+  // one bucket per period; a transaction counts in exactly the bucket of its date
+  const chart = useMemo(() => {
     const today = new Date();
     const buckets = [];
     if (granularity === 'DAY') {
       for (let i = 29; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-        const dd = String(d.getDate()).padStart(2, '0');
-        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, label: `${dd} ${getMonthName(d.getMonth() + 1)}` });
+        buckets.push({
+          key: `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`,
+          tick: i % 7 === 0 ? (d.getDate() === 1 || i === 29 ? `${d.getDate()} ${monthShort(d.getMonth())}` : String(d.getDate())) : '',
+          tip: `${WD[d.getDay()]} ${d.getDate()} ${monthShort(d.getMonth())}`,
+        });
       }
     } else if (granularity === 'YEAR') {
       for (let i = 5; i >= 0; i--) {
         const y = today.getFullYear() - i;
-        buckets.push({ key: `${y}`, label: `${y}` });
+        buckets.push({ key: `${y}`, tick: `${y}`, tip: `${y}` });
       }
     } else {
       for (let i = 11; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-        buckets.push({ key: `${d.getFullYear()}-${d.getMonth() + 1}`, label: getMonthName(d.getMonth() + 1) });
+        buckets.push({
+          key: `${d.getFullYear()}-${d.getMonth() + 1}`,
+          tick: monthShort(d.getMonth()),
+          tip: `${monthLong(d.getMonth())} ${d.getFullYear()}`,
+        });
       }
     }
 
@@ -52,8 +74,18 @@ export default function Dashboard() {
       totals.set(key, totals.get(key) + convertToBase(tx.amount, tx.currency, exchangeRates));
     }
 
-    return { graphData: buckets.map((b) => totals.get(b.key)), graphLabels: buckets.map((b) => b.label) };
+    const data = buckets.map((b) => totals.get(b.key));
+    return { data, ticks: buckets.map((b) => b.tick), tips: buckets.map((b) => b.tip), total: data.reduce((a, b) => a + b, 0) };
   }, [transactions, exchangeRates, granularity]);
+
+  const reference =
+    granularity === 'DAY' && dailyAllowance
+      ? { value: dailyAllowance, label: 'Allowance' }
+      : granularity === 'MONTH' && monthlyBudget
+        ? { value: monthlyBudget, label: 'Budget' }
+        : null;
+
+  const periodLabel = granularity === 'DAY' ? 'Last 30 days' : granularity === 'MONTH' ? 'Last 12 months' : 'Last 6 years';
 
   function openBudgetModal() {
     setBudgetInput(monthlyBudget ? String(monthlyBudget) : '');
@@ -75,105 +107,153 @@ export default function Dashboard() {
     setBudgetInput('');
   }
 
-  return (
-    <div className="relative z-10 h-full w-full px-4 pt-6 pb-3 sm:p-6 sm:pb-24 md:p-10 flex flex-col gap-3 sm:gap-0 overflow-hidden">
-      <div className="contents sm:flex sm:flex-col md:flex-row md:justify-between sm:gap-6 md:gap-12 sm:flex-shrink-0">
-        <div className="order-1 sm:order-none sm:flex-1 min-w-0">
-          <HeroStats />
-        </div>
+  const remaining = monthlyBudget ? monthlyBudget - spentThisMonth : 0;
+  const daysLeft = days - day + 1;
+  const pace = day / days;
+  const ratio = monthlyBudget ? spentThisMonth / monthlyBudget : 0;
+  const status = !monthlyBudget
+    ? null
+    : ratio > 1
+      ? { tone: 'text-negative', text: 'Over budget for the month.' }
+      : ratio > pace + 0.05
+        ? { tone: 'text-caution', text: 'Spending faster than the month is passing.' }
+        : { tone: 'text-positive', text: 'On track: spending is behind the calendar.' };
 
-        <div className="order-3 sm:order-none flex flex-col items-start md:items-end gap-3 sm:gap-6 flex-shrink-0 min-w-0 w-full md:w-auto border-t border-gray-800 pt-3 sm:border-t-0 sm:pt-0">
-          <div className="w-full sm:w-auto">
-            <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500">
-              SPENT THIS MONTH
-            </span>
-            <br />
-            <span className="font-mono text-[length:clamp(1.125rem,6vw,1.5rem)] sm:text-3xl md:text-4xl text-white mt-1 break-words">
-              <AnimatedAmount value={spentThisMonth} currency="UZS" />
-            </span>
+  return (
+    <div className="h-full overflow-y-auto overscroll-contain">
+      <div className="frame py-6 sm:py-8 lg:py-10 flex flex-col gap-6 lg:gap-8 min-h-full">
+        <section className="grid grid-cols-1 gap-6 lg:gap-12 md:grid-cols-12 md:items-start">
+          <div className="md:col-span-7 min-w-0">
+            <HeroStats />
           </div>
 
-          <div className="w-full sm:w-auto border-t border-dashed border-gray-700 pt-3 sm:border-t-0 sm:pt-0">
-            <div className="flex items-center justify-between sm:justify-start gap-3">
-              <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500">
-                BUDGET LIMIT
-              </span>
-              <button
-                type="button"
-                aria-label="EDIT BUDGET"
-                title="EDIT BUDGET"
-                onClick={openBudgetModal}
-                className="sm:hidden flex items-center justify-center w-8 h-8 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px]"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              </button>
-              <Button className="hidden sm:inline-block" onClick={openBudgetModal}>EDIT</Button>
+          {/* this month */}
+          <section aria-labelledby="month-title" className="md:col-span-5 veil p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 id="month-title" className="eyebrow">
+                  {monthLong(now.getMonth())} spending
+                </h2>
+                <p className="mt-2 text-[32px] sm:text-[36px] leading-none font-medium tracking-[-0.035em] text-ink">
+                  <AnimatedAmount value={spentThisMonth} currency="UZS" split />
+                </p>
+              </div>
+              {monthlyBudget ? (
+                <Button size="sm" variant="quiet" onClick={openBudgetModal} data-action="edit-budget" icon={<IconEdit className="w-4 h-4" />} className="-mr-2 -mt-1">
+                  Budget
+                </Button>
+              ) : null}
             </div>
+
             {monthlyBudget ? (
               <>
-                <span className="font-mono text-[length:clamp(1.125rem,6vw,1.5rem)] sm:text-3xl md:text-4xl text-white mt-1 break-words">
-                  <AnimatedAmount value={monthlyBudget} currency="UZS" />
-                </span>
-                <div className="mt-2">
-                  <AsciiProgressBar value={spentThisMonth} max={monthlyBudget} width={30} className="sm:hidden" />
-                  <AsciiProgressBar value={spentThisMonth} max={monthlyBudget} width={24} className="hidden sm:inline" />
+                <div className="mt-6">
+                  <BudgetMeter spent={spentThisMonth} budget={monthlyBudget} day={day} days={days} />
                 </div>
+                <dl className="mt-5 grid grid-cols-2 gap-4 pt-5 border-t border-line">
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-3">{remaining >= 0 ? 'Left this month' : 'Over by'}</dt>
+                    <dd className={`mt-1 text-base font-medium ${remaining >= 0 ? 'text-ink' : 'text-negative'}`}>
+                      <Amount value={Math.abs(remaining)} currency="UZS" />
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs text-ink-3">Of a budget of</dt>
+                    <dd className="mt-1 text-base font-medium text-ink">
+                      <Amount value={monthlyBudget} currency="UZS" />
+                    </dd>
+                  </div>
+                  {remaining > 0 && (
+                    <div className="col-span-2 text-xs text-ink-3">
+                      About <span className="text-ink-2 tnum">{compact(remaining / daysLeft)} UZS</span> a day for the {daysLeft} days left.
+                    </div>
+                  )}
+                </dl>
+                {status && <p className={`mt-4 text-sm ${status.tone}`}>{status.text}</p>}
               </>
             ) : (
-              <span className="font-mono text-[length:clamp(1.125rem,6vw,1.5rem)] sm:text-3xl md:text-4xl text-white mt-1 break-words">
-                [ ! SET BUDGET ! ]
-              </span>
+              <div className="mt-6 pt-5 border-t border-line">
+                <p className="text-sm text-ink-2">No budget for {monthLong(now.getMonth())} yet. Set one to see how the month is pacing.</p>
+                <Button variant="primary" className="mt-4" onClick={openBudgetModal} data-action="edit-budget" icon={<IconPlus className="w-4 h-4" />}>
+                  Set a budget
+                </Button>
+              </div>
             )}
+          </section>
+        </section>
+
+        {/* spending over time */}
+        <section aria-labelledby="chart-title" className="veil p-5 sm:p-6 flex flex-col flex-1 min-h-[320px] sm:min-h-[360px]">
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 mb-5">
+            <div className="min-w-0">
+              <h2 id="chart-title" className="eyebrow">Spending</h2>
+              <p className="mt-2 text-sm text-ink-2">
+                {periodLabel} · <Amount value={chart.total} currency="UZS" className="text-ink font-medium" />
+              </p>
+            </div>
+            <Segmented value={granularity} options={GRANULARITY} onChange={setGranularity} label="Period" size="sm" className="w-full sm:w-auto" />
           </div>
-        </div>
+          <div className="flex-1 min-h-[200px] -mx-1">
+            <SpendingChart
+              data={chart.data}
+              ticks={chart.ticks}
+              tips={chart.tips}
+              reference={reference}
+              overTone={granularity === 'DAY' ? 'caution' : 'negative'}
+              currency="UZS"
+              label={`Spending, ${periodLabel.toLowerCase()}`}
+            />
+          </div>
+          {reference && (
+            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-2xs text-ink-3" aria-label="Legend">
+              <li className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-ink" />{granularity === 'DAY' ? 'Today' : 'This month'}</li>
+              {granularity === 'DAY' ? (
+                <>
+                  <li className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-caution" />Over allowance</li>
+                  <li className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-negative" />Over twice the allowance</li>
+                </>
+              ) : (
+                <li className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-negative" />Over budget</li>
+              )}
+              <li className="inline-flex items-center gap-2"><span className="w-4 border-t border-dashed border-ink/60" />{reference.label}</li>
+            </ul>
+          )}
+        </section>
       </div>
 
-      <div className="order-2 sm:order-none flex-1 flex flex-col justify-end mt-0 sm:mt-6 min-h-[7rem] sm:min-h-0">
-        <div className="flex items-center justify-between gap-2 mb-1 sm:mb-2 min-w-0">
-          <span className="font-mono uppercase tracking-widest text-xs md:text-sm text-gray-500 whitespace-nowrap truncate">
-            SPENDING<span className="hidden sm:inline"> GRAPH</span> (UZS)
-          </span>
-          <div className="flex flex-shrink-0">
-            {['DAY', 'MONTH', 'YEAR'].map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setGranularity(g)}
-                className={`font-mono uppercase tracking-wider sm:tracking-widest text-[10px] sm:text-xs px-1.5 py-0.5 border-2 whitespace-nowrap motion-btn motion-state select-none cursor-pointer ${
-                  granularity === g
-                    ? 'bg-white text-black border-white font-bold'
-                    : 'bg-black text-white border-transparent hover:border-white'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </div>
-        <DotMatrixGraph data={graphData} labels={graphLabels} granularity={granularity} currencyCode="UZS" />
-      </div>
-
-      <Modal isOpen={showBudgetModal} onClose={() => setShowBudgetModal(false)} title="SET MONTHLY BUDGET" size="sm">
-        <span className="text-gray-500">
-          MONTH: {getMonthName(now.getMonth() + 1)} {now.getFullYear()}
-        </span>
-        <div>
-          <span className="text-xs tracking-widest text-gray-500">AMOUNT (UZS)</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={budgetInput}
-            onChange={(e) => setBudgetInput(e.target.value)}
-            className="w-full bg-black text-white font-mono border-2 border-white px-4 py-3 mt-4 text-2xl focus:outline-none focus:border-white"
-            placeholder="2000000"
-          />
-        </div>
-        <div className="flex justify-end mt-6">
-          <Button onClick={handleSaveBudget}>SAVE BUDGET</Button>
-        </div>
+      <Modal
+        isOpen={showBudgetModal}
+        onClose={() => setShowBudgetModal(false)}
+        title="Monthly budget"
+        description={`${monthLong(now.getMonth())} ${now.getFullYear()}`}
+        size="sm"
+        footer={
+          <>
+            <Button onClick={() => setShowBudgetModal(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSaveBudget} data-action="save-budget">
+              Save budget
+            </Button>
+          </>
+        }
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSaveBudget();
+          }}
+        >
+          <Field label="Amount" htmlFor="budget-amount" hint="Leave empty to remove this month's budget.">
+            <AmountInput
+              id="budget-amount"
+              type="number"
+              inputMode="numeric"
+              value={budgetInput}
+              onChange={(e) => setBudgetInput(e.target.value)}
+              placeholder="2000000"
+              currency="UZS"
+            />
+          </Field>
+        </form>
       </Modal>
     </div>
   );

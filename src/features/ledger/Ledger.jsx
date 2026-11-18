@@ -2,14 +2,17 @@ import { useState, useMemo, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DUR, EASE } from '../../lib/motion.js';
 import useHeldValue from '../../hooks/useHeldValue.js';
-import AnimatedAmount from '../../components/AnimatedAmount.jsx';
+import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
-import { formatAmount, convertToBase } from '../../lib/currency.js';
+import { convertToBase } from '../../lib/currency.js';
+import { dayHeading } from '../../lib/format.js';
 import LedgerRow from './LedgerRow.jsx';
 import SortBar from './SortBar.jsx';
 import PunchCard from './PunchCard.jsx';
 import Button from '../../components/Button.jsx';
-import Modal from '../../components/Modal.jsx';
+import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import ConfirmDeleteEntry from '../../components/ConfirmDelete.jsx';
+import { IconPlus } from '../../components/icons.jsx';
 
 export default function Ledger() {
   const transactions = useFinanceStore((s) => s.transactions);
@@ -134,114 +137,105 @@ export default function Ledger() {
       }
       currentGroup.items.push(tx);
     });
-    return groups;
-  }, [sortedTransactions, sortBy]);
+    // the day's spending, from the same accounting source as the totals above
+    const get = useFinanceStore.getState().getLedgerTotalsInUZS;
+    return groups.map((g) => ({ ...g, out: get(g.items).totalOut }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedTransactions, sortBy, accounts, exchangeRates]);
+
+  const row = (tx, showDate) => (
+    <LedgerRow key={tx.id} tx={tx} showDate={showDate} onEdit={() => handleOpenEdit(tx)} onDelete={() => setDeletingTx(tx)} />
+  );
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
-      <div className="flex-shrink-0 w-full bg-transparent border-b border-gray-800 px-4 py-3 sm:p-3 md:p-6">
-        <div className="flex justify-between items-center gap-2 mb-2 md:mb-3 min-w-0">
-          <h1 className="font-mono uppercase tracking-tighter text-2xl sm:text-lg md:text-4xl text-white leading-none whitespace-nowrap min-w-0">
-            [ &gt; LEDGER.LOG ]
-          </h1>
-          <button
-            type="button"
-            aria-label="NEW ENTRY"
-            title="NEW ENTRY"
-            onClick={handleOpenNewEntry}
-            className="sm:hidden flex items-center justify-center w-9 h-9 border-2 border-transparent hover:border-white text-white motion-btn select-none cursor-pointer active:translate-y-[1px] flex-shrink-0"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
-          <Button className="hidden sm:inline-block whitespace-nowrap flex-shrink-0" onClick={handleOpenNewEntry}>+ NEW ENTRY</Button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:flex-nowrap sm:gap-3 md:grid md:grid-cols-3 md:gap-4 font-mono text-[10px] md:text-xs tracking-widest text-gray-500 leading-none">
-          <div className="flex items-baseline gap-1 whitespace-nowrap">
-            <span>NET</span>
-            <span className="text-white text-xs md:text-sm"><AnimatedAmount value={totals.net} currency="UZS" /></span>
-          </div>
-          <div className="flex items-baseline gap-1 whitespace-nowrap">
-            <span>LIABILITY</span>
-            <span className="text-white text-xs md:text-sm">
-              {totalLiability > 0 ? '-' : ''}<AnimatedAmount value={totalLiability} currency="UZS" />
-            </span>
-          </div>
-          <div className="hidden md:block">[ {transactions.length} ENTRIES ]</div>
-        </div>
-      </div>
-
-      <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
-
-      <div className="flex-1 overflow-y-auto px-4 py-2 sm:p-4 md:p-6">
-        <motion.div
-          key={`${sortBy}-${sortDirection}`}
-          className="pb-4 sm:pb-24"
-          initial={{ opacity: 0.4 }}
-          animate={{ opacity: 1, transition: { duration: DUR.content, ease: EASE } }}
+    <div className="h-full overflow-y-auto overscroll-contain">
+      {/* phones: one column; wide screens: the title, figures and order sit on the
+          scene in a sticky column, the entries in a veil beside them */}
+      <div className="frame py-6 sm:py-8 lg:py-10 lg:grid lg:grid-cols-12 lg:gap-12">
+        <aside className="lg:col-span-4 lg:sticky lg:top-10 lg:self-start">
+        <PageHeader
+          title="Ledger"
+          subtitle={`${transactions.length} ${transactions.length === 1 ? 'entry' : 'entries'}`}
+          action={
+            <Button variant="primary" onClick={handleOpenNewEntry} data-action="new-entry" icon={<IconPlus className="w-[18px] h-[18px]" />}>
+              New entry
+            </Button>
+          }
         >
-          {sortedTransactions.length === 0 ? (
-            <div className="text-gray-500 font-mono text-sm">[ NO ENTRIES YET ]</div>
-          ) : sortBy === 'DATE' ? (
-            <AnimatePresence initial={false}>
-              {groupedByDate.map((group) => (
-                <motion.div
-                  key={group.date}
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto', transition: { duration: DUR.content, ease: EASE } }}
-                  exit={{ opacity: 0, height: 0, transition: { duration: DUR.exit, ease: EASE } }}
-                  style={{ overflow: 'hidden' }}
-                >
-                  <div className="mt-3 mb-1 sm:mt-6 sm:mb-2 border-b border-dashed border-gray-700 pb-1">
-                    <span className="font-mono text-xs tracking-widest text-gray-500">--- {group.date} ---</span>
-                  </div>
-                  <AnimatePresence initial={false}>
-                    {group.items.map((tx) => (
-                      <LedgerRow
-                        key={tx.id}
-                        tx={tx}
-                        showDate={false}
-                        onEdit={() => handleOpenEdit(tx)}
-                        onDelete={() => setDeletingTx(tx)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          ) : (
-            <AnimatePresence initial={false}>
-              {sortedTransactions.map((tx) => (
-                <LedgerRow
-                  key={tx.id}
-                  tx={tx}
-                  showDate={true}
-                  onEdit={() => handleOpenEdit(tx)}
-                  onDelete={() => setDeletingTx(tx)}
-                />
-              ))}
-            </AnimatePresence>
-          )}
-        </motion.div>
+          <StatRow
+            layout="grid"
+            items={[
+              { label: 'Money in', value: <AnimatedAmount value={totals.totalIn} currency="UZS" split codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" />, tone: 'text-positive' },
+              { label: 'Money out', value: <AnimatedAmount value={totals.totalOut} currency="UZS" split codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" /> },
+              { label: 'Net', value: <AnimatedAmount value={totals.net} currency="UZS" split codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" /> },
+              ...(totalLiability > 0
+                ? [{ label: 'Owed', value: <AnimatedAmount value={totalLiability} currency="UZS" split codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" />, tone: 'text-negative' }]
+                : []),
+            ]}
+          />
+        </PageHeader>
+        <div className="hidden lg:block mt-10 pt-6 border-t border-white/[0.08]">
+          <p className="eyebrow mb-3 on-scene">Order</p>
+          <SortBar stacked sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
+        </div>
+        </aside>
+
+        <div className="mt-8 lg:mt-0 lg:col-span-8 veil">
+          <div className="lg:hidden sticky top-0 z-10 px-3 sm:px-4 py-3 border-b border-white/[0.08] rounded-t-[12px] veil-strong">
+            <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
+          </div>
+
+          <motion.div
+            key={`${sortBy}-${sortDirection}`}
+            className="p-1.5 sm:p-2"
+            initial={{ opacity: 0.4 }}
+            animate={{ opacity: 1, transition: { duration: DUR.content, ease: EASE } }}
+          >
+            {sortedTransactions.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-base text-ink">No entries yet</p>
+                <p className="mt-1 text-sm text-ink-3">Record what you spend and earn; it appears here, newest first.</p>
+                <Button variant="primary" className="mt-6" onClick={handleOpenNewEntry} icon={<IconPlus className="w-[18px] h-[18px]" />}>
+                  Add the first entry
+                </Button>
+              </div>
+            ) : sortBy === 'DATE' ? (
+              <AnimatePresence initial={false}>
+                {groupedByDate.map((group) => (
+                  <motion.section
+                    key={group.date}
+                    aria-label={dayHeading(group.date)}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto', transition: { duration: DUR.content, ease: EASE } }}
+                    exit={{ opacity: 0, height: 0, transition: { duration: DUR.exit, ease: EASE } }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <h2 className="flex items-baseline justify-between gap-3 px-3 pt-4 pb-2">
+                      <span className="text-xs font-medium text-ink-2">{dayHeading(group.date)}</span>
+                      {group.out > 0 && (
+                        <span className="text-2xs text-ink-3 tnum">
+                          <Amount value={group.out} currency="UZS" sign="-" codeClassName="ml-1" /> out
+                        </span>
+                      )}
+                    </h2>
+                    <ul>
+                      <AnimatePresence initial={false}>{group.items.map((tx) => row(tx, false))}</AnimatePresence>
+                    </ul>
+                  </motion.section>
+                ))}
+              </AnimatePresence>
+            ) : (
+              <ul>
+                <AnimatePresence initial={false}>{sortedTransactions.map((tx) => row(tx, true))}</AnimatePresence>
+              </ul>
+            )}
+          </motion.div>
+        </div>
       </div>
 
       <PunchCard isOpen={showPunchCard} onClose={handleClosePunchCard} editingTx={editingTx} initialDate={initialDate} />
 
-      <Modal isOpen={!!deletingTx} onClose={() => setDeletingTx(null)} title="CONFIRM DELETE" size="sm">
-        <p className="font-mono text-sm text-white mb-6">DELETE THIS ENTRY? THIS CANNOT BE UNDONE.</p>
-        <div className="border border-gray-800 p-3 mb-6 font-mono text-xs text-gray-500">
-          <div>[ {heldDeletingTx?.category || 'TRANSFER'} ]</div>
-          <div>{heldDeletingTx?.note || '(no note)'}</div>
-          <div>{heldDeletingTx ? formatAmount(heldDeletingTx.amount, heldDeletingTx.currency) : ''}</div>
-        </div>
-        <div className="flex justify-end gap-3">
-          <Button onClick={() => setDeletingTx(null)}>CANCEL</Button>
-          <Button onClick={handleConfirmDelete} active={true}>CONFIRM</Button>
-        </div>
-      </Modal>
+      <ConfirmDeleteEntry isOpen={!!deletingTx} tx={heldDeletingTx} onCancel={() => setDeletingTx(null)} onConfirm={handleConfirmDelete} />
     </div>
   );
 }
