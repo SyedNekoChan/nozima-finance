@@ -11,6 +11,7 @@ import SortBar from './SortBar.jsx';
 import PunchCard from './PunchCard.jsx';
 import Button from '../../components/Button.jsx';
 import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import RateNotice from '../../components/RateNotice.jsx';
 import ConfirmDeleteEntry from '../../components/ConfirmDelete.jsx';
 import { IconPlus } from '../../components/icons.jsx';
 
@@ -149,9 +150,10 @@ export default function Ledger() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
-      {/* phones: one column; wide screens: the title, figures and order sit on the
-          scene in a sticky column, the entries in a veil beside them */}
-      <div className="frame py-6 sm:py-8 lg:py-10 lg:grid lg:grid-cols-12 lg:gap-12">
+      {/* phones: one column, the page scrolls. Desktop: the title, figures and order sit on
+          the scene in a column, the entries in a veil beside them; the page fits the screen
+          and the entries scroll inside their veil */}
+      <div className="frame py-6 sm:py-8 lg:py-10 short:py-6 lg:grid lg:grid-cols-12 lg:gap-12 lg:grid-rows-[minmax(0,1fr)] lg:h-full lg:min-h-[560px]">
         <aside className="lg:col-span-4 lg:sticky lg:top-10 lg:self-start">
         <PageHeader
           title="Ledger"
@@ -173,21 +175,22 @@ export default function Ledger() {
                 : []),
             ]}
           />
-        </PageHeader>
-        <div className="hidden lg:block mt-10 pt-6 border-t border-white/[0.08]">
+          <RateNotice className="mt-5" />
+          </PageHeader>
+        <div className="hidden lg:block mt-10 short:mt-6 pt-6 short:pt-5 border-t border-white/[0.08]">
           <p className="eyebrow mb-3 on-scene">Order</p>
           <SortBar stacked sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
         </div>
         </aside>
 
-        <div className="mt-8 lg:mt-0 lg:col-span-8 veil">
+        <div className="mt-8 lg:mt-0 lg:col-span-8 veil lg:self-start lg:max-h-full lg:min-h-0 lg:flex lg:flex-col lg:overflow-hidden">
           <div className="lg:hidden sticky top-0 z-10 px-3 sm:px-4 py-3 border-b border-white/[0.08] rounded-t-[12px] veil-strong">
             <SortBar sortBy={sortBy} sortDirection={sortDirection} onSortChange={handleSortChange} />
           </div>
 
           <motion.div
             key={`${sortBy}-${sortDirection}`}
-            className="p-1.5 sm:p-2"
+            className="p-1.5 sm:p-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain"
             initial={{ opacity: 0.4 }}
             animate={{ opacity: 1, transition: { duration: DUR.content, ease: EASE } }}
           >
@@ -195,9 +198,6 @@ export default function Ledger() {
               <div className="py-16 text-center">
                 <p className="text-base text-ink">No entries yet</p>
                 <p className="mt-1 text-sm text-ink-3">Record what you spend and earn; it appears here, newest first.</p>
-                <Button variant="primary" className="mt-6" onClick={handleOpenNewEntry} icon={<IconPlus className="w-[18px] h-[18px]" />}>
-                  Add the first entry
-                </Button>
               </div>
             ) : sortBy === 'DATE' ? (
               <AnimatePresence initial={false}>

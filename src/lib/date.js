@@ -70,3 +70,17 @@ export function getDaysInCurrentMonth() {
   const d = new Date();
   return getDaysInMonth(d.getFullYear(), d.getMonth() + 1);
 }
+
+/*
+ * Reads a date typed as day-month-year ("18-11-2026", "1/2/2026", "1.2.2026")
+ * and returns it the one way the app stores dates, "DD-MM-YYYY", or null when
+ * it is not a real calendar date (31-02-2026, 2026-11-18, words). Entries are
+ * matched to their day by this exact string, so it must always be padded.
+ */
+export function normalizeDateInput(input) {
+  const m = String(input ?? '').trim().match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{4})$/);
+  if (!m) return null;
+  const [d, mo, y] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (mo < 1 || mo > 12 || d < 1 || d > getDaysInMonth(y, mo) || y < 1900 || y > 2999) return null;
+  return `${pad(d)}-${pad(mo)}-${y}`;
+}

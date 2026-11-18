@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { compact } from '../lib/format.js';
 import { formatAmount } from '../lib/currency.js';
+import { Amount } from './AnimatedAmount.jsx';
 
 /*
  * Spending over time: one bar per period (day, month or year), never
@@ -80,7 +81,7 @@ export default function SpendingChart({ data, ticks, tips, reference, currency =
   return (
     <div
       ref={boxRef}
-      className="relative w-full h-full min-h-[200px] select-none touch-pan-y"
+      className="relative w-full h-full min-h-[200px] lg:min-h-[160px] select-none touch-pan-y"
       onPointerMove={(e) => e.pointerType === 'mouse' && pick(e.clientX)}
       onPointerDown={(e) => pick(e.clientX)}
       onMouseLeave={() => setSel(null)}
@@ -186,10 +187,12 @@ export default function SpendingChart({ data, ticks, tips, reference, currency =
         <div
           role="status"
           className="pointer-events-none absolute top-0 z-10 px-3 py-2 rounded bg-raised border border-line-strong shadow-[0_8px_24px_-6px_rgb(0_0_0/0.6)] whitespace-nowrap"
-          style={{ left: Math.max(0, Math.min(w - 168, tipX - 84)), minWidth: 168 }}
+          style={{ left: Math.max(0, Math.min(w - 168, tipX - 84)), minWidth: Math.min(168, w), maxWidth: w - Math.max(0, Math.min(w - 168, tipX - 84)) }}
         >
           <div className="text-2xs text-ink-3">{tips[tipIndex]}</div>
-          <div className="text-sm font-medium text-ink tnum">{formatAmount(data[tipIndex], currency)}</div>
+          <div className="text-sm font-medium text-ink">
+            <Amount value={data[tipIndex]} currency={currency} codeClassName="ml-1 font-mono text-[max(12px,0.8em)] text-ink-3" />
+          </div>
           {refValue !== null && data[tipIndex] > refValue && (
             <div className={`text-2xs tnum ${data[tipIndex] > refValue * 2 || overTone === 'negative' ? 'text-negative' : 'text-caution'}`}>
               {compact(data[tipIndex] - refValue)} over {reference.label.toLowerCase()}

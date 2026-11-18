@@ -26,7 +26,7 @@ const utilBtn =
  * shows the current scene and switches to the other. Its label is the
  * scene's name; on phones the name is read out but only the icon shows.
  */
-export function ModeToggle({ className = '', compact = false }) {
+export function ModeToggle({ className = '', compact = false, style }) {
   const mode = useVisualMode((s) => s.mode);
   const toggle = useVisualMode((s) => s.toggle);
   const next = nextVisualMode(mode);
@@ -36,6 +36,7 @@ export function ModeToggle({ className = '', compact = false }) {
       type="button"
       onClick={toggle}
       data-mode-toggle={mode}
+      style={style}
       aria-label={`Scene: ${MODE_NAMES[mode]}. Switch to ${MODE_NAMES[next]}.`}
       title={`Switch to ${MODE_NAMES[next]}`}
       className={`${utilBtn} ${compact ? 'w-11' : 'px-3'} ${className}`}

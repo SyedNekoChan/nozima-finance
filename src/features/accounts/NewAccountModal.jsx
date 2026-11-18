@@ -6,6 +6,9 @@ import Reveal from '../../components/Reveal.jsx';
 import Button from '../../components/Button.jsx';
 import { Field, FieldGroup, TextInput, ChoiceChips } from '../../components/Field.jsx';
 import { accountTypeLabel } from '../../lib/format.js';
+import { isCurrencyCode } from '../../lib/rates.js';
+import { hasRate } from '../../lib/currency.js';
+import { ensureExchangeRates } from '../../hooks/useExchangeRates.js';
 
 const ACCOUNT_TYPES = ['BANK', 'CASH', 'CREDIT', 'DEBT'];
 const CURRENCY_OPTIONS = ['UZS', 'USD', 'EUR', 'RUB', 'KZT', 'TRY'];
@@ -18,6 +21,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
   const [currency, setCurrency] = useState('UZS');
   const [customCurrency, setCustomCurrency] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [checking, setChecking] = useState(false);
 
   const resetState = () => {
     setName('');
@@ -25,6 +29,7 @@ export default function NewAccountModal({ isOpen, onClose }) {
     setCurrency('UZS');
     setCustomCurrency('');
     setErrorMsg('');
+    setChecking(false);
   };
 
   // reset form each time the modal opens
@@ -42,16 +47,31 @@ export default function NewAccountModal({ isOpen, onClose }) {
     onClose();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (checking) return;
     const finalCurrency = currency === 'OTHER' ? customCurrency : currency;
 
     if (!name.trim()) {
       setErrorMsg('Give the account a name.');
       return;
     }
-    if (!finalCurrency || finalCurrency.length !== 3) {
+    if (!isCurrencyCode(finalCurrency)) {
       setErrorMsg('A currency code is three letters, like GBP.');
       return;
+    }
+
+    // a currency without a stored rate is checked with the rate service first: a code it
+    // does not know is refused; if it cannot be reached the account is still created and
+    // its amounts wait for a rate (the screens say so)
+    if (!hasRate(finalCurrency, useFinanceStore.getState().exchangeRates)) {
+      setChecking(true);
+      setErrorMsg('');
+      const r = await ensureExchangeRates([finalCurrency]);
+      setChecking(false);
+      if (r.unsupported.includes(finalCurrency)) {
+        setErrorMsg(`The exchange-rate service doesn't recognise ${finalCurrency}. Check the code: it is three letters, like GBP or CHF.`);
+        return;
+      }
     }
 
     const account = {
@@ -77,8 +97,8 @@ export default function NewAccountModal({ isOpen, onClose }) {
       footer={
         <>
           <Button onClick={handleClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} data-action="save-account">
-            Create account
+          <Button variant="primary" onClick={handleSave} data-action="save-account" disabled={checking}>
+            {checking ? 'Checking the rate…' : 'Create account'}
           </Button>
         </>
       }

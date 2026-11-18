@@ -36,12 +36,32 @@ export function formatAmount(amount, currencyCode = PRIMARY_CURRENCY) {
   return symbol ? `${symbol} ${formatted} ${currencyCode}` : `${formatted} ${currencyCode}`;
 }
 
+// whether `code` can be converted to UZS with `rates` (UZS always can)
+export function hasRate(code, rates) {
+  return Number(getRate(code, rates)) > 0;
+}
+
+// one console warning per missing code, not one per render
+const warned = new Set();
+const warnMissing = (code) => {
+  const c = normCode(code);
+  if (warned.has(c)) return;
+  warned.add(c);
+  console.warn(`[currency] No exchange rate for ${c}: amounts in ${c} are left out of UZS totals until one is available`);
+};
+
+/*
+ * Converts to UZS. A currency without a rate converts to 0 so totals stay
+ * finite, but it is never silent to the person: every screen that shows a
+ * UZS total checks for missing rates (useRateGaps) and says what is left out.
+ * No rate is ever invented here.
+ */
 export function convertToBase(amount, fromCurrency, rates = DEFAULT_EXCHANGE_RATES) {
   if (normCode(fromCurrency) === PRIMARY_CURRENCY) return amount;
 
   const rate = getRate(fromCurrency, rates);
-  if (!rate) {
-    console.warn(`[currency] Missing exchange rate for ${fromCurrency}`);
+  if (!(Number(rate) > 0)) {
+    warnMissing(fromCurrency);
     return 0;
   }
   return amount * rate;
@@ -52,11 +72,33 @@ export function convertBetween(amount, fromCurrency, toCurrency, rates = DEFAULT
 
   const fromRate = getRate(fromCurrency, rates);
   const toRate = getRate(toCurrency, rates);
-  if (!fromRate || !toRate) {
-    console.warn(`[currency] Missing exchange rate for ${fromCurrency} or ${toCurrency}`);
+  if (!(Number(fromRate) > 0) || !(Number(toRate) > 0)) {
+    warnMissing(Number(fromRate) > 0 ? toCurrency : fromCurrency);
     return 0;
   }
   return (amount * fromRate) / toRate;
+}
+
+/*
+ * The rate to suggest for a cross-currency transfer: units of `to` per one
+ * unit of `from`, or null when either currency has no rate (the person then
+ * types one; nothing is guessed).
+ */
+export function suggestRate(fromCurrency, toCurrency, rates) {
+  if (!hasRate(fromCurrency, rates) || !hasRate(toCurrency, rates)) return null;
+  return getRate(fromCurrency, rates) / getRate(toCurrency, rates);
+}
+
+/*
+ * A rate as the person sees and edits it: six significant digits, never
+ * rounded away (1 UZS = 0.0000790514 USD, not 0.0001), never in exponent
+ * form (parseAmount would misread it), no trailing zeros.
+ */
+export function formatRate(rate) {
+  const r = Number(rate);
+  if (!(r > 0) || !Number.isFinite(r)) return '';
+  const decimals = Math.min(12, Math.max(4, 5 - Math.floor(Math.log10(r))));
+  return r.toFixed(decimals).replace(/\.?0+$/, '');
 }
 
 export function parseAmount(inputString) {

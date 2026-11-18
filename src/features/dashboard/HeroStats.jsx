@@ -4,6 +4,7 @@ import { HER_NAME_CYRILLIC } from '../../lib/constants.js';
 import { getDistanceBetweenUs, formatDistance } from '../../lib/distance.js';
 import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import { IconNote } from '../../components/icons.jsx';
+import RateNotice from '../../components/RateNotice.jsx';
 
 const greeting = (h) => (h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening');
 const titleCase = (s) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -38,7 +39,7 @@ export default function HeroStats() {
         </span>
       </button>
 
-      <h1 className="eyebrow mt-6 sm:mt-8">Total balance</h1>
+      <h1 className="eyebrow mt-6 sm:mt-8 short:mt-4">Total balance</h1>
       <p className="mt-1.5 font-medium tracking-[-0.045em] leading-[0.95] text-ink text-[clamp(2.375rem,12vw,3.5rem)] sm:text-[clamp(3.5rem,7vw,5.5rem)]">
         <AnimatedAmount
           value={totalBalance}
@@ -47,7 +48,7 @@ export default function HeroStats() {
           codeClassName="ml-[0.3em] text-[max(13px,0.26em)] font-mono font-normal tracking-normal text-ink-3 align-[0.95em]"
         />
       </p>
-      <p className="mt-4 text-sm text-ink-2">
+      <p className="mt-4 short:mt-3 text-sm text-ink-2">
         Across {accountCount} {accountCount === 1 ? 'account' : 'accounts'}
         {liability > 0 && (
           <>
@@ -56,6 +57,7 @@ export default function HeroStats() {
           </>
         )}
       </p>
+      <RateNotice className="mt-4 max-w-xl" />
     </div>
   );
 }

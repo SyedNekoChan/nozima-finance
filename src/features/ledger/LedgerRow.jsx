@@ -64,7 +64,7 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
           className="w-full flex items-center gap-3 sm:gap-4 px-3 py-3 min-h-[64px] rounded text-left hover:bg-white/[0.04] motion-btn cursor-pointer"
         >
           <Glyph tx={tx} />
-          <span className="min-w-0 flex-1">
+          <span className="min-w-[5rem] flex-1">
             <span className="block text-sm sm:text-base text-ink truncate">{title}</span>
             <span className="mt-0.5 flex items-center gap-2 text-xs text-ink-3 min-w-0">
               <span className="truncate">{meta}</span>
@@ -76,7 +76,7 @@ export default function LedgerRow({ tx, onEdit, onDelete, showDate = true }) {
             value={tx.amount}
             currency={tx.currency}
             sign={income ? '+' : '-'}
-            className={`flex-shrink-0 text-sm sm:text-base font-medium ${income ? 'text-positive' : isTransfer ? 'text-ink-2' : 'text-ink'}`}
+            className={`min-w-0 max-w-[60%] text-right text-sm sm:text-base font-medium ${income ? 'text-positive' : isTransfer ? 'text-ink-2' : 'text-ink'}`}
             codeClassName={`ml-1 font-mono text-[max(12px,0.72em)] font-normal ${income ? 'text-positive/70' : 'text-ink-3'}`}
           />
         </button>

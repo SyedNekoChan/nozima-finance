@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import { DUR, EASE } from '../../lib/motion.js';
 import { FUTURE_FUND_NAME, PRIMARY_CURRENCY } from '../../lib/constants.js';
-import { convertToBase } from '../../lib/currency.js';
+import { convertToBase, hasRate } from '../../lib/currency.js';
 import { accountLabel, accountTypeLabel } from '../../lib/format.js';
 import Button, { IconButton } from '../../components/Button.jsx';
 import { IconChevronDown, IconEdit, IconHeart, IconTransfer, IconTrash } from '../../components/icons.jsx';
@@ -43,7 +43,9 @@ export default function AccountRow({ account, swatch, onEdit, onTransfer, onDele
 
   useEffect(() => () => clearTimeout(pulseTimeoutRef.current), []);
 
-  const inBase = isForeign ? convertToBase(account.balance, account.currency, exchangeRates) : null;
+  // a foreign balance in UZS, or null; without a rate it says so rather than showing ≈ 0
+  const rateKnown = !isForeign || hasRate(account.currency, exchangeRates);
+  const inBase = isForeign && rateKnown ? convertToBase(account.balance, account.currency, exchangeRates) : null;
   const name = accountLabel(account.name);
 
   const actions = (
@@ -87,7 +89,7 @@ export default function AccountRow({ account, swatch, onEdit, onTransfer, onDele
               style={isDebt ? undefined : { background: swatch }}
               aria-hidden="true"
             />
-            <span className="min-w-0 flex-1">
+            <span className="min-w-[5.5rem] flex-1">
               <span className="flex items-center gap-2">
                 <span className="text-sm font-medium tracking-[0.02em] text-ink truncate">{name}</span>
                 {isFutureFund && (
@@ -100,7 +102,7 @@ export default function AccountRow({ account, swatch, onEdit, onTransfer, onDele
                 {accountTypeLabel(account.type)} · {account.currency}
               </span>
             </span>
-            <span className="text-right flex-shrink-0 min-w-0">
+            <span className="text-right min-w-0 max-w-[62%]">
               <span className={`block text-base md:text-lg font-medium tracking-[-0.02em] ${isNegative ? 'text-negative' : 'text-ink'}`}>
                 <AnimatedAmount
                   value={account.balance}
@@ -109,6 +111,7 @@ export default function AccountRow({ account, swatch, onEdit, onTransfer, onDele
                   codeClassName="ml-1 font-mono text-[max(12px,0.7em)] font-normal text-ink-3"
                 />
               </span>
+              {!rateKnown && <span className="block mt-0.5 text-xs text-caution" data-no-rate="">No UZS rate yet</span>}
               {inBase !== null && (
                 <span className="block mt-0.5 text-xs text-ink-3">
                   ≈ <Amount value={inBase} currency="UZS" codeClassName="ml-1 font-mono" />

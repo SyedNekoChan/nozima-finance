@@ -29,7 +29,7 @@ export default function ConfirmDeleteEntry({ isOpen, tx, onCancel, onConfirm }) 
               {categoryLabel(tx.category)} · {shortDate(tx.date)}
             </p>
           </div>
-          <Amount value={tx.amount} currency={tx.currency} className="text-sm font-medium text-ink" />
+          <Amount value={tx.amount} currency={tx.currency} className="min-w-0 max-w-[60%] text-right text-sm font-medium text-ink" />
         </div>
       )}
     </Modal>

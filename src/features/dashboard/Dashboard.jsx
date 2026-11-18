@@ -9,6 +9,7 @@ import BudgetMeter from '../../components/BudgetMeter.jsx';
 import SpendingChart from '../../components/SpendingChart.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
+import FieldError from '../../components/FieldError.jsx';
 import { Field, AmountInput, Segmented } from '../../components/Field.jsx';
 import { IconEdit, IconPlus } from '../../components/icons.jsx';
 
@@ -30,6 +31,7 @@ export default function Dashboard() {
 
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
+  const [budgetError, setBudgetError] = useState('');
   const [granularity, setGranularity] = useState('DAY');
 
   const now = new Date();
@@ -89,6 +91,7 @@ export default function Dashboard() {
 
   function openBudgetModal() {
     setBudgetInput(monthlyBudget ? String(monthlyBudget) : '');
+    setBudgetError('');
     setShowBudgetModal(true);
   }
 
@@ -101,7 +104,10 @@ export default function Dashboard() {
       return;
     }
     const parsedAmount = parseFloat(budgetInput);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setBudgetError('Enter an amount above zero, or leave it empty to remove the budget.');
+      return;
+    }
     setMonthlyBudget(monthKey, parsedAmount);
     setShowBudgetModal(false);
     setBudgetInput('');
@@ -121,14 +127,16 @@ export default function Dashboard() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="frame py-6 sm:py-8 lg:py-10 flex flex-col gap-6 lg:gap-8 min-h-full">
-        <section className="grid grid-cols-1 gap-6 lg:gap-12 md:grid-cols-12 md:items-start">
-          <div className="md:col-span-7 min-w-0">
+      {/* phones: one column. Tablets and tall desktops: greeting and month side by side, the
+          chart under them. Short desktops: the greeting over the chart on the left, the month
+          on the right. On desktop it all fits the screen: the chart takes the height left. */}
+      <div className="frame py-6 sm:py-8 lg:py-10 short:py-6 flex flex-col gap-6 md:grid md:grid-cols-12 md:gap-x-8 md:items-start lg:gap-x-12 lg:gap-y-8 short:gap-y-6 min-h-full lg:h-full lg:min-h-[560px] lg:grid-rows-[auto_minmax(0,1fr)]">
+          <div className="md:col-span-7 short:col-span-8 min-w-0">
             <HeroStats />
           </div>
 
           {/* this month */}
-          <section aria-labelledby="month-title" className="md:col-span-5 veil p-5 sm:p-6">
+          <section aria-labelledby="month-title" className="md:col-span-5 short:col-span-4 short:row-span-2 lg:self-start veil p-5 sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 id="month-title" className="eyebrow">
@@ -150,7 +158,7 @@ export default function Dashboard() {
                 <div className="mt-6">
                   <BudgetMeter spent={spentThisMonth} budget={monthlyBudget} day={day} days={days} />
                 </div>
-                <dl className="mt-5 grid grid-cols-2 gap-4 pt-5 border-t border-line">
+                <dl className="mt-5 grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 pt-5 border-t border-line">
                   <div className="min-w-0">
                     <dt className="text-xs text-ink-3">{remaining >= 0 ? 'Left this month' : 'Over by'}</dt>
                     <dd className={`mt-1 text-base font-medium ${remaining >= 0 ? 'text-ink' : 'text-negative'}`}>
@@ -180,10 +188,9 @@ export default function Dashboard() {
               </div>
             )}
           </section>
-        </section>
 
         {/* spending over time */}
-        <section aria-labelledby="chart-title" className="veil p-5 sm:p-6 flex flex-col flex-1 min-h-[320px] sm:min-h-[360px]">
+        <section aria-labelledby="chart-title" className="md:col-span-12 short:col-span-8 lg:self-stretch veil p-5 sm:p-6 flex flex-col flex-1 min-h-[320px] sm:min-h-[360px] lg:min-h-0">
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 mb-5">
             <div className="min-w-0">
               <h2 id="chart-title" className="eyebrow">Spending</h2>
@@ -193,7 +200,7 @@ export default function Dashboard() {
             </div>
             <Segmented value={granularity} options={GRANULARITY} onChange={setGranularity} label="Period" size="sm" className="w-full sm:w-auto" />
           </div>
-          <div className="flex-1 min-h-[200px] -mx-1">
+          <div className="flex-1 min-h-[200px] lg:min-h-[160px] -mx-1">
             <SpendingChart
               data={chart.data}
               ticks={chart.ticks}
@@ -248,11 +255,15 @@ export default function Dashboard() {
               type="number"
               inputMode="numeric"
               value={budgetInput}
-              onChange={(e) => setBudgetInput(e.target.value)}
+              onChange={(e) => {
+                setBudgetInput(e.target.value);
+                setBudgetError('');
+              }}
               placeholder="2000000"
               currency="UZS"
             />
           </Field>
+          <FieldError message={budgetError} className="mt-4" />
         </form>
       </Modal>
     </div>
