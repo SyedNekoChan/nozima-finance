@@ -76,6 +76,36 @@ focus and arrows. The budget meter: white on track, amber when ahead of the
 month's pace (the tick), red over budget. The calendar tints days in the same
 three steps. Accounts show where the balance sits as one slim bar.
 
+**Money figures.** Every amount (`components/AnimatedAmount.jsx`: `Amount`,
+`AnimatedAmount`) is one unbreakable line that never runs past its
+container. At its designed size whenever it fits; otherwise its font steps
+down just enough, never below 12px; only past that floor may the currency
+code take the next line and the figure break after a comma (a digit group),
+never between two digits. No digit is ever hidden; the exact amount is the
+tooltip. Easing figures are sized for both ends of the ease. `compact()`
+(chart axes, calendar cells) goes up to T and Q and never shows "1000K".
+
+**Sheets on phones.** Dialogs are bottom sheets with no close button on touch
+phones: swipe the sheet down (past max(80px, 22% of its height), or a quick
+flick) or tap outside to dismiss; a shorter swipe or a cancelled touch springs
+back and keeps what was typed. A swipe never starts on a field or an open
+list, and starts in the scrolling body only when it is at its top. Desktop
+and mouse users keep the close button; Escape works everywhere. Touch screens
+show no scrollbars; mouse screens keep the thin ones.
+
+**Calendar on phones.** The month comes first and fits the first screen,
+last week included: the cells take the height left, stay about as tall as they
+are wide and never go under 36px; the allowance and figures follow below.
+
+**Exchange rates.** Rates are UZS per unit. Presets carry stored rates; any
+other code is fetched once from the rate service (open.er-api.com) and saved,
+retried with a backoff and on reconnect while unreachable, and refused when
+the service does not know it (`lib/rates.js`, `hooks/useExchangeRates.js`). A
+currency without a rate is never converted at a guessed rate: its amounts are
+left out of UZS totals and every screen with a total says so (`RateNotice`);
+account rows say "No UZS rate yet". Codes must be three letters. Suggested
+transfer rates keep six significant digits (`formatRate`).
+
 **Motion.** Short, ease-out only (`cubic-bezier(0.2, 0, 0, 1)`), with no
 springs or bounce. Timing comes from the tiers in `src/lib/motion.js` and the
 matching CSS tokens:

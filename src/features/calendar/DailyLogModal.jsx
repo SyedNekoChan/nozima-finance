@@ -8,6 +8,7 @@ import ConfirmDeleteEntry from '../../components/ConfirmDelete.jsx';
 import LedgerRow from '../ledger/LedgerRow.jsx';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import { longDate } from '../../lib/format.js';
+import { normalizeDateInput } from '../../lib/date.js';
 import { IconPlus } from '../../components/icons.jsx';
 
 export default function DailyLogModal({ isOpen, onClose, selectedDate: selectedDateProp }) {
@@ -26,7 +27,8 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate: selectedD
 
   const dayTransactions = useMemo(() => {
     if (!selectedDate) return [];
-    return transactions.filter((tx) => tx.date === selectedDate.dateString);
+    // matched by the normalized date, so entries saved unpadded before dates were validated ("1-11-2026") still show
+    return transactions.filter((tx) => tx.date === selectedDate.dateString || normalizeDateInput(tx.date) === selectedDate.dateString);
   }, [transactions, selectedDate]);
 
   // same accounting source as the Ledger summary, scoped to this exact date
@@ -71,7 +73,7 @@ export default function DailyLogModal({ isOpen, onClose, selectedDate: selectedD
         </Button>
       }
     >
-      <dl className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-line">
+      <dl className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 mb-4 pb-4 border-b border-line">
         <div className="min-w-0">
           <dt className="eyebrow">In</dt>
           <dd className="mt-1.5 text-lg font-medium tracking-[-0.02em] text-positive">

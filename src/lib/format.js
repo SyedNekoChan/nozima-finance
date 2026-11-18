@@ -59,13 +59,18 @@ export const categoryLabel = (c) => {
 
 export const accountTypeLabel = (t) => ({ BANK: 'Bank', CASH: 'Cash', CREDIT: 'Credit', DEBT: 'Debt' })[t] || categoryLabel(t);
 
-// 4,600,000 -> "4.6M", 185,000 -> "185K"
+// 4,600,000 -> "4.6M", 185,000 -> "185K", 45,678,901,234,567 -> "45.7T"
 export function compact(value) {
   const v = Math.abs(Number(value) || 0);
   const sign = value < 0 ? '−' : '';
-  if (v >= 1e9) return `${sign}${trim(v / 1e9)}B`;
-  if (v >= 1e6) return `${sign}${trim(v / 1e6)}M`;
-  if (v >= 1e3) return `${sign}${Math.round(v / 1e3)}K`;
+  if (Math.round(v) < 1000) return `${sign}${Math.round(v)}`;
+  // the smallest unit whose rounded figure stays under 1000 (999,999 -> 1M, not 1000K)
+  const units = [['K', 1e3], ['M', 1e6], ['B', 1e9], ['T', 1e12], ['Q', 1e15]];
+  for (let i = 0; i < units.length; i++) {
+    const [unit, size] = units[i];
+    const shown = unit === 'K' ? String(Math.round(v / size)) : trim(v / size);
+    if (Number(shown) < 1000 || i === units.length - 1) return `${sign}${shown}${unit}`;
+  }
   return `${sign}${Math.round(v)}`;
 }
 const trim = (n) => (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1).replace(/\.0$/, '') : n.toFixed(2).replace(/0$/, '').replace(/\.0$/, ''));

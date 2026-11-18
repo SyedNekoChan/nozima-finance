@@ -54,5 +54,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `short:` desktop with little height (laptops: 1280x720, 1366x768, 1536x864): tighter
+    // spacing and a side-by-side Dashboard, never smaller type. A variant, not a `screens`
+    // entry: an object in `screens` would switch off every `max-*` variant.
+    ({ addVariant }) => addVariant('short', '@media (min-width: 1024px) and (max-height: 880px)'),
+  ],
 }

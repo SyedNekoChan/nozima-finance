@@ -8,6 +8,7 @@ import TransferModal from './TransferModal.jsx';
 import Modal from '../../components/Modal.jsx';
 import Button from '../../components/Button.jsx';
 import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import RateNotice from '../../components/RateNotice.jsx';
 import AnimatedAmount, { Amount } from '../../components/AnimatedAmount.jsx';
 import Reveal from '../../components/Reveal.jsx';
 import useHeldValue from '../../hooks/useHeldValue.js';
@@ -61,7 +62,8 @@ export default function Accounts() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="frame py-6 sm:py-8 lg:py-10 lg:grid lg:grid-cols-12 lg:gap-12">
+      {/* desktop: fits the screen; a long list of accounts scrolls inside its veil */}
+      <div className="frame py-6 sm:py-8 lg:py-10 short:py-6 lg:grid lg:grid-cols-12 lg:gap-12 lg:grid-rows-[minmax(0,1fr)] lg:h-full lg:min-h-[560px]">
         <aside className="lg:col-span-4 lg:sticky lg:top-10 lg:self-start">
           <PageHeader
             title="Accounts"
@@ -81,6 +83,7 @@ export default function Accounts() {
                   : []),
               ]}
             />
+            <RateNotice className="mt-5" />
           </PageHeader>
 
           {shareTotal > 0 && (
@@ -105,18 +108,15 @@ export default function Accounts() {
           )}
         </aside>
 
-        <div className="mt-8 lg:mt-0 lg:col-span-8">
+        <div className="mt-8 lg:mt-0 lg:col-span-8 lg:h-full lg:min-h-0">
           <Reveal show={accounts.length === 0}>
             <div className="veil py-16 px-6 text-center">
               <p className="text-base text-ink">No accounts yet</p>
-              <p className="mt-1 text-sm text-ink-3">Add a bank account, cash or a card to start recording money.</p>
-              <Button variant="primary" className="mt-6" onClick={() => setIsNewOpen(true)} icon={<IconPlus className="w-[18px] h-[18px]" />}>
-                Add the first account
-              </Button>
+              <p className="mt-1 text-sm text-ink-3">Add a bank account, cash or a card to start recording money</p>
             </div>
           </Reveal>
           {accounts.length > 0 && (
-            <ul className="veil">
+            <ul className="veil lg:max-h-full lg:overflow-y-auto lg:overscroll-contain">
               <AnimatePresence initial={false}>
                 {accounts.map((account) => (
                   <AccountRow
@@ -162,7 +162,7 @@ export default function Accounts() {
         {heldDeleteTarget && (
           <div className="rounded border border-line bg-white/[0.02] p-4 flex items-center justify-between gap-4">
             <span className="text-sm text-ink">{accountLabel(heldDeleteTarget.name)}</span>
-            <Amount value={heldDeleteTarget.balance} currency={heldDeleteTarget.currency} className="text-sm font-medium text-ink" />
+            <Amount value={heldDeleteTarget.balance} currency={heldDeleteTarget.currency} className="min-w-0 max-w-[60%] text-right text-sm font-medium text-ink" />
           </div>
         )}
       </Modal>

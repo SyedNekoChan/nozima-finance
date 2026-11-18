@@ -9,7 +9,7 @@ import Button from '../../components/Button.jsx';
 import { Field, FieldGroup, TextInput, AmountInput, ChoiceChips } from '../../components/Field.jsx';
 import { accountLabel } from '../../lib/format.js';
 import { IconArrowRight } from '../../components/icons.jsx';
-import { parseAmount } from '../../lib/currency.js';
+import { parseAmount, suggestRate, formatRate } from '../../lib/currency.js';
 import { getTodayDateString } from '../../lib/date.js';
 
 export default function TransferModal({ isOpen, onClose, sourceAccount: sourceAccountProp }) {
@@ -54,9 +54,8 @@ export default function TransferModal({ isOpen, onClose, sourceAccount: sourceAc
   // auto-suggest a rate the moment currencies diverge
   useEffect(() => {
     if (isCrossCurrency && !rateInput && sourceAccount && destinationAccount) {
-      const suggested =
-        exchangeRates[sourceAccount.currency] / exchangeRates[destinationAccount.currency];
-      if (!isNaN(suggested)) setRateInput(suggested.toFixed(4));
+      const suggested = suggestRate(sourceAccount.currency, destinationAccount.currency, exchangeRates);
+      if (suggested !== null) setRateInput(formatRate(suggested));
     } else if (!isCrossCurrency && rateInput) {
       setRateInput('');
     }

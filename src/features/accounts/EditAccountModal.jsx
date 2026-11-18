@@ -6,6 +6,7 @@ import FieldError from '../../components/FieldError.jsx';
 import Button from '../../components/Button.jsx';
 import { Field, TextInput, AmountInput, Segmented } from '../../components/Field.jsx';
 import { accountLabel } from '../../lib/format.js';
+import { isCurrencyCode } from '../../lib/rates.js';
 import useHeldValue from '../../hooks/useHeldValue.js';
 import AnimatedAmount from '../../components/AnimatedAmount.jsx';
 import { ensureExchangeRates } from '../../hooks/useExchangeRates.js';
@@ -54,13 +55,18 @@ export default function EditAccountModal({ isOpen, onClose, account: accountProp
       setErrorMsg('Give the account a name.');
       return;
     }
-    if (!currencyInput || currencyInput.length !== 3) {
+    if (!isCurrencyCode(currencyInput)) {
       setErrorMsg('A currency code is three letters, like USD.');
       return;
     }
 
     const adjAmount = parseAmount(amountInput);
     const hasAdjustment = !isNaN(adjAmount) && adjAmount > 0;
+    // something typed that is not an amount above zero is refused, not silently skipped
+    if (amountInput.trim() !== '' && !hasAdjustment) {
+      setErrorMsg('Enter the adjustment as an amount above zero: Add money or Remove money sets the direction.');
+      return;
+    }
 
     /*
      * Currency change: convert the account's existing numeric balance
@@ -79,9 +85,16 @@ export default function EditAccountModal({ isOpen, onClose, account: accountProp
     const currencyChanged = currencyInput !== account.currency;
 
     // never convert with a missing rate: it would zero the balance
-    if (currencyChanged && !(await ensureExchangeRates([account.currency, currencyInput]))) {
-      setErrorMsg('No exchange rate for this currency yet. Check the connection and try again.');
-      return;
+    if (currencyChanged) {
+      const r = await ensureExchangeRates([account.currency, currencyInput]);
+      if (r.unsupported.length) {
+        setErrorMsg(`The exchange-rate service doesn't recognise ${r.unsupported.join(' or ')}, so the balance can't be converted. Check the code.`);
+        return;
+      }
+      if (!r.ok) {
+        setErrorMsg('No exchange rate for this currency yet: the rate service can\'t be reached. Try again when you are online.');
+        return;
+      }
     }
 
     const convertedBalance = currencyChanged

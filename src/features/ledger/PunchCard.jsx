@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import useFinanceStore from '../../hooks/useFinanceStore.js';
 import {
   parseAmount,
+  suggestRate,
+  formatRate,
 } from '../../lib/currency.js';
 import {
   TRANSACTION_CATEGORIES,
   DEFAULT_CATEGORY,
 } from '../../lib/constants.js';
-import { getTodayDateString } from '../../lib/date.js';
+import { getTodayDateString, normalizeDateInput } from '../../lib/date.js';
 import Modal from '../../components/Modal.jsx';
 import ImageViewerModal from '../../components/ImageViewerModal.jsx';
 import Button from '../../components/Button.jsx';
@@ -202,25 +204,16 @@ export default function PunchCard({
       sourceAccount &&
       destAccount
     ) {
-      const srcRate =
-        exchangeRates[
-          sourceAccount.currency
-        ];
+      // the shared suggestion; null when either currency has no rate (then the person types one)
+      const rate = suggestRate(
+        sourceAccount.currency,
+        destAccount.currency,
+        exchangeRates
+      );
 
-      const dstRate =
-        exchangeRates[
-          destAccount.currency
-        ];
-
-      if (
-        srcRate &&
-        dstRate
-      ) {
-        const rate =
-          srcRate / dstRate;
-
+      if (rate !== null) {
         setExchangeRateInput(
-          rate.toFixed(4)
+          formatRate(rate)
         );
       }
     }
@@ -311,6 +304,13 @@ export default function PunchCard({
         return;
       }
 
+      // the type says which way the money goes; a negative amount would reverse it
+      // (a "-50,000" expense used to add 50,000 to the account)
+      if (amount < 0) {
+        setErrorMsg('Enter the amount without a minus: the type says whether money goes out or comes in.');
+        return;
+      }
+
       if (
         type === 'TRANSFER' &&
         (
@@ -323,9 +323,15 @@ export default function PunchCard({
         return;
       }
 
-      const resolvedDate =
-        date.trim() ||
-        getTodayDateString();
+      // stored as DD-MM-YYYY exactly: an entry is found on its day by that string
+      const resolvedDate = date.trim()
+        ? normalizeDateInput(date)
+        : getTodayDateString();
+
+      if (!resolvedDate) {
+        setErrorMsg('Enter a real date as day-month-year, like 18-11-2026.');
+        return;
+      }
 
       setIsSubmitting(true);
       setErrorMsg('');

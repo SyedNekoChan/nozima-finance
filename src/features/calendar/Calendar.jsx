@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { monthVariants } from '../../lib/motion.js';
 import DailyLogModal from './DailyLogModal.jsx';
@@ -8,6 +8,7 @@ import { getDaysInMonth } from '../../lib/date.js';
 import { categoryLabel, compact, monthLong, shortDate } from '../../lib/format.js';
 import { Amount } from '../../components/AnimatedAmount.jsx';
 import PageHeader, { StatRow } from '../../components/PageHeader.jsx';
+import RateNotice from '../../components/RateNotice.jsx';
 import { IconButton } from '../../components/Button.jsx';
 import { IconChevronLeft, IconChevronRight } from '../../components/icons.jsx';
 
@@ -134,34 +135,65 @@ export default function Calendar() {
   };
 
   const monthName = `${monthLong(month)} ${year}`;
+  const weeks = calendar.cells.length / 7;
+  const subtitle = budgetAllowance
+    ? `Daily allowance ${compact(budgetAllowance)} UZS, from this month's budget`
+    : `No budget this month: days are measured against ${compact(FALLBACK_ALLOWANCE)} UZS`;
+  const figures = [
+    { label: `Spent in ${monthLong(month)}`, value: <Amount value={calendar.spent} currency="UZS" codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" /> },
+    { label: 'Days over allowance', value: <span className="tnum">{calendar.overDays}</span>, tone: calendar.overDays ? 'text-caution' : 'text-ink' },
+  ];
+
+  /*
+   * Phones: the whole month, last week included, fits the first screen. The
+   * day cells take the height left between the weekday row and the bottom of
+   * the screen, shared by the weeks, but never more than a little taller than
+   * they are wide (no stretched cells) and never under 36px (readable, tappable).
+   * Wider screens size their cells with CSS.
+   */
+  const scrollerRef = useRef(null);
+  const frameRef = useRef(null);
+  const weekRowRef = useRef(null);
+  const [cellH, setCellH] = useState(null);
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const row = weekRowRef.current;
+    if (!scroller || !row) return undefined;
+    const GAP = 4; // gap-1 between weeks on phones
+    const measure = () => {
+      if (window.innerWidth >= 640) {
+        setCellH(null);
+        return;
+      }
+      const top = row.getBoundingClientRect().bottom - scroller.getBoundingClientRect().top + scroller.scrollTop + 6; // mb-1.5
+      const room = scroller.clientHeight - top - 12 - 8; // the veil's bottom padding and a little air
+      const byHeight = Math.floor((room - GAP * (weeks - 1)) / weeks);
+      const cellW = (row.getBoundingClientRect().width - GAP * 6) / 7;
+      const h = Math.max(36, Math.min(byHeight, Math.round(cellW * 1.05), 56));
+      setCellH((prev) => (prev === h ? prev : h));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(scroller);
+    if (frameRef.current) ro.observe(frameRef.current);
+    return () => ro.disconnect();
+  }, [weeks]);
 
   return (
-    <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="frame py-6 sm:py-8 lg:py-10">
-        <PageHeader
-          title="Calendar"
-          subtitle={
-            budgetAllowance
-              ? `Daily allowance ${compact(budgetAllowance)} UZS, from this month's budget`
-              : `No budget this month: days are measured against ${compact(FALLBACK_ALLOWANCE)} UZS`
-          }
-        >
-          <StatRow
-            items={[
-              { label: `Spent in ${monthLong(month)}`, value: <Amount value={calendar.spent} currency="UZS" codeClassName="ml-1 font-mono text-[max(12px,0.6em)] text-ink-3" /> },
-              {
-                label: 'Days over allowance',
-                value: <span className="tnum">{calendar.overDays}</span>,
-                tone: calendar.overDays ? 'text-caution' : 'text-ink',
-              },
-            ]}
-          />
+    <div ref={scrollerRef} className="h-full overflow-y-auto overscroll-contain">
+      {/* phones: the month first, whole on the first screen, its figures under it.
+          desktop: the page fits the screen; the days share the height left under the title,
+          the month's entries scroll inside their veil */}
+      <div ref={frameRef} className="frame pt-5 pb-6 sm:py-8 lg:py-10 short:py-6 lg:h-full lg:min-h-[560px] lg:flex lg:flex-col">
+        <PageHeader figuresBeside titleOnlyOnPhone title="Calendar" subtitle={subtitle}>
+          <StatRow className="lg:mt-0" items={figures} />
         </PageHeader>
+        <RateNotice className="mt-5" />
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-12">
+        <div className="mt-4 sm:mt-8 short:mt-5 grid gap-6 lg:grid-cols-12 lg:flex-1 lg:min-h-0 lg:max-h-[880px] lg:grid-rows-[minmax(0,1fr)]">
           {/* the month */}
-          <section aria-label={monthName} className="lg:col-span-8 veil p-3 sm:p-5 self-start">
-            <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+          <section aria-label={monthName} className="lg:col-span-8 veil p-3 sm:p-5 short:py-4 self-start lg:self-stretch lg:min-h-0 lg:flex lg:flex-col">
+            <div className="flex items-center justify-between gap-2 mb-1 sm:mb-4 short:mb-2">
               <IconButton label="Previous month" onClick={handlePrevMonth} data-action="prev-month">
                 <IconChevronLeft />
               </IconButton>
@@ -177,7 +209,7 @@ export default function Calendar() {
               </IconButton>
             </div>
 
-            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5" aria-hidden="true">
+            <div ref={weekRowRef} className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5" aria-hidden="true">
               {WEEKDAYS.map((d) => (
                 <div key={d} className="text-center text-2xs font-medium text-ink-3 py-1">
                   <span className="sm:hidden">{d.charAt(0)}</span>
@@ -187,7 +219,12 @@ export default function Calendar() {
             </div>
 
             <AnimatePresence mode="wait" initial={false} custom={dir}>
-              <motion.div key={monthKey} className="grid grid-cols-7 gap-1 sm:gap-1.5" {...monthMotion}>
+              <motion.div
+                key={monthKey}
+                className="grid grid-cols-7 gap-1 sm:gap-1.5 lg:flex-1 lg:min-h-0 lg:grid-rows-[repeat(var(--weeks),minmax(44px,1fr))]"
+                style={{ '--weeks': weeks, ...(cellH ? { '--cell-h': `${cellH}px` } : {}) }}
+                {...monthMotion}
+              >
                 {calendar.cells.map((cell, idx) => {
                   if (cell.empty) return <div key={idx} aria-hidden="true" />;
                   const lv = LEVEL[cell.level];
@@ -201,7 +238,7 @@ export default function Calendar() {
                       aria-label={`${cell.day} ${monthLong(month)}${cell.isToday ? ', today' : ''}: ${
                         cell.spend > 0 ? `${Math.round(cell.spend).toLocaleString('en-US')} UZS spent` : 'nothing spent'
                       }`}
-                      className={`relative flex flex-col justify-between min-w-0 h-12 xs:h-14 sm:h-[64px] lg:h-[60px] xl:h-[64px] rounded-sm sm:rounded p-1.5 sm:p-2.5 text-left motion-btn cursor-pointer ${lv.cell} ${
+                      className={`relative flex flex-col justify-between min-w-0 h-[var(--cell-h,44px)] sm:h-[64px] lg:h-auto rounded-sm sm:rounded p-1.5 sm:p-2.5 short:px-2 short:py-1.5 text-left motion-btn cursor-pointer ${lv.cell} ${
                         isSelected ? 'ring-1 ring-ink' : cell.isToday ? 'ring-1 ring-accent' : ''
                       }`}
                     >
@@ -224,15 +261,21 @@ export default function Calendar() {
               </motion.div>
             </AnimatePresence>
 
-            <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 px-1 text-2xs text-ink-3" aria-label="Legend">
+            <ul className="mt-4 short:mt-3 flex flex-wrap gap-x-5 gap-y-2 px-1 text-2xs text-ink-3" aria-label="Legend">
               <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-white/[0.12]" />Within allowance</li>
               <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-caution/70" />Over allowance</li>
               <li className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-[3px] bg-negative/70" />Over twice the allowance</li>
             </ul>
           </section>
 
+          {/* phones: the allowance and the month's figures, under the month */}
+          <div className="sm:hidden on-scene -mt-2">
+            <p className="text-sm text-ink-2">{subtitle}</p>
+            <StatRow className="mt-4" items={figures} />
+          </div>
+
           {/* the month's entries */}
-          <section aria-labelledby="month-feed" className="lg:col-span-4 veil flex flex-col max-h-[560px] lg:max-h-none lg:h-0 lg:min-h-full">
+          <section aria-labelledby="month-feed" className="lg:col-span-4 veil flex flex-col max-h-[560px] lg:max-h-none lg:h-full lg:min-h-0">
             <h2 id="month-feed" className="flex-shrink-0 flex items-baseline justify-between gap-3 px-5 pt-5 pb-3">
               <span className="eyebrow">This month's entries</span>
               <span className="text-2xs text-ink-3 tnum">{monthFeed.length}</span>
@@ -261,7 +304,7 @@ export default function Calendar() {
                             value={tx.amount}
                             currency={tx.currency}
                             sign={income ? '+' : '-'}
-                            className={`flex-shrink-0 text-sm ${income ? 'text-positive' : 'text-ink'}`}
+                            className={`min-w-0 max-w-[60%] text-right text-sm ${income ? 'text-positive' : 'text-ink'}`}
                             codeClassName="ml-1 font-mono text-[max(12px,0.72em)] text-ink-3"
                           />
                         </button>
